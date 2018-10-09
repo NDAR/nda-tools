@@ -1,4 +1,4 @@
-#nda-tools
+# nda-tools
 In order to submit data to the National Institute of Mental Health Data Archives (NDA), users must
 validate their data to ensure it complies with the required format. This is done using the NDAR
 validation tool. Additionally, users can package and download data from NDA as well. If associated data is downloaded 
@@ -9,7 +9,7 @@ the  [Validation](https://ndar.nih.gov/api/validation/docs/swagger-ui.html),
 [Data Submission](http://ndar.nih.gov/api/submission/docs/swagger-ui.html#!) web services.
 
 
-##Getting Started
+# Getting Started
 
 ### Installing Python
 You will need a python distribution to use the client. Run the following from a terminal/command-prompt to determine if python is installed:
