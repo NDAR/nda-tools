@@ -1,2 +1,4 @@
 # nda-tools
-Script for downloading S3 links from Amazon Web Service
+Python package for interacting with NDA web services.
+
+Provides ability to validate and submit data, as well as download data packages.
