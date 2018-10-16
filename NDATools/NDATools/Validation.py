@@ -343,7 +343,7 @@ class Validation:
                     print('This file does not exist in current directory:', file_name)
                     exit_client(signal=signal.SIGINT,
                                 message=None)
-                    data = file.read()
+                data = file.read()
 
                 response, session = api_request(self, "POST", self.api_scope, data)
                 while response and not response['done']:
