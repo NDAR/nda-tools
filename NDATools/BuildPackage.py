@@ -1,16 +1,10 @@
 from __future__ import with_statement
 from __future__ import absolute_import
-import signal
 import sys
-import os
-import requests
 import requests.packages.urllib3.util
-import json
-
 from tqdm import tqdm
 import boto3
-from botocore.client import ClientError
-
+import botocore
 
 if sys.version_info[0] < 3:
     input = raw_input
@@ -26,6 +20,8 @@ class SubmissionPackage:
             self.config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'))
             self.config.username = username
             self.config.password = password
+        self.aws_access_key = self.config.aws_access_key
+        self.aws_secret_key = self.config.aws_secret_key
         self.api = self.config.submission_package_api
         self.validationtool_api = self.config.validationtool_api
         self.uuid = uuid
@@ -59,6 +55,7 @@ class SubmissionPackage:
         self.endpoints = []
         self.get_collections()
         self.get_custom_endpoints()
+        self.validation_results = []
         if not self.config.submission_packages:
             self.config.submission_packages = 'NDASubmissionPackages'
         self.submission_packages_dir = os.path.join(os.path.expanduser('~'), self.config.submission_packages)
@@ -137,17 +134,22 @@ class SubmissionPackage:
                         message='The user {} does not have permission to submit to any collections'
                                 ' or alternate upload locations.'.format(self.config.username))
 
-    def file_search(self, directories, source_bucket, source_prefix, profile, retry_allowed=False):
+    def file_search(self, directories, source_bucket, source_prefix, access_key, secret_key, retry_allowed=False):
+        print('\nSearching for associated files...')
+
         s3 = False
         self.directory_list = directories
         self.source_bucket = source_bucket
+
         if self.source_bucket:
             s3 = True
         self.source_prefix = source_prefix
-        self.profile = profile
+        self.aws_access_key = access_key
+        self.aws_secret_key = secret_key
+
         if not self.directory_list and not self.source_bucket:
             retry = input('Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
-                          '<bucket name> to locate your associated files:')  # prefix and profile can be blank (None)
+                          '<bucket name> to locate your associated files:')
             response = retry.split(' ')
             self.directory_list = response
             if response[0] == '-s3':
@@ -156,13 +158,15 @@ class SubmissionPackage:
                 self.source_prefix = input('Enter any prefix for your S3 object, or hit "Enter": ')
                 if self.source_prefix == "":
                     self.source_prefix = None
-                self.profile = input('Enter the profile in which your data is stored, or hit "Enter" to use your '
-                                     'default AWS account: ')
-                if self.profile == "":
-                    self.profile = None
+                if self.aws_access_key == "":
+                    self.aws_access_key = input('Enter the access_key for your AWS account: ')
+                if self.aws_secret_key == "":
+                    self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
+
                 self.config.source_bucket = self.source_bucket
                 self.config.source_prefix = self.source_prefix
-                self.config.aws_profile = self.profile
+                self.config.aws_access_key = self.aws_access_key
+                self.config.aws_secret_key = self.aws_secret_key
                 self.directory_list = None
 
         if not self.no_match:
@@ -186,7 +190,12 @@ class SubmissionPackage:
 
         # files in s3
         if s3:
-            s3 = boto3.session.Session(profile_name=self.profile)
+            no_access_buckets = set()
+            if self.aws_access_key is "":
+                self.aws_access_key = input('Enter the access_key for your AWS account: ')
+            if self.aws_secret_key is "":
+                self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
+            s3 = boto3.session.Session(aws_access_key_id=self.aws_access_key, aws_secret_access_key=self.aws_secret_key)
             s3_client = s3.client('s3')
             for file in self.no_match[:]:
                 key = file
@@ -197,17 +206,35 @@ class SubmissionPackage:
                     response = s3_client.head_object(Bucket=self.source_bucket, Key=key)
                     self.full_file_path[file] = (file_name, int(response['ContentLength']))
                     self.no_match.remove(file)
-                except ClientError:
-                    pass
+                except botocore.exceptions.ClientError as e:
+                    # If a client error is thrown, then check that it was a 404 error.
+                    # If it was a 404 error, then the bucket does not exist.
+                    error_code = int(e.response['Error']['Code'])
+                    if error_code == 404:
+                        #print('This path is incorrect:', file_name, 'Please try again.')
+                        pass
+                    if error_code == 403:
+                        no_access_buckets.add(self.source_bucket)
+                        #print('You do not have access to this bucket:', self.source_bucket)
+                        pass
+
+
+            if no_access_buckets:
+                print('\nNote: your user does NOT have access to the following buckets. Please review the bucket and/or your '
+                      'AWS credentials and try again.')
+                for b in no_access_buckets:
+                    print(b)
 
         for file in self.no_match:
             print('Associated file not found in specified directory:', file)
+
         if self.no_match:
             print('\nYou must make sure all associated files listed in your validation file'
                 ' are located in the specified directory or AWS bucket. Please try again.')
             if retry_allowed:
-                retry = input('Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
-                          '<bucket name> to locate your associated files:') # prefix and profile can be blank (None)
+                retry = input(
+                    'Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
+                    '<bucket name> to locate your associated files:')  # prefix and profile can be blank (None)
                 response = retry.split(' ')
                 self.directory_list = response
                 if response[0] == '-s3':
@@ -215,22 +242,23 @@ class SubmissionPackage:
                     self.source_prefix = input('Enter any prefix for your S3 object, or hit "Enter": ')
                     if self.source_prefix == "":
                         self.source_prefix = None
-                    self.profile = input('Enter the profile in which your data is stored, or hit "Enter" to use your '
-                                         'default AWS account: ')
-                    if self.profile == "":
-                        self.profile = None
+                    self.aws_access_key = input('Enter the access_key for your AWS account: ')
+                    self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
                     self.directory_list = None
+
+
                 self.config.source_bucket = self.source_bucket
                 self.config.source_prefix = self.source_prefix
-                self.config.aws_profile = self.profile
-                self.file_search(self.directory_list, self.source_bucket, self.source_prefix, self.profile,
+                self.config.aws_access_key = self.aws_access_key
+                self.config.aws_secret_key = self.aws_secret_key
+                self.file_search(self.directory_list, self.source_bucket, self.source_prefix, self.aws_access_key,self.aws_secret_key,
                                  retry_allowed=True)
             else:
                 print("\nYou did not enter all the correct directories or AWS buckets. Try again.")
                 sys.exit(1)
 
-    def build_package(self):
 
+    def build_package(self):
         self.package_info = {
             "package_info": {
                 "dataset_description": self.dataset_name,
@@ -247,12 +275,17 @@ class SubmissionPackage:
         if response:
             try:
                 self.package_id = response['submission_package_uuid']
-                self.validation_results = ",".join(response['validation_results'])
+                for r in response['validation_results']:
+                    self.validation_results.append(r['id'])
                 self.submission_package_uuid = str(response['submission_package_uuid'])
                 self.create_date = str(response['created_date'])
                 self.expiration_date = str(response['expiration_date'])
             except KeyError:
-                exit_client(signal=signal.SIGINT,
+                if response['status'] == 'error':
+                    exit_client(signal.SIGINT, message=response['errors'][0]['message'])
+
+                else:
+                    exit_client(signal=signal.SIGINT,
                             message='There was an error creating your package.')
             polling = 0
             while response['package_info']['status'] == 'processing':
@@ -267,9 +300,13 @@ class SubmissionPackage:
                         for k, v in value.items():
                             self.download_links.append((v, "/".join(f['path'].split('/')[4:])))
             else:
+                if response['package_info']['status'] == 'SystemError':
+                    exit_client(signal.SIGINT, message=response['errors']['system'][0]['message'])
                 exit_client(signal=signal.SIGINT,
                             message='There was an error in building your package.')
         else:
+            if response['package_info']['status'] == 'SystemError':
+                exit_client(signal.SIGINT, message=response['errors']['system'][0]['message'])
             exit_client(signal=signal.SIGINT,
                         message='There was an error with your package request.')
 

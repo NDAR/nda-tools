@@ -45,7 +45,9 @@ class ClientConfiguration:
         self.scope = None
         self.directory_list = None
         self.manifest_path = None
-        self.aws_profile = None
+        #self.aws_profile = None
+        self.aws_access_key = self.config.get("User", "access_key")
+        self.aws_secret_key = self.config.get("User", "secret_key")
         self.source_bucket = None
         self.source_prefix = None
         self.title = None
@@ -71,7 +73,7 @@ def exit_client(signal, frame=None, message=None):
         print('\n\n{}'.format(message))
     else:
         print('\n\nExit signal received, shutting down...')
-    print('Please contact NDAHelp@mail.nih.gov.')
+    print('Please contact NDAHelp@mail.nih.gov if you need assistance.')
     sys.exit(1)
 
 
@@ -112,52 +114,50 @@ def api_request(api, verb, endpoint, data=None, session=None):
             thread.interrupt_main()
         exit_client(signal.SIGINT)
 
-    if r and r.ok:
-        if api.__class__.__name__ == 'Download':
-            package_list = []
-            root = ET.fromstring(r.text)
-            path = root.findall(".//path")
-            for element in path:
-                file = 's3:/' + element.text
-                package_list.append(file)
-            return package_list
-        else:
-            try:
-                response = json.loads(r.text)
-            except ValueError:
-                print('Your request returned an unexpected response, please check your endpoints.\n'
-                      'Action: {}\n'
-                      'Endpoint:{}\n'
-                      'Status:{}\n'
-                      'Reason:{}'.format(verb, endpoint, r.status_code, r.reason))
-                if api.__class__.__name__.endswith('Task'):
-                    api.shutdown_flag.set()
-                    thread.interrupt_main()
-                else:
-                    exit_client(signal.SIGINT)
-    elif r.status_code == 401:
-        tries = 0
-        while r.status_code == 401 and tries < 5:
-            print('The username or password is not recognized.')
-            username=input('Please enter your username:')
-            password=getpass.getpass('Please enter your password:')
-            auth = requests.auth.HTTPBasicAuth(username, password)
-            r = session.send(requests.Request(verb, endpoint, headers, auth=auth, data=data).prepare(),
-                             timeout=300, stream=False)
-            tries += 1
+    if r:
         if r.ok:
-            response = json.loads(r.text)
-            # print('Authentication successful, updating username/password.')
-            api.username=username
-            api.config.username=username
-            api.password=password
-            api.config.password=password
+            if api.__class__.__name__ == 'Download':
+                package_list = []
+                root = ET.fromstring(r.text)
+                path = root.findall(".//path")
+                for element in path:
+                    file = 's3:/' + element.text
+                    package_list.append(file)
+                return package_list
+            else:
+                try:
+                    response = json.loads(r.text)
+                except ValueError:
+                    print('Your request returned an unexpected response, please check your endpoints.\n'
+                          'Action: {}\n'
+                          'Endpoint:{}\n'
+                          'Status:{}\n'
+                          'Reason:{}'.format(verb, endpoint, r.status_code, r.reason))
+                    if api.__class__.__name__.endswith('Task'):
+                        api.shutdown_flag.set()
+                        thread.interrupt_main()
+                    else:
+                        exit_client(signal.SIGINT)
+        elif r.status_code == 401:
+            tries = 0
+            while r.status_code == 401 and tries < 5:
+                print('The username or password is not recognized.')
+                username=input('Please enter your username:')
+                password=getpass.getpass('Please enter your password:')
+                auth = requests.auth.HTTPBasicAuth(username, password)
+                r = session.send(requests.Request(verb, endpoint, headers, auth=auth, data=data).prepare(),
+                                 timeout=300, stream=False)
+                tries += 1
+            if r.ok:
+                response = json.loads(r.text)
+                # print('Authentication successful, updating username/password.')
+                api.username=username
+                api.config.username=username
+                api.password=password
+                api.config.password=password
+            else:
+                exit_client(signal.SIGINT, message='Too many unsuccessful authentication attempts.')
         else:
-            exit_client(signal.SIGINT, message='Too many unsuccessful authentication attempts.')
+            response = r
+
     return response, session
-
-
-
-
-
-

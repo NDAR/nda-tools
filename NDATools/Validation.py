@@ -1,12 +1,8 @@
 from __future__ import with_statement
 from __future__ import absolute_import
 import sys
-import os
-import time
 import csv
-import threading
 import multiprocessing
-import json
 from tqdm import tqdm
 if sys.version_info[0] < 3:
     import Queue as queue
@@ -61,7 +57,6 @@ class Validation:
     """
 
     def validate(self):
-
         # find out how many cpu in your computer to get max threads
         if not self.hide_progress:
             self.validation_progress = tqdm(total=len(self.file_list), position=0, ascii=os.name == 'nt')
@@ -93,9 +88,8 @@ class Validation:
         for (response, file) in self.responses:
             if response['status'] == "SystemError":
                 self.e = True
-                response['errors'].update({'SystemError': [
-                    {'message': 'SystemError while validating {}'.format(file)}
-                ]})
+                exit_client(signal.SIGINT, message=response['errors']['system'][0]['message'])
+
             elif response['errors'] != {}:
                 self.e = True
             if response['associated_file_paths'] and response['errors'] == {}:
@@ -216,44 +210,61 @@ class Validation:
 
         return uuid_list
 
-    def process_manifests(self, r, bulk_upload=False):
-        self.validation_result = Validation.ValidationManifestResult(r, self.hide_progress)
+    def process_manifests(self, r, validation_results = None, yes_manifest = None, bulk_upload=False):
+
+        if not self.manifest_path:
+            if not self.hide_progress:
+                manifest_path_input = input("\nYour data contains manifest files. Please enter a list of "
+                                           "the complete paths to the folder where your manifests are located,"
+                                           "separated by a space:")
+                self.manifest_path = manifest_path_input.split(' ')
+
+            else:
+                print('\nYou must include the path to your manifests files')
+                sys.exit()
+
+        if not yes_manifest:
+            yes_manifest = []
+
+        no_manifest = set()
+
+        if validation_results:
+            self.validation_result = validation_results
+        else:
+            self.validation_result = Validation.ValidationManifestResult(r, self.hide_progress)
         if not bulk_upload:
-            # for path in self.manifest_paths (to allow user entry of multiple manifests directories...)
+
             for validation_manifest in self.validation_result.manifests:
-                try:
-                    manifest_path = os.path.join(self.manifest_path, validation_manifest.local_file_name)
-                except TypeError:
-                    if not self.hide_progress:
-                        path = False
-                        while not path:
-                            self.manifest_path = input("\nYour data contains manifest files. Please enter the complete path to the folder where your manifests are located:")
-                            manifest_path = os.path.join(self.manifest_path, validation_manifest.local_file_name)
-                            if os.path.isfile(manifest_path):
-                                path = True
-                    else:
-                        print('\nYou must include the path to your manifests files')
-                        sys.exit()
-
-                try:
-                    validation_manifest.upload_manifest(open(manifest_path, 'rb'))
-                except FileNotFoundError:
-                    m_file = False
-                    while not m_file:
-                        file = input('The manifest file {} does not exist. Please enter the path to your manifest files:'.format(self.manifest_path))
+                for m in self.manifest_path:
+                    if validation_manifest.local_file_name not in yes_manifest:
                         try:
-                            self.manifest_path = file
-                            manifest_path = os.path.join(self.manifest_path, validation_manifest.local_file_name)
+                            manifest_path = os.path.join(m, validation_manifest.local_file_name)
                             validation_manifest.upload_manifest(open(manifest_path, 'rb'))
-                            m_file=True
+                            yes_manifest.append(validation_manifest.local_file_name)
+                            if validation_manifest.local_file_name in no_manifest:
+                                no_manifest.remove(validation_manifest.local_file_name)
+                            break
+                        except IOError:
+                            no_manifest.add(validation_manifest.local_file_name)
                         except FileNotFoundError:
-                            continue
-                except json.decoder.JSONDecodeError as e:
-                    message = 'There was an error in your json file: {}\nPlease review and try again: {}\n'.format\
-                        (validation_manifest.local_file_name, e)
-                    exit_client(signal=signal.SIGINT,
-                               message=message)
+                            no_manifest.add(validation_manifest.local_file_name)
 
+                        except json.decoder.JSONDecodeError as e:
+                            message = 'There was an error in your json file: {}\nPlease review and try again: {}\n'.format\
+                                (validation_manifest.local_file_name, e)
+                            exit_client(signal=signal.SIGINT,
+                                       message=message)
+
+        for file in no_manifest:
+            print('Manifest file not found:',file)
+
+        if no_manifest:
+            print(
+                '\nYou must make sure all manifest files listed in your validation file'
+                ' are located in the specified directory. Please try again.')
+            retry = input('Press the "Enter" key to specify location(s) for manifest files and try again:')
+            self.manifest_path = retry.split(' ')
+            self.process_manifests(r, yes_manifest=yes_manifest, validation_results = self.validation_result)
 
         while not self.validation_result.status.startswith('Complete'):
             response, session = api_request(self, "GET", "/".join([self.api, r['id']]))
@@ -318,9 +329,14 @@ class Validation:
                     break
                 try:
                     file = open(file_name, 'rb')
+                except IOError:
+                    print('This file does not exist in current directory:', file_name)
+                    exit_client(signal=signal.SIGINT,
+                                message=None)
                 except FileNotFoundError:
                     print('This file does not exist in current directory:', file_name)
-                    sys.exit()
+                    exit_client(signal=signal.SIGINT,
+                                message=None)
                 data = file.read()
 
                 response, session = api_request(self, "POST", self.api_scope, data)
