@@ -1,28 +1,5 @@
 from __future__ import with_statement
 from __future__ import absolute_import
-<<<<<<< HEAD
-import signal
-import sys
-import os
-import time
-import threading
-import multiprocessing
-import boto3
-from boto3.s3.transfer import S3Transfer
-from tqdm import tqdm
-
-if sys.version_info[0] < 3:
-    import Queue as queue
-
-    input = raw_input
-else:
-    import queue
-
-from NDATools.Configuration import *
-
-
-
-=======
 import sys
 
 import multiprocessing
@@ -38,27 +15,11 @@ else:
 from NDATools.Configuration import *
 
 
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
 class Submission:
     def __init__(self, id, full_file_path, config=None, resume=False, username=None, password=None):
         if config:
             self.config = config
         else:
-<<<<<<< HEAD
-            self.config = ClientConfiguration()
-            self.config.username = username
-            self.config.password = password
-
-        self.api = self.config.submission_api
-        self.username = self.config.username
-        self.password = self.config.password
-        self.full_file_path = full_file_path
-
-        if resume:
-            self.submission_id = id
-        else:
-            self.package_id = id
-=======
             self.config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'))
         self.api = self.config.submission_api
         self.username = self.config.username
@@ -66,7 +27,6 @@ class Submission:
         self.aws_access_key = self.config.aws_access_key
         self.aws_secret_key = self.config.aws_secret_key
         self.full_file_path = full_file_path
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
         self.total_upload_size = 0
         self.upload_queue = queue.Queue()
         self.progress_queue = queue.Queue()
@@ -77,14 +37,11 @@ class Submission:
         self.total_files = None
         self.total_progress = None
         self.upload_tries = 0
-<<<<<<< HEAD
-=======
         if resume:
             self.submission_id = id
             self.no_match = []
         else:
             self.package_id = id
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
 
     def submit(self):
         response, session = api_request(self, "POST", "/".join([self.api, self.package_id]))
@@ -93,11 +50,7 @@ class Submission:
             self.submission_id = response['submission_id']
         else:
             self.config.exit_client(signal=signal.SIGINT,
-<<<<<<< HEAD
-                        message='There was an error creating your submission.')
-=======
                         message='There was an error creating your submission: {}'.format(response))
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
 
     def check_status(self):
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id]))
@@ -116,44 +69,12 @@ class Submission:
             for file in response:
                 if file['status'] != 'Complete':
                     self.associated_files.append(file['file_user_path'])
-<<<<<<< HEAD
-=======
 
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
             return len(self.associated_files) > 0
         else:
             exit_client(signal=signal.SIGINT,
                         message='There was an error requesting files for submission {}.'.format(self.submission_id))
 
-<<<<<<< HEAD
-    @property
-    def found_all_local_files(self):
-        if not self.directory_list:
-            directory_input = input(
-                '\nYour data has associated files. '
-                'Please enter a list of directories where the associated files are stored, separated by a space:')
-            self.directory_list = directory_input.split(' ')
-        no_match = []
-        for file in self.associated_files:
-            no_match.append(file)
-            if file.startswith('/'):
-                f = file[1:]
-            else:
-                f = file
-            for d in self.directory_list:
-                file_name = os.path.join(d, f)
-                if os.path.isfile(file_name):
-                    self.full_file_path[file] = (file_name, os.path.getsize(file_name))
-                    no_match.remove(file)
-                    break
-        for file in no_match:
-            print('Associated file not found in specified directory:', file)
-        if no_match:
-            exit_client(signal.SIGINT, message=
-            '\nYou must make sure all associated files listed in your validation file'
-            ' are located in the specified directory. Please try again.')
-        return len(self.directory_list) > 0
-=======
     def found_all_files(self, retry_allowed=False):
         print('\nSearching for associated files...')
 
@@ -263,7 +184,6 @@ class Submission:
             return len(self.directory_list) > 0
         except TypeError:
             return len(self.source_bucket) > 0
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
 
     def submission_upload(self, hide_progress=True):
         with self.upload_queue.mutex:
@@ -278,19 +198,11 @@ class Submission:
         if response:
             if hide_progress == False:
                 self.total_progress = tqdm(total=self.total_upload_size,
-<<<<<<< HEAD
-                                       position=0,
-                                       unit_scale=True,
-                                       unit="bytes",
-                                       desc="Total Upload Progress",
-                                       ascii=os.name == 'nt')
-=======
                                            position=0,
                                            unit_scale=True,
                                            unit="bytes",
                                            desc="Total Upload Progress",
                                            ascii=os.name == 'nt')
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
             workers = []
             for x in range(self.cpu_num):
                 worker = Submission.S3Upload(x, self.config, self.upload_queue, self.full_file_path, self.submission_id, self.progress_queue)
@@ -336,20 +248,12 @@ class Submission:
                                 message= timeout_message)
             else:
                 print('There was an error transferring some files, trying again')
-<<<<<<< HEAD
-                if self.found_all_local_files and self.upload_tries < 5:
-=======
                 if self.found_all_files and self.upload_tries < 5:
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
                     self.submission_upload()
         if self.status != 'Uploading' and hide_progress:
             sys.exit(0)
 
     class S3Upload(threading.Thread):
-<<<<<<< HEAD
-
-=======
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
         def __init__(self, index, config, upload_queue, full_file_path, submission_id, progress_queue):
             threading.Thread.__init__(self)
             self.config = config
@@ -359,13 +263,10 @@ class Submission:
             self.api = self.config.submission_api
             self.username = self.config.username
             self.password = self.config.password
-<<<<<<< HEAD
-=======
             self.source_bucket = self.config.source_bucket
             self.source_prefix = self.config.source_prefix
             self.aws_access_key = self.config.aws_access_key
             self.aws_secret_key = self.config.aws_secret_key
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
             self.full_file_path = full_file_path
             self.submission_id = submission_id
             self.index = index + 1
@@ -392,10 +293,7 @@ class Submission:
             def __call__(self, bytes_amount):
                 self.progress_queue.put(bytes_amount)
 
-<<<<<<< HEAD
-=======
 
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
         def run(self):
             while True and not self.shutdown_flag.is_set():
                 if self.upload and self.upload_tries < 5:
@@ -407,29 +305,6 @@ class Submission:
                     self.shutdown_flag.set()
                     break
                 file_id, credentials, bucket, key, full_path, file_size = self.upload_config()
-<<<<<<< HEAD
-                if credentials:
-                    session = boto3.session.Session(
-                        aws_access_key_id=credentials['access_key'],
-                        aws_secret_access_key=credentials['secret_key'],
-                        aws_session_token=credentials['session_token'],
-                        region_name='us-east-1'
-                    )
-                    s3 = session.client('s3')
-                    s3_transfer = S3Transfer(s3)
-                    tqdm.monitor_interval = 0
-                    s3_transfer.upload_file(full_path, bucket, key,
-                                            callback=self.UpdateProgress(self.progress_queue)
-                                            )
-                    api_request(self, "PUT", "/".
-                                join([self.api, self.submission_id, "files", file_id])
-                                + "?submissionFileStatus=Complete")
-                    self.progress_queue.put(None)
-                else:
-                    print('There was an error uploading {} after {} retry attempts'.format(full_path,
-                                                                                           self.upload_tries))
-                    continue
-=======
 
                 """
                 Methods for  file transfer: 
@@ -527,7 +402,6 @@ class Submission:
                                                                                                self.upload_tries))
                         continue
 
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
                 self.upload_tries = 0
                 self.upload = None
                 self.upload_queue.task_done()

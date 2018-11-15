@@ -1,91 +1,62 @@
 from __future__ import with_statement
 from __future__ import absolute_import
-<<<<<<< HEAD
-import signal
-import sys
-import os
-import requests
-import requests.packages.urllib3.util
-import json
-
-from tqdm import tqdm
-=======
 import sys
 import requests.packages.urllib3.util
 from tqdm import tqdm
 import boto3
 import botocore
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
 
 if sys.version_info[0] < 3:
     input = raw_input
 
-<<<<<<< HEAD
-=======
 
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
 from NDATools.Configuration import *
 
 class SubmissionPackage:
-    def __init__(self, uuid, associated_files, username=None, password=None, c=None, t=None, d=None, a=None, config=None):
+    def __init__(self, uuid, associated_files, username=None, password=None, collection=None, title=None,
+                 description=None, alternate_location=None, config=None):
         if config:
             self.config = config
         else:
-<<<<<<< HEAD
-            self.config = ClientConfiguration()
-            self.config.username = username
-            self.config.password = password
-=======
             self.config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'))
             self.config.username = username
             self.config.password = password
         self.aws_access_key = self.config.aws_access_key
         self.aws_secret_key = self.config.aws_secret_key
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
         self.api = self.config.submission_package_api
         self.validationtool_api = self.config.validationtool_api
         self.uuid = uuid
         self.associated_files = associated_files
-<<<<<<< HEAD
-        self.full_file_path = None
-        self.username = self.config.username
-        self.password = self.config.password
-
-=======
         self.full_file_path = {}
         self.username = self.config.username
         self.password = self.config.password
         self.no_match = []
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
-        if t:
-            self.dataset_name = t
+        if title:
+            self.dataset_name = title
         elif self.config.title:
             self.dataset_name = self.config.title
         else:
             print('\nYou must enter a title for dataset name.')
             sys.exit(1)
-        if d:
-            self.dataset_description = d
+        if description:
+            self.dataset_description = description
 
         elif self.config.description:
             self.dataset_description = self.config.description
         else:
             print('\nYou must enter a description for dataset submission.')
             sys.exit(1)
-        self.package_info = dict
+        self.package_info = {}
         self.download_links = []
         self.package_id = None
         self.package_folder = None
-        self.collection_id = c
-        self.endpoint_title = a
+        self.collection_id = collection
+        self.endpoint_title = alternate_location
         self.collections = {}
         self.endpoints = []
         self.get_collections()
         self.get_custom_endpoints()
-<<<<<<< HEAD
-=======
         self.validation_results = []
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
         if not self.config.submission_packages:
             self.config.submission_packages = 'NDASubmissionPackages'
         self.submission_packages_dir = os.path.join(os.path.expanduser('~'), self.config.submission_packages)
@@ -164,21 +135,6 @@ class SubmissionPackage:
                         message='The user {} does not have permission to submit to any collections'
                                 ' or alternate upload locations.'.format(self.config.username))
 
-<<<<<<< HEAD
-    def file_search(self, directories, retry_allowed=False):
-        self.full_file_path = {}
-        self.directory_list = directories
-        if not self.directory_list:
-            directory_input = input(
-                '\nYour data has associated files. '
-                'Please enter a list of directories where the associated files are stored, separated by a space:')
-            self.directory_list = directory_input.split(' ')
-
-        no_match = []
-        for a in self.associated_files:
-            for file in a:
-                no_match.append(file)
-=======
     def file_search(self, directories, source_bucket, source_prefix, access_key, secret_key, retry_allowed=False):
         print('\nSearching for associated files...')
 
@@ -222,7 +178,6 @@ class SubmissionPackage:
         # local files
         if self.directory_list:
             for file in self.no_match[:]:
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
                 if file.startswith('/'):
                     f = file[1:]
                 else:
@@ -231,27 +186,6 @@ class SubmissionPackage:
                     file_name = os.path.join(d, f)
                     if os.path.isfile(file_name):
                         self.full_file_path[file] = (file_name, os.path.getsize(file_name))
-<<<<<<< HEAD
-                        no_match.remove(file)
-                        break
-        for file in no_match:
-            print('Associated file not found in specified directory:', file)
-        if no_match:
-            print('\nYou must make sure all associated files listed in your validation file'
-                ' are located in the specified directory. Please try again.')
-            if retry_allowed:
-                retry = input('Press the "Enter" key to specify location(s) for files and try again:')
-                self.directory_list = retry.split(' ')
-                self.file_search(self, self.directory_list, self.associated_files) # will this work?
-            else:
-                print("\nYou did not enter all the correct directories. Try again.")
-                sys.exit(1)
-
-
-
-    def build_package(self):
-
-=======
                         self.no_match.remove(file)
                         break
 
@@ -326,7 +260,6 @@ class SubmissionPackage:
 
 
     def build_package(self):
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
         self.package_info = {
             "package_info": {
                 "dataset_description": self.dataset_name,
@@ -343,31 +276,23 @@ class SubmissionPackage:
         if response:
             try:
                 self.package_id = response['submission_package_uuid']
-<<<<<<< HEAD
-                self.validation_results = ",".join(response['validation_results'])
-=======
                 for r in response['validation_results']:
                     self.validation_results.append(r['id'])
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
+                #self.validation_results = response['validation_results']
                 self.submission_package_uuid = str(response['submission_package_uuid'])
                 self.create_date = str(response['created_date'])
                 self.expiration_date = str(response['expiration_date'])
             except KeyError:
-<<<<<<< HEAD
-                exit_client(signal=signal.SIGINT,
-=======
                 if response['status'] == 'error':
                     exit_client(signal.SIGINT, message=response['errors'][0]['message'])
 
                 else:
                     exit_client(signal=signal.SIGINT,
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
                             message='There was an error creating your package.')
             polling = 0
             while response['package_info']['status'] == 'processing':
                 response, session = api_request(self, "GET", "/".join([self.api, self.package_id]), session=session)
                 polling += 1
-                # sys.stdout.write('.') HOW TO SHOW THIS???
                 self.package_id = response['submission_package_uuid']
             if response['package_info']['status'] == 'complete':
                 for f in [f for f in response['files']
@@ -376,19 +301,11 @@ class SubmissionPackage:
                         for k, v in value.items():
                             self.download_links.append((v, "/".join(f['path'].split('/')[4:])))
             else:
-<<<<<<< HEAD
-                exit_client(signal=signal.SIGINT,
-                            message='There was an error in building your package.')
-        else:
-=======
                 if response['package_info']['status'] == 'SystemError':
                     exit_client(signal.SIGINT, message=response['errors']['system'][0]['message'])
                 exit_client(signal=signal.SIGINT,
                             message='There was an error in building your package.')
         else:
-            if response['package_info']['status'] == 'SystemError':
-                exit_client(signal.SIGINT, message=response['errors']['system'][0]['message'])
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
             exit_client(signal=signal.SIGINT,
                         message='There was an error with your package request.')
 

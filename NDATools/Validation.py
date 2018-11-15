@@ -1,43 +1,17 @@
 from __future__ import with_statement
 from __future__ import absolute_import
 import sys
-<<<<<<< HEAD
-import os
-import time
-import csv
-import threading
-import multiprocessing
-import json
-from tqdm import tqdm
-
-if sys.version_info[0] < 3:
-    import Queue as queue
-
-=======
 import csv
 import multiprocessing
 from tqdm import tqdm
 if sys.version_info[0] < 3:
     import Queue as queue
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
     input = raw_input
 else:
     import queue
 from NDATools.Configuration import *
 
 
-<<<<<<< HEAD
-
-
-
-class Validation:
-    def __init__(self, file_list, config=None):
-        if config:
-            self.config = config
-        else:
-            self.config = ClientConfiguration()
-        self.api = self.config.validation_api.strip('/')
-=======
 class Validation:
     def __init__(self, file_list, config=None, hide_progress=True):
         if config:
@@ -50,7 +24,6 @@ class Validation:
         self.api_scope = self.api
         if self.scope is not None:
             self.api_scope = "".join([self.api, '/?scope={}'.format(self.scope)])
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
         self.file_queue = queue.Queue()
         self.result_queue = queue.Queue()
         self.file_list = file_list
@@ -62,11 +35,8 @@ class Validation:
         self.date = time.strftime("%Y%m%dT%H%M%S")
         self.e = False
         self.w = False
-<<<<<<< HEAD
-=======
         self.manifest_data_files = []
         self.manifest_path = self.config.manifest_path
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
         if not self.config.validation_results:
             self.config.validation_results = 'NDAValidationResults'
         self.validation_result_dir = os.path.join(os.path.expanduser('~'), self.config.validation_results)
@@ -77,11 +47,7 @@ class Validation:
         else:
             self.log_file = os.path.join(self.validation_result_dir, 'validation_results_{}.csv'.format(self.date))
 
-<<<<<<< HEAD
-        self.field_names = ['FILE', 'ID', 'STATUS', 'EXPIRATION_DATE', 'ERRORS', 'MESSAGE', 'COUNT']
-=======
         self.field_names = ['FILE', 'ID', 'STATUS', 'EXPIRATION_DATE', 'ERRORS', 'COLUMN', 'MESSAGE', 'RECORD']
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
         self.validation_progress = None
 
     """
@@ -90,30 +56,16 @@ class Validation:
     enter a list of directories only if they have also indicated to build a package for submission.
     """
 
-<<<<<<< HEAD
-    def validate(self, hide_progress=True):
-
-        # find out how many cpu in your computer to get max threads
-        if not hide_progress:
-=======
     def validate(self):
         # find out how many cpu in your computer to get max threads
         if not self.hide_progress:
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
             self.validation_progress = tqdm(total=len(self.file_list), position=0, ascii=os.name == 'nt')
         cpu_num = multiprocessing.cpu_count()
         if cpu_num > 1:
             cpu_num -= 1
         workers = []
         for x in range(cpu_num):
-<<<<<<< HEAD
-            if hide_progress:
-                worker = Validation.ValidationTask(self.file_queue, self.result_queue, self.api, self.responses)
-            else:
-                worker = Validation.ValidationTask(self.file_queue, self.result_queue, self.api, self.responses, self.validation_progress)
-=======
             worker = Validation.ValidationTask(self.file_queue, self.result_queue, self.api, self.api_scope, self.responses, self.validation_progress)
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
             workers.append(worker)
             worker.daemon = True
             worker.start()
@@ -122,11 +74,7 @@ class Validation:
         self.file_queue.put("STOP")
         while any(map(lambda x: x.is_alive(), workers)):
             time.sleep(0.1)
-<<<<<<< HEAD
-        if not hide_progress:
-=======
         if not self.hide_progress:
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
             self.validation_progress.close()
         while True:
             try:
@@ -140,30 +88,19 @@ class Validation:
         for (response, file) in self.responses:
             if response['status'] == "SystemError":
                 self.e = True
-<<<<<<< HEAD
-                response['errors'].update({'SystemError': [
-                    {'message': 'SystemError while validating {}'.format(file)}
-                ]})
-            elif response['errors'] != {}:
-	            self.e = True
-=======
                 exit_client(signal.SIGINT, message=response['errors']['system'][0]['message'])
 
             elif response['errors'] != {}:
                 self.e = True
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
             if response['associated_file_paths'] and response['errors'] == {}:
                 self.associated_files.append(response['associated_file_paths'])
             if response['warnings'] != {}:
                 self.w = True
-<<<<<<< HEAD
-=======
             if response['status'] == "PendingManifestFiles" and response['errors'] == {}:
                 self.process_manifests(response)
                 response, session = api_request(self, "GET", "/".join([self.api, response['id']]))
                 self.associated_files.append(response['associated_file_paths'])
 
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
             self.uuid.append(response['id'])
             self.uuid_dict[response['id']] = {'file': file, 'errors': response['errors'] != {}}
 
@@ -193,27 +130,6 @@ class Validation:
                 if response['errors'] == {}:
                     writer.writerow(
                         {'FILE': file_name, 'ID': response['id'], 'STATUS': response['status'],
-<<<<<<< HEAD
-                         'EXPIRATION_DATE': response['expiration_date'], 'ERRORS': 'None', 'MESSAGE': 'None',
-                         'COUNT': '0'})
-                else:
-                    for error, value in response['errors'].items():
-                        m = {}
-                        error_list = []
-                        for v in value:
-                            count = 1
-                            if v not in error_list:
-                                error_list.append(v)
-                                message = v['message']
-                                m[message] = count
-                            else:
-                                m[message] = m[message] + 1
-                        for x in m:
-                            writer.writerow(
-                                {'FILE': file_name, 'ID': response['id'], 'STATUS': response['status'],
-                                 'EXPIRATION_DATE': response['expiration_date'], 'ERRORS': error, 'MESSAGE': x,
-                                 'COUNT': m[x]})
-=======
                          'EXPIRATION_DATE': response['expiration_date'], 'ERRORS': 'None', 'COLUMN': 'None',
                          'MESSAGE':'None','RECORD': 'None'})
                 else:
@@ -229,7 +145,6 @@ class Validation:
                                 {'FILE': file_name, 'ID': response['id'], 'STATUS': response['status'],
                                  'EXPIRATION_DATE': response['expiration_date'], 'ERRORS': error, 'COLUMN': column,
                                  'MESSAGE': message, 'RECORD': record})
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
             csvfile.close()
 
     def get_warnings(self):
@@ -286,15 +201,6 @@ class Validation:
     def verify_uuid(self):
         uuid_list = []
         for uuid in self.uuid_dict:
-<<<<<<< HEAD
-	        if not self.uuid_dict[uuid]['errors']:
-		        uuid_list.append(uuid)
-        return uuid_list
-
-
-    class ValidationTask(threading.Thread):
-        def __init__(self, file_queue, result_queue, api, responses, validation_progress=None):
-=======
             if not self.uuid_dict[uuid]['errors']:
                 uuid_list.append(uuid)
 
@@ -404,15 +310,11 @@ class Validation:
 
     class ValidationTask(threading.Thread):
         def __init__(self, file_queue, result_queue, api, scope, responses, validation_progress):
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
             threading.Thread.__init__(self)
             self.file_queue = file_queue
             self.result_queue = result_queue
             self.api = api
-<<<<<<< HEAD
-=======
             self.api_scope = scope
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
             self.responses = responses
             self.progress_bar = validation_progress
             self.shutdown_flag = threading.Event()
@@ -427,14 +329,6 @@ class Validation:
                     break
                 try:
                     file = open(file_name, 'rb')
-<<<<<<< HEAD
-                except FileNotFoundError:
-                    print('This file does not exist in current directory:', file_name)
-                    sys.exit()
-                data = file.read()
-
-                response, session = api_request(self, "POST", self.api, data)
-=======
                 except IOError:
                     print('This file does not exist in current directory:', file_name)
                     exit_client(signal=signal.SIGINT,
@@ -446,7 +340,6 @@ class Validation:
                 data = file.read()
 
                 response, session = api_request(self, "POST", self.api_scope, data)
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
                 while response and not response['done']:
                     response, session = api_request(self, "GET", "/".join([self.api, response['id']]), session=session)
                     time.sleep(0.1)

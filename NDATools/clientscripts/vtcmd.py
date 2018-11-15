@@ -156,8 +156,7 @@ def configure(args):
     return config
 
 
-def resume_submission(args, config=None):
-    submission_id = args.files[0]
+def resume_submission(submission_id, config=None):
     submission = Submission(id=submission_id, full_file_path=None, config=config, resume=True)
     submission.check_status()
     if submission.status == 'Uploading':
@@ -165,11 +164,11 @@ def resume_submission(args, config=None):
             submission.submission_upload(hide_progress=False)
     else:
         print('Submission Completed with status {}'.format(submission.status))
-        sys.exit(0)
+        return
 
 
-def validate_files(args, config=None):
-    validation = Validation(args.files, config=config, hide_progress=False)
+def validate_files(file_list, warnings, build_package, config=None):
+    validation = Validation(file_list, config=config, hide_progress=False)
     print('\nValidating files...')
     validation.validate()
     for (response, file) in validation.responses:
@@ -181,7 +180,7 @@ def validate_files(args, config=None):
     validation.output()
     print('Validation report output to: {}'.format(validation.log_file))
 
-    if args.warning:
+    if warnings:
         validation.warnings()
         print('Warnings output to: {}'.format(validation.log_file))
 
@@ -206,12 +205,12 @@ def validate_files(args, config=None):
                 if validation.uuid_dict[uuid]['errors']:
                     print('UUID {}: {}'.format(uuid, validation.uuid_dict[uuid]['file']))
     # If some files had errors, give option to submit just the files that passed
-    if validation.e and args.buildPackage:
+    if validation.e and build_package:
         while True:
             proceed = input('Some files have errors, do you want to continue '
                             'and submit ONLY the files that have passed validation? <Yes/No>: ')
             if str(proceed).lower() == 'no':
-                sys.exit()
+                return
             elif str(proceed).lower() == 'yes':
                 validation.uuid = validation.verify_uuid()
                 break
@@ -269,18 +268,26 @@ def main():
     args = parse_args()
     config = configure(args)
     if args.resume:
-        resume_submission(args, config=config)
+        submission_id = args.files[0]
+        resume_submission(submission_id, config=config)
     else:
-        validation_results = validate_files(args, config=config)
-        uuid = validation_results[0]
-        associated_files = validation_results[1]
-
-        # If user requested to build a package
+        w = False
+        bp = False
+        if args.warning:
+            w = True
         if args.buildPackage:
-            package_results = build_package(uuid, associated_files, config=config)
-            package_id = package_results[0]
-            full_file_path = package_results[1] # what if no associated files??
-            submit_package(package_id, full_file_path, associated_files, config=config)
+            bp = True
+        validation_results = validate_files(args.files, w, bp, config=config)
+        if validation_results is not None:
+            uuid = validation_results[0]
+            associated_files = validation_results[1]
+
+            # If user requested to build a package
+            if bp:
+                package_results = build_package(uuid, associated_files, config=config)
+                package_id = package_results[0]
+                full_file_path = package_results[1]
+                submit_package(package_id, full_file_path, associated_files, config=config)
 
 if __name__ == "__main__":
     main()

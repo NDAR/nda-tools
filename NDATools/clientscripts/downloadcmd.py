@@ -13,7 +13,7 @@ from NDATools.Configuration import *
 def parse_args():
     parser = argparse.ArgumentParser(
         description='This application allows you to enter a list of aws S3 paths and will download the files to your local drive '
-                    'in your home folder. Alternatively, you may enter a packageID,an NDAR data structure file or a text file with s3 links, '
+                    'in your home folder. Alternatively, you may enter a packageID,an NDA data structure file or a text file with s3 links, '
                     'and the client will download all associated files from S3 listed.',
         usage='%(prog)s <S3_path_list>')
 
@@ -70,8 +70,6 @@ def configure(args):
                     print(line.replace('=', '= {}'.format(config.password)))
                 else:
                     print(line)
-
-
     if args.username:
         config.username = args.username
     if args.password:
@@ -82,7 +80,7 @@ def main():
     args = parse_args()
     config = configure(args)
 
-    # directory where files will be downloaded
+    """# directory where files will be downloaded
     if args.directory:
         dir = args.directory[0]
     else:
@@ -118,7 +116,7 @@ def main():
     #    s3Download.searchForDataStructure(resume, prev_directory)
 
 
-    print('Finished downloading all files.')
+    print('Finished downloading all files.')"""
 
 if __name__ == "__main__":
     main()

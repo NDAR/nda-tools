@@ -18,15 +18,6 @@ else:
     import _thread as thread
 
 import xml.etree.ElementTree as ET
-<<<<<<< HEAD
-
-
-
-class ClientConfiguration:
-    def __init__(self):
-        self.config = configparser.ConfigParser()
-        self.config.read("settings.cfg")
-=======
 import os
 
 from pkg_resources import resource_filename
@@ -40,7 +31,6 @@ class ClientConfiguration:
         else:
             config_location = resource_filename(__name__, settings_file)
         self.config.read(config_location)
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
         self.validation_api = self.config.get("Endpoints", "validation")
         self.submission_package_api = self.config.get("Endpoints", "submission_package")
         self.submission_api = self.config.get("Endpoints", "submission")
@@ -48,25 +38,20 @@ class ClientConfiguration:
         self.datamanager_api = self.config.get("Endpoints", "data_manager")
         self.validation_results = self.config.get("Files", "validation_results")
         self.submission_packages = self.config.get("Files", "submission_packages")
-        self.username = self.config.get("User", "username")
-        self.password = self.config.get("User", "password")
         self.collection_id = None
         self.endpoint_title = None
-<<<<<<< HEAD
-        self.directory_list = None
-=======
         self.scope = None
         self.directory_list = None
         self.manifest_path = None
-        #self.aws_profile = None
         self.aws_access_key = self.config.get("User", "access_key")
         self.aws_secret_key = self.config.get("User", "secret_key")
         self.source_bucket = None
         self.source_prefix = None
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
         self.title = None
         self.description = None
         self.JSON = False
+        self.username = self.config.get("User", "username")
+        self.password = self.config.get("User", "password")
 
 
     def nda_login(self):
@@ -87,11 +72,7 @@ def exit_client(signal, frame=None, message=None):
         print('\n\n{}'.format(message))
     else:
         print('\n\nExit signal received, shutting down...')
-<<<<<<< HEAD
-    print('Please contact NDAHelp@mail.nih.gov.')
-=======
     print('Please contact NDAHelp@mail.nih.gov if you need assistance.')
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
     sys.exit(1)
 
 
@@ -132,57 +113,6 @@ def api_request(api, verb, endpoint, data=None, session=None):
             thread.interrupt_main()
         exit_client(signal.SIGINT)
 
-<<<<<<< HEAD
-    if r and r.ok:
-        if api.__class__.__name__ == 'Download':
-            package_list = []
-            root = ET.fromstring(r.text)
-            path = root.findall(".//path")
-            for element in path:
-                file = 's3:/' + element.text
-                package_list.append(file)
-            return package_list
-        else:
-            try:
-                response = json.loads(r.text)
-            except ValueError:
-                print('Your request returned an unexpected response, please check your endpoints.\n'
-                      'Action: {}\n'
-                      'Endpoint:{}\n'
-                      'Status:{}\n'
-                      'Reason:{}'.format(verb, endpoint, r.status_code, r.reason))
-                if api.__class__.__name__.endswith('Task'):
-                    api.shutdown_flag.set()
-                    thread.interrupt_main()
-                else:
-                    exit_client(signal.SIGINT)
-    elif r.status_code == 401:
-        tries = 0
-        while r.status_code == 401 and tries < 5:
-            print('The username or password is not recognized.')
-            username=input('Please enter your username:')
-            password=getpass.getpass('Please enter your password:')
-            auth = requests.auth.HTTPBasicAuth(username, password)
-            r = session.send(requests.Request(verb, endpoint, headers, auth=auth, data=data).prepare(),
-                             timeout=300, stream=False)
-            tries += 1
-        if r.ok:
-            response = json.loads(r.text)
-            # print('Authentication successful, updating username/password.')
-            api.username=username
-            api.config.username=username
-            api.password=password
-            api.config.password=password
-        else:
-            exit_client(signal.SIGINT, message='Too many unsuccessful authentication attempts.')
-    return response, session
-
-
-
-
-
-
-=======
     if r:
         if r.ok:
             if api.__class__.__name__ == 'Download':
@@ -226,8 +156,19 @@ def api_request(api, verb, endpoint, data=None, session=None):
                 api.config.password=password
             else:
                 exit_client(signal.SIGINT, message='Too many unsuccessful authentication attempts.')
-        else:
-            response = r
+
+    if r.status_code == 400:
+        response = json.loads(r.text)
+        m = response['error'] + ': ' + response['message']
+        print(m)
+        #exit_client(signal.SIGINT, message=m)
+        r.raise_for_status()
+
+    if r.status_code == 500:
+        response = json.loads(r.text)
+        m = response['error'] + ': ' +  response['message']
+        print(m)
+        r.raise_for_status()
+        #exit_client(signal.SIGINT, message=m)
 
     return response, session
->>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
