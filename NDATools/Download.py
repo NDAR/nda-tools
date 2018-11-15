@@ -1,7 +1,3 @@
-# pip install git+https://github.com/NDAR/nda_aws_token_generator.git#egg=nda-aws-token-generator&subdirectory=python
-# cd ~/nda_aws_token_generator/python/
-# sudo python setup.py install
-
 from __future__ import with_statement
 from __future__ import absolute_import
 import sys
@@ -10,23 +6,20 @@ IS_PY2 = sys.version_info < (3, 0)
 
 if IS_PY2:
     from Queue import Queue
+    from io import open
 else:
     from queue import Queue
-
-import os
-from nda_aws_token_generator import *
 import csv
 from threading import Thread
 import boto3
 import botocore
 import datetime
-import requests
-import xml.etree.ElementTree as ET
 from boto3.s3.transfer import S3Transfer
 import multiprocessing
 
 from NDATools.Configuration import *
-from NDATools.nda_aws_token_generator import *
+from NDATools.TokenGenerator import *
+
 
 class Worker(Thread):
     """ Thread executing tasks from a given tasks queue """
@@ -109,7 +102,7 @@ class Download:
 		}
 
 		r = requests.request("POST", self.url, data=payload, headers=headers)
-
+		#print(r.text)
 		root = ET.fromstring(r.text)
 		packageFiles = root.findall(".//queryPackageFiles")
 		for element in packageFiles:
@@ -136,7 +129,7 @@ class Download:
 				file = path.split('/')[-1]
 				shortName = file.split('.')[0]
 				try:
-					ddr = requests.request("GET", "https://ndar.nih.gov/api/datadictionary/v2/datastructure/{}".format(
+					ddr = requests.request("GET", "https://stage.nimhda.org/api/datadictionary/v2/datastructure/{}".format(
 						shortName))
 					ddr.raise_for_status()
 					dataStructureFile = path.split('gpop/')[1]
@@ -150,14 +143,21 @@ class Download:
 						continue
 
 	def useDataStructure(self):
-		print('HERE FIX THIS WHY NOT YOUR WORK?!?!?!?!?!')
-		with open(self.dataStructure, 'r', encoding='utf-8') as tsv_file:
-			tsv = csv.reader(tsv_file, delimiter="\t")
-			for row in tsv:
-				for element in row:
-					if element.startswith('s3://'):
-						self.path_list.add(element)
-
+		try:
+			with open(self.dataStructure, 'r', encoding='utf-8') as tsv_file:
+				tsv = csv.reader(tsv_file, delimiter="\t")
+				for row in tsv:
+					for element in row:
+						if element.startswith('s3://'):
+							self.path_list.add(element)
+		except IOError:
+			message = self.dataStructure, 'not found. Please enter the correct path to your file and try again.'
+			exit_client(signal=signal.SIGINT,
+			            message=message)
+		except FileNotFoundError:
+			message = self.dataStructure, 'not found. Please enter the correct path to your file and try again.'
+			exit_client(signal=signal.SIGINT,
+			            message=message)
 
 	def get_links(self, links, files, filters=None):
 
@@ -209,6 +209,7 @@ class Download:
 				# print(prev_local_filename, 'is already downloaded.')
 				downloaded = True
 
+
 		if not downloaded:
 			try:
 				os.makedirs(self.newdir)
@@ -230,10 +231,10 @@ class Download:
 				# If it was a 404 error, then the bucket does not exist.
 				error_code = int(e.response['Error']['Code'])
 				if error_code == 404:
-					print('This path is incorrect:', path, 'Please try again.\n')
+					print('This path is incorrect:', path, 'Please try again.')
 					pass
 				if error_code == 403:
-					print('This is a private bucket. Please contact NDAR for help:', path, '\n')
+					print('This is a private bucket. Please contact NDAR for help:', path)
 					pass
 
 

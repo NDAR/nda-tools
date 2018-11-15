@@ -10,13 +10,15 @@ import shutil
 import fileinput
 from pkg_resources import resource_filename
 
+
 def parse_args():
     parser = argparse.ArgumentParser(
-        description='This application allows you to validate files before submitting into NDAR. '
+        description='This application allows you to validate files and submit data into NDAR. '
                     'You must enter a list of at least one file to be validated. '
+                    'If your data contains manifest files, you must specify the location of the manifests. '
                     'If your data also includes associated files, you must enter a list of at least one directory '
-                    'where the associated files are saved. Alternatively, if your file contains manifest files, you '
-                    'must specify the location of the manifests, the AWS bucket, prefix, and profile, if exists. '
+                    'where the associated files are saved. Alternatively, if any of your data is stored in AWS, you must'
+                    ' provide your account credentials, the AWS bucket, and a prefix, if it exists.  '
                     'Any files that are created while running the client (ie. results files) will be downloaded in '
                     'your home directory under NDARValidationResults. If your submission was interrupted in the middle'
                     ', you may resume your upload by entering a valid submission ID. ',
@@ -28,17 +30,14 @@ def parse_args():
     parser.add_argument('-l', '--listDir', metavar='<directory_list>', type=str, nargs='+', action='store',
                         help='Specifies the directories in which the associated files are files located.')
 
-    parser.add_argument('-m', '--manifestPath', metavar='<arg>', type=str, nargs=1, action='store',
-                        help='Full path where all manifest files are located') # factor in as list...
+    parser.add_argument('-m', '--manifestPath', metavar='<arg>', type=str, nargs='+', action='store',
+                        help='Specifies the directories in which the manifest files are located')
 
     parser.add_argument('-s3', '--s3Bucket', metavar='<arg>', type=str, action='store',
                         help='Specifies the s3 bucket in which the associated files are files located.')
 
     parser.add_argument('-pre', '--s3Prefix', metavar='<arg>', type=str, action='store',
                         help='Specifies the s3 prefix in which the associated files are files located.')
-
-    parser.add_argument('-pro', '--s3Profile', metavar='<arg>', type=str, action='store',
-                        help='Specifies the AWS account profile name in which the associated files are files located.')
 
     parser.add_argument('-w', '--warning', action='store_true',
                         help='Returns validation warnings for list of files')
@@ -60,6 +59,12 @@ def parse_args():
 
     parser.add_argument('-u', '--username', metavar='<arg>', type=str, action='store',
                         help='NDA username')
+
+    parser.add_argument('-ak', '--accessKey', metavar='<arg>', type=str, action='store',
+                        help='AWS access key')
+
+    parser.add_argument('-sk', '--secretKey', metavar='<arg>', type=str, action='store',
+                        help='AWS secret key')
 
     parser.add_argument('-p', '--password', metavar='<arg>', type=str, action='store',
                         help='NDA password')
@@ -93,25 +98,38 @@ def configure(args):
         if args.password:
             config.password = args.password
         config.nda_login()
+        if args.accessKey:
+            config.aws_access_key = args.accessKey
+        if args.secretKey:
+            config.aws_secret_key = args.secretKey
         file_path = os.path.join(os.path.expanduser('~'), '.NDATools')
-        os.makedirs(file_path, exist_ok=True)
+        os.makedirs(file_path)
         file_copy = os.path.join(file_path, 'settings.cfg')
 
         config_location = resource_filename(__name__, '/config/settings.cfg')
         shutil.copy(config_location, file_copy)
-        with fileinput.FileInput(file_copy, inplace=True) as file:
-            for line in file:
-                if line.startswith('username'):
-                    print(line.replace('=', '= {}'.format(config.username)), end='')
-                elif line.startswith('password'):
-                    print(line.replace('=', '= {}'.format(config.password)), end='')
-                else:
-                    print(line, end='')
+        file = fileinput.FileInput(file_copy, inplace=True)
+        for line in file:
+            if line.startswith('username'):
+                print(line.replace('=', '= {}'.format(config.username)))
+            elif line.startswith('password'):
+                print(line.replace('=', '= {}'.format(config.password)))
+            elif line.startswith('access_key'):
+                print(line.replace('=', '= {}'.format(config.aws_access_key)))
+            elif line.startswith('secret_key'):
+                print(line.replace('=', '= {}'.format(config.aws_secret_key)))
+            else:
+                print(line)
+        file.close()
 
     if args.username:
         config.username = args.username
     if args.password:
         config.password = args.password
+    if args.accessKey:
+        config.aws_access_key = args.accessKey
+    if args.secretKey:
+        config.aws_secret_key = args.secretKey
     if args.collectionID:
         config.collection_id = args.collectionID
     if args.alternateEndpoint:
@@ -119,13 +137,11 @@ def configure(args):
     if args.listDir:
         config.directory_list = args.listDir
     if args.manifestPath:
-        config.manifest_path = args.manifestPath[0]
+        config.manifest_path = args.manifestPath
     if args.s3Bucket:
         config.source_bucket = args.s3Bucket
     if args.s3Prefix:
         config.source_prefix = args.s3Prefix
-    if args.s3Profile:
-        config.aws_profile = args.s3Profile
     if args.title:
         config.title = ' '.join(args.title)
     if args.description:
@@ -217,13 +233,14 @@ def build_package(uuid, associated_files, config=None):
     directories = config.directory_list
     source_bucket = config.source_bucket
     source_prefix = config.source_prefix
-    profile = config.aws_profile
+    access_key = config.aws_access_key
+    secret_key = config.aws_secret_key
     if associated_files:
-        package.file_search(directories, source_bucket, source_prefix, profile, retry_allowed=True)
+        package.file_search(directories, source_bucket, source_prefix, access_key, secret_key, retry_allowed=True)
     print('Building Package')
     package.build_package()
     print('\n\nPackage Information:')
-    print('validation results: [{}]'.format(package.validation_results))
+    print('validation results: {}'.format(package.validation_results))
     print('submission_package_uuid: {}'.format(package.submission_package_uuid))
     print('created date: {}'.format(package.create_date))
     print('expiration date: {}'.format(package.expiration_date))

@@ -1,10 +1,7 @@
 from __future__ import with_statement
 from __future__ import absolute_import
-import signal
 import sys
-import os
-import time
-import threading
+
 import multiprocessing
 import boto3
 from boto3.s3.transfer import S3Transfer, TransferConfig
@@ -24,11 +21,11 @@ class Submission:
             self.config = config
         else:
             self.config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'))
-            self.config.username = username
-            self.config.password = password
         self.api = self.config.submission_api
         self.username = self.config.username
         self.password = self.config.password
+        self.aws_access_key = self.config.aws_access_key
+        self.aws_secret_key = self.config.aws_secret_key
         self.full_file_path = full_file_path
         self.total_upload_size = 0
         self.upload_queue = queue.Queue()
@@ -53,7 +50,7 @@ class Submission:
             self.submission_id = response['submission_id']
         else:
             self.config.exit_client(signal=signal.SIGINT,
-                        message='There was an error creating your submission.')
+                        message='There was an error creating your submission: {}'.format(response))
 
     def check_status(self):
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id]))
@@ -72,21 +69,25 @@ class Submission:
             for file in response:
                 if file['status'] != 'Complete':
                     self.associated_files.append(file['file_user_path'])
+
             return len(self.associated_files) > 0
         else:
             exit_client(signal=signal.SIGINT,
                         message='There was an error requesting files for submission {}.'.format(self.submission_id))
 
     def found_all_files(self, retry_allowed=False):
+        print('\nSearching for associated files...')
+
         s3 = False
         self.directory_list = self.config.directory_list
         self.source_bucket = self.config.source_bucket
         if self.source_bucket:
             s3 = True
         self.source_prefix = self.config.source_prefix
-        self.profile = self.config.aws_profile
+        self.aws_access_key = self.config.aws_access_key
+        self.aws_secret_key = self.config.aws_secret_key
 
-        if not self.directory_list and not self.source_bucket and retry_allowed:
+        if not self.directory_list and not self.source_bucket:
             retry = input('Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
                           '<bucket name> to locate your associated files:')  # prefix and profile can be blank (None)
             response = retry.split(' ')
@@ -97,13 +98,15 @@ class Submission:
                 self.source_prefix = input('Enter any prefix for your S3 object, or hit "Enter": ')
                 if self.source_prefix == "":
                     self.source_prefix = None
-                self.profile = input('Enter the profile in which your data is stored, or hit "Enter" to use your '
-                                     'default AWS account: ')
-                if self.profile == "":
-                    self.profile = None
+                if self.aws_access_key == "":
+                    self.aws_access_key = input('Enter the access_key for your AWS account: ')
+                if self.aws_secret_key == "":
+                    self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
+
                 self.config.source_bucket = self.source_bucket
                 self.config.source_prefix = self.source_prefix
-                self.config.aws_profile = self.profile
+                self.config.aws_access_key = self.aws_access_key
+                self.config.aws_secret_key = self.aws_secret_key
                 self.directory_list = None
 
         if not self.no_match:
@@ -126,28 +129,37 @@ class Submission:
 
         # files in s3
         if s3:
-            s3 = boto3.session.Session(profile_name=self.profile)
+            if self.aws_access_key is None:
+                self.aws_access_key = input('Enter the access_key for your AWS account: ')
+            if self.aws_secret_key is None:
+                self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
+
+            s3 = boto3.session.Session(aws_access_key_id=self.aws_access_key, aws_secret_access_key=self.aws_secret_key)
             s3_client = s3.client('s3')
             for file in self.no_match[:]:
                 key = file
                 if self.source_prefix:
                     key = '/'.join([self.source_prefix, file])
                 file_name = '/'.join(['s3:/', self.source_bucket, key])
+
                 try:
                     response = s3_client.head_object(Bucket=self.source_bucket, Key=key)
                     self.full_file_path[file] = (file_name, int(response['ContentLength']))
                     self.no_match.remove(file)
-                except ClientError:
+                except ClientError as e:
+                    #print(e)
+                    #print(file, self.source_bucket, self.source_prefix, key, self.aws_access_key, self.aws_secret_key)
                     pass
 
         for file in self.no_match:
             print('Associated file not found in specified directory:', file)
         if self.no_match:
+            print('\nYou must make sure all associated files listed in your validation file'
+                  ' are located in the specified directory or AWS bucket. Please try again.')
             if retry_allowed:
-                print('\nYou must make sure all associated files listed in your validation file'
-                      ' are located in the specified directory or AWS bucket. Please try again.')
-                retry = input('Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
-                          '<bucket name> to locate your associated files:')  # prefix and profile can be blank (None)
+                retry = input(
+                    'Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
+                    '<bucket name> to locate your associated files:')  # prefix and profile can be blank (None)
                 response = retry.split(' ')
                 self.directory_list = response
                 if response[0] == '-s3':
@@ -155,19 +167,19 @@ class Submission:
                     self.source_prefix = input('Enter any prefix for your S3 object, or hit "Enter": ')
                     if self.source_prefix == "":
                         self.source_prefix = None
-                    self.profile = input('Enter the profile in which your data is stored, or hit "Enter" to use your '
-                                         'default AWS account: ')
-                    if self.profile == "":
-                        self.profile = None
+                    self.aws_access_key = input('Enter the access_key for your AWS account: ')
+                    self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
                     self.directory_list = None
+
                 self.config.source_bucket = self.source_bucket
                 self.config.source_prefix = self.source_prefix
-                self.config.aws_profile = self.profile
+                self.config.aws_access_key = self.aws_access_key
+                self.config.aws_secret_key = self.aws_secret_key
+
                 self.found_all_files(retry_allowed=True)
             else:
                 print("\nYou did not enter all the correct directories or AWS bucket. Try again.")
                 sys.exit(1)
-
         try:
             return len(self.directory_list) > 0
         except TypeError:
@@ -253,8 +265,8 @@ class Submission:
             self.password = self.config.password
             self.source_bucket = self.config.source_bucket
             self.source_prefix = self.config.source_prefix
-            self.aws_profile = self.config.aws_profile
-
+            self.aws_access_key = self.config.aws_access_key
+            self.aws_secret_key = self.config.aws_secret_key
             self.full_file_path = full_file_path
             self.submission_id = submission_id
             self.index = index + 1
@@ -328,7 +340,10 @@ class Submission:
 
                     tqdm.monitor_interval = 0
 
-                    source_session = boto3.Session(profile_name=self.aws_profile)
+
+                    source_session = boto3.Session(aws_access_key_id=self.aws_access_key,
+                                               aws_secret_access_key=self.aws_secret_key)
+
                     config = Config(connect_timeout=240, read_timeout=240)
                     self.source_s3 = source_session.resource('s3', config=config)
 
