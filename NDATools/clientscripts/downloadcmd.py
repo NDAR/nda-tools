@@ -1,15 +1,11 @@
 from __future__ import with_statement
 from __future__ import absolute_import
 import sys
-
 if sys.version_info[0] < 3:
     input = raw_input
 import argparse
-import os
 import shutil
 import fileinput
-from pkg_resources import resource_filename
-
 from NDATools.Download import Download
 from NDATools.Configuration import *
 
@@ -17,9 +13,8 @@ from NDATools.Configuration import *
 def parse_args():
     parser = argparse.ArgumentParser(
         description='This application allows you to enter a list of aws S3 paths and will download the files to your local drive '
-                    'in your home folder. Alternatively, you may enter an NDAR data structure file or package ID, '
-                    'and the client will download '
-                    'all associated files from S3 listed in the text file.',
+                    'in your home folder. Alternatively, you may enter a packageID,an NDAR data structure file or a text file with s3 links, '
+                    'and the client will download all associated files from S3 listed.',
         usage='%(prog)s <S3_path_list>')
 
     parser.add_argument('paths', metavar='<S3_path_list>', type=str, nargs='+', action='store',
@@ -70,11 +65,11 @@ def configure(args):
         with fileinput.FileInput(file_copy, inplace=True) as file:
             for line in file:
                 if line.startswith('username'):
-                    print(line.replace('=', '= {}'.format(config.username)), end='')
+                    print(line.replace('=', '= {}'.format(config.username)))
                 elif line.startswith('password'):
-                    print(line.replace('=', '= {}'.format(config.password)), end='')
+                    print(line.replace('=', '= {}'.format(config.password)))
                 else:
-                    print(line, end='')
+                    print(line)
 
 
     if args.username:
@@ -119,8 +114,8 @@ def main():
     s3Download.start_workers(resume, prev_directory)
 
     # download associated files from package
-    if args.package:
-        s3Download.searchForDataStructure(resume, prev_directory)
+    #if args.package:
+    #    s3Download.searchForDataStructure(resume, prev_directory)
 
 
     print('Finished downloading all files.')
