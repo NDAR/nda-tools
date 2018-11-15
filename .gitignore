@@ -3,6 +3,10 @@
 
 # Setuptools distribution folder.
 /dist/
+<<<<<<< HEAD
+=======
+/build/
+>>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
 
 # Python egg metadata, regenerated from source files by setuptools.
 /*.egg-info

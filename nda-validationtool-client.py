@@ -84,7 +84,11 @@ class Validation:
         else:
             self.log_file = os.path.join(self.validation_result_dir, 'validation_results_{}.csv'.format(self.date))
 
+<<<<<<< HEAD
         self.field_names = ['FILE', 'ID', 'STATUS', 'EXPIRATION_DATE', 'ERRORS', 'MESSAGE', 'RECORD']
+=======
+        self.field_names = ['FILE', 'ID', 'STATUS', 'EXPIRATION_DATE', 'ERRORS', 'COLUMN', 'MESSAGE', 'RECORD']
+>>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
         self.validation_progress = None
 
     """
@@ -165,17 +169,33 @@ class Validation:
                 if response['errors'] == {}:
                     writer.writerow(
                         {'FILE': file_name, 'ID': response['id'], 'STATUS': response['status'],
+<<<<<<< HEAD
                          'EXPIRATION_DATE': response['expiration_date'], 'ERRORS': 'None', 'MESSAGE': 'None',
+=======
+                         'EXPIRATION_DATE': response['expiration_date'], 'ERRORS': 'None', 'COLUMN': 'None', 'MESSAGE':'None',
+>>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
                          'RECORD': 'None'})
                 else:
                     for error, value in response['errors'].items():
                         for v in value:
+<<<<<<< HEAD
                             message = v['message']
                             record = v['recordNumber']
                             writer.writerow(
                                 {'FILE': file_name, 'ID': response['id'], 'STATUS': response['status'],
                                  'EXPIRATION_DATE': response['expiration_date'], 'ERRORS': error, 'MESSAGE': message,
                                  'RECORD': record})
+=======
+                            column = v['columnName']
+                            message = v['message']
+                            try:
+                                record = v['recordNumber']
+                            except KeyError:
+                                record = ' '
+                            writer.writerow(
+                                {'FILE': file_name, 'ID': response['id'], 'STATUS': response['status'],
+                                 'EXPIRATION_DATE': response['expiration_date'], 'ERRORS': error, 'COLUMN': column, 'MESSAGE': message, 'RECORD': record})
+>>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
             csvfile.close()
         print('Validation report output to: {}'.format(self.log_file))
 
@@ -194,6 +214,10 @@ class Validation:
                 new_path = ''.join([self.validation_result_dir, '/validation_warnings_', self.date, '.json'])
                 with open(new_path, 'w') as outfile:
                     json.dump(json_data, outfile)
+<<<<<<< HEAD
+=======
+            log_file_w = os.path.join(self.validation_result_dir, 'validation_warnings_{}.json'.format(self.date))
+>>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
         else:
             new_path = ''.join([self.validation_result_dir, '/validation_warnings_', self.date, '.csv'])
             if sys.version_info[0] < 3:
@@ -218,7 +242,13 @@ class Validation:
                                  'EXPIRATION_DATE': response['expiration_date'], 'WARNINGS': warning, 'MESSAGE': message
                                  })
             csvfile.close()
+<<<<<<< HEAD
         print('Warnings output to: {}'.format(self.log_file))
+=======
+
+            log_file_w = os.path.join(self.validation_result_dir, 'validation_warnings_{}.csv'.format(self.date))
+        print('Warnings output to: {}'.format(log_file_w))
+>>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
 
     def file_search(self):
         self.full_file_path = {}

@@ -1,5 +1,6 @@
 from __future__ import with_statement
 from __future__ import absolute_import
+<<<<<<< HEAD
 import signal
 import sys
 import os
@@ -8,10 +9,21 @@ import requests.packages.urllib3.util
 import json
 
 from tqdm import tqdm
+=======
+import sys
+import requests.packages.urllib3.util
+from tqdm import tqdm
+import boto3
+import botocore
+>>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
 
 if sys.version_info[0] < 3:
     input = raw_input
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
 from NDATools.Configuration import *
 
 class SubmissionPackage:
@@ -19,17 +31,32 @@ class SubmissionPackage:
         if config:
             self.config = config
         else:
+<<<<<<< HEAD
             self.config = ClientConfiguration()
             self.config.username = username
             self.config.password = password
+=======
+            self.config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'))
+            self.config.username = username
+            self.config.password = password
+        self.aws_access_key = self.config.aws_access_key
+        self.aws_secret_key = self.config.aws_secret_key
+>>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
         self.api = self.config.submission_package_api
         self.validationtool_api = self.config.validationtool_api
         self.uuid = uuid
         self.associated_files = associated_files
+<<<<<<< HEAD
         self.full_file_path = None
         self.username = self.config.username
         self.password = self.config.password
 
+=======
+        self.full_file_path = {}
+        self.username = self.config.username
+        self.password = self.config.password
+        self.no_match = []
+>>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
         if t:
             self.dataset_name = t
         elif self.config.title:
@@ -55,6 +82,10 @@ class SubmissionPackage:
         self.endpoints = []
         self.get_collections()
         self.get_custom_endpoints()
+<<<<<<< HEAD
+=======
+        self.validation_results = []
+>>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
         if not self.config.submission_packages:
             self.config.submission_packages = 'NDASubmissionPackages'
         self.submission_packages_dir = os.path.join(os.path.expanduser('~'), self.config.submission_packages)
@@ -133,6 +164,7 @@ class SubmissionPackage:
                         message='The user {} does not have permission to submit to any collections'
                                 ' or alternate upload locations.'.format(self.config.username))
 
+<<<<<<< HEAD
     def file_search(self, directories, retry_allowed=False):
         self.full_file_path = {}
         self.directory_list = directories
@@ -146,6 +178,51 @@ class SubmissionPackage:
         for a in self.associated_files:
             for file in a:
                 no_match.append(file)
+=======
+    def file_search(self, directories, source_bucket, source_prefix, access_key, secret_key, retry_allowed=False):
+        print('\nSearching for associated files...')
+
+        s3 = False
+        self.directory_list = directories
+        self.source_bucket = source_bucket
+
+        if self.source_bucket:
+            s3 = True
+        self.source_prefix = source_prefix
+        self.aws_access_key = access_key
+        self.aws_secret_key = secret_key
+
+        if not self.directory_list and not self.source_bucket:
+            retry = input('Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
+                          '<bucket name> to locate your associated files:')
+            response = retry.split(' ')
+            self.directory_list = response
+            if response[0] == '-s3':
+                s3 = True
+                self.source_bucket = response[1]
+                self.source_prefix = input('Enter any prefix for your S3 object, or hit "Enter": ')
+                if self.source_prefix == "":
+                    self.source_prefix = None
+                if self.aws_access_key == "":
+                    self.aws_access_key = input('Enter the access_key for your AWS account: ')
+                if self.aws_secret_key == "":
+                    self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
+
+                self.config.source_bucket = self.source_bucket
+                self.config.source_prefix = self.source_prefix
+                self.config.aws_access_key = self.aws_access_key
+                self.config.aws_secret_key = self.aws_secret_key
+                self.directory_list = None
+
+        if not self.no_match:
+            for a in self.associated_files:
+                for file in a:
+                    self.no_match.append(file)
+
+        # local files
+        if self.directory_list:
+            for file in self.no_match[:]:
+>>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
                 if file.startswith('/'):
                     f = file[1:]
                 else:
@@ -154,6 +231,7 @@ class SubmissionPackage:
                     file_name = os.path.join(d, f)
                     if os.path.isfile(file_name):
                         self.full_file_path[file] = (file_name, os.path.getsize(file_name))
+<<<<<<< HEAD
                         no_match.remove(file)
                         break
         for file in no_match:
@@ -173,6 +251,82 @@ class SubmissionPackage:
 
     def build_package(self):
 
+=======
+                        self.no_match.remove(file)
+                        break
+
+        # files in s3
+        if s3:
+            no_access_buckets = set()
+            if self.aws_access_key is "":
+                self.aws_access_key = input('Enter the access_key for your AWS account: ')
+            if self.aws_secret_key is "":
+                self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
+            s3 = boto3.session.Session(aws_access_key_id=self.aws_access_key, aws_secret_access_key=self.aws_secret_key)
+            s3_client = s3.client('s3')
+            for file in self.no_match[:]:
+                key = file
+                if self.source_prefix:
+                    key = '/'.join([self.source_prefix, file])
+                file_name = '/'.join(['s3:/', self.source_bucket, key])
+                try:
+                    response = s3_client.head_object(Bucket=self.source_bucket, Key=key)
+                    self.full_file_path[file] = (file_name, int(response['ContentLength']))
+                    self.no_match.remove(file)
+                except botocore.exceptions.ClientError as e:
+                    # If a client error is thrown, then check that it was a 404 error.
+                    # If it was a 404 error, then the bucket does not exist.
+                    error_code = int(e.response['Error']['Code'])
+                    if error_code == 404:
+                        #print('This path is incorrect:', file_name, 'Please try again.')
+                        pass
+                    if error_code == 403:
+                        no_access_buckets.add(self.source_bucket)
+                        #print('You do not have access to this bucket:', self.source_bucket)
+                        pass
+
+
+            if no_access_buckets:
+                print('\nNote: your user does NOT have access to the following buckets. Please review the bucket and/or your '
+                      'AWS credentials and try again.')
+                for b in no_access_buckets:
+                    print(b)
+
+        for file in self.no_match:
+            print('Associated file not found in specified directory:', file)
+
+        if self.no_match:
+            print('\nYou must make sure all associated files listed in your validation file'
+                ' are located in the specified directory or AWS bucket. Please try again.')
+            if retry_allowed:
+                retry = input(
+                    'Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
+                    '<bucket name> to locate your associated files:')  # prefix and profile can be blank (None)
+                response = retry.split(' ')
+                self.directory_list = response
+                if response[0] == '-s3':
+                    self.source_bucket = response[1]
+                    self.source_prefix = input('Enter any prefix for your S3 object, or hit "Enter": ')
+                    if self.source_prefix == "":
+                        self.source_prefix = None
+                    self.aws_access_key = input('Enter the access_key for your AWS account: ')
+                    self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
+                    self.directory_list = None
+
+
+                self.config.source_bucket = self.source_bucket
+                self.config.source_prefix = self.source_prefix
+                self.config.aws_access_key = self.aws_access_key
+                self.config.aws_secret_key = self.aws_secret_key
+                self.file_search(self.directory_list, self.source_bucket, self.source_prefix, self.aws_access_key,self.aws_secret_key,
+                                 retry_allowed=True)
+            else:
+                print("\nYou did not enter all the correct directories or AWS buckets. Try again.")
+                sys.exit(1)
+
+
+    def build_package(self):
+>>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
         self.package_info = {
             "package_info": {
                 "dataset_description": self.dataset_name,
@@ -189,12 +343,25 @@ class SubmissionPackage:
         if response:
             try:
                 self.package_id = response['submission_package_uuid']
+<<<<<<< HEAD
                 self.validation_results = ",".join(response['validation_results'])
+=======
+                for r in response['validation_results']:
+                    self.validation_results.append(r['id'])
+>>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
                 self.submission_package_uuid = str(response['submission_package_uuid'])
                 self.create_date = str(response['created_date'])
                 self.expiration_date = str(response['expiration_date'])
             except KeyError:
+<<<<<<< HEAD
                 exit_client(signal=signal.SIGINT,
+=======
+                if response['status'] == 'error':
+                    exit_client(signal.SIGINT, message=response['errors'][0]['message'])
+
+                else:
+                    exit_client(signal=signal.SIGINT,
+>>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
                             message='There was an error creating your package.')
             polling = 0
             while response['package_info']['status'] == 'processing':
@@ -209,9 +376,19 @@ class SubmissionPackage:
                         for k, v in value.items():
                             self.download_links.append((v, "/".join(f['path'].split('/')[4:])))
             else:
+<<<<<<< HEAD
                 exit_client(signal=signal.SIGINT,
                             message='There was an error in building your package.')
         else:
+=======
+                if response['package_info']['status'] == 'SystemError':
+                    exit_client(signal.SIGINT, message=response['errors']['system'][0]['message'])
+                exit_client(signal=signal.SIGINT,
+                            message='There was an error in building your package.')
+        else:
+            if response['package_info']['status'] == 'SystemError':
+                exit_client(signal.SIGINT, message=response['errors']['system'][0]['message'])
+>>>>>>> dcd40d75f53dd08980e2c3e4a0de175d0c653674
             exit_client(signal=signal.SIGINT,
                         message='There was an error with your package request.')
 
