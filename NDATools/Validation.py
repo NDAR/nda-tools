@@ -88,7 +88,8 @@ class Validation:
         for (response, file) in self.responses:
             if response['status'] == "SystemError":
                 self.e = True
-                exit_client(signal.SIGINT, message=response['errors']['system'][0]['message'])
+                m = 'SystemError while validating {}'.format(file)
+                exit_client(signal.SIGINT, message=m)#response['errors']['system'][0]['message'])
 
             elif response['errors'] != {}:
                 self.e = True
