@@ -13,14 +13,14 @@ from pkg_resources import resource_filename
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description='This application allows you to validate files and submit data into NDAR. '
+        description='This application allows you to validate files and submit data into NDA. '
                     'You must enter a list of at least one file to be validated. '
                     'If your data contains manifest files, you must specify the location of the manifests. '
                     'If your data also includes associated files, you must enter a list of at least one directory '
                     'where the associated files are saved. Alternatively, if any of your data is stored in AWS, you must'
                     ' provide your account credentials, the AWS bucket, and a prefix, if it exists.  '
                     'Any files that are created while running the client (ie. results files) will be downloaded in '
-                    'your home directory under NDARValidationResults. If your submission was interrupted in the middle'
+                    'your home directory under NDAValidationResults. If your submission was interrupted in the middle'
                     ', you may resume your upload by entering a valid submission ID. ',
         usage='%(prog)s <file_list>')
 
