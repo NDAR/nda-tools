@@ -1,12 +1,12 @@
 #nda-tools
 In order to submit data to the National Institute of Mental Health Data Archives (NDA), users must
-validate their data to ensure it complies with the required format. This is done using the NDAR
+validate their data to ensure it complies with the required format. This is done using the NDA
 validation tool. Additionally, users can package and download data from NDA as well. If associated data is downloaded 
 from S3, temporary federated AWS tokens are required. A python package and command line clients have been developed to 
 allow users to programmatically validate, package, submit, and/or download data. The package and clients interact with 
-the  [Validation](https://ndar.nih.gov/api/validation/docs/swagger-ui.html), 
-[Submission Package](https://ndar.nih.gov/api/submission-package/docs/swagger-ui.html#!), and
-[Data Submission](http://ndar.nih.gov/api/submission/docs/swagger-ui.html#!) web services.
+the  [Validation](https://nda.nih.gov/api/validation/docs/swagger-ui.html), 
+[Submission Package](https://nda.nih.gov/api/submission-package/docs/swagger-ui.html#!), and
+[Data Submission](http://nda.nih.gov/api/submission/docs/swagger-ui.html#!) web services.
 
 
 ##Getting Started
@@ -50,8 +50,8 @@ Thi will automatically install the nda-tools package, including the command line
 
 ###Credentials
 While not needed for just validation, if you would like to create a package and submit your data to the NDA, you must 
-have an active account with us. This can be requested from the [NDAR website](https://nda.nih.gov/user/create_account.html).
-You can read more about what is needed for contributing data into NDAR [here](https://nda.nih.gov/contribute.html). 
+have an active account with us. This can be requested from the [NDA website](https://nda.nih.gov/user/create_account.html).
+You can read more about what is needed for contributing data into NDA [here](https://nda.nih.gov/contribute.html). 
 
 #####You are now ready to run the client.
 
