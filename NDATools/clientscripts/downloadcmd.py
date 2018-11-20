@@ -80,7 +80,7 @@ def main():
     args = parse_args()
     config = configure(args)
 
-    """# directory where files will be downloaded
+    # directory where files will be downloaded
     if args.directory:
         dir = args.directory[0]
     else:
@@ -116,7 +116,7 @@ def main():
     #    s3Download.searchForDataStructure(resume, prev_directory)
 
 
-    print('Finished downloading all files.')"""
+    print('Finished downloading all files.')
 
 if __name__ == "__main__":
     main()
