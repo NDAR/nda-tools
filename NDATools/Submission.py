@@ -1,7 +1,7 @@
 from __future__ import with_statement
 from __future__ import absolute_import
 import sys
-
+import signal
 import multiprocessing
 import boto3
 from boto3.s3.transfer import S3Transfer, TransferConfig
@@ -13,15 +13,18 @@ if sys.version_info[0] < 3:
 else:
     import queue
 from NDATools.Configuration import *
+from NDATools.Utils import *
+
 
 
 class Submission:
-    def __init__(self, id, full_file_path, config=None, resume=False, username=None, password=None):
-        if config:
-            self.config = config
-        else:
-            self.config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'))
+    def __init__(self, id, full_file_path, config, resume=False, allow_exit=False, username=None, password=None, thread_num=None):
+        self.config = config
         self.api = self.config.submission_api
+        if username:
+            self.config.username = username
+        if password:
+            self.config.password = password
         self.username = self.config.username
         self.password = self.config.password
         self.aws_access_key = self.config.aws_access_key
@@ -30,7 +33,9 @@ class Submission:
         self.total_upload_size = 0
         self.upload_queue = queue.Queue()
         self.progress_queue = queue.Queue()
-        self.cpu_num = max([1, multiprocessing.cpu_count() - 1])
+        self.thread_num = max([1, multiprocessing.cpu_count() - 1])
+        if thread_num:
+            self.thread_num = thread_num
         self.directory_list = self.config.directory_list
         self.associated_files = []
         self.status = None
@@ -42,6 +47,12 @@ class Submission:
             self.no_match = []
         else:
             self.package_id = id
+        self.exit = allow_exit
+
+    def raise_error(self, error, message):
+        m = error + '\n' + message
+        exception = Exception(m)
+        raise exception
 
     def submit(self):
         response, session = api_request(self, "POST", "/".join([self.api, self.package_id]))
@@ -49,16 +60,27 @@ class Submission:
             self.status = response['submission_status']
             self.submission_id = response['submission_id']
         else:
-            self.config.exit_client(signal=signal.SIGINT,
-                        message='There was an error creating your submission: {}'.format(response))
+            message = 'There was an error creating your submission'
+            if self.exit:
+                exit_client(signal=signal.SIGINT,
+                        message=message)
+            else:
+                error = 'SubmissionError'
+                self.raise_error(error, message)
+
 
     def check_status(self):
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id]))
         if response:
             self.status = response['submission_status']
         else:
-            self.config.exit_client(signal=signal.SIGINT,
-                        message='An error occurred while checking submission {} status.'.format(self.submission_id))
+            message='An error occurred while checking submission {} status.'.format(self.submission_id)
+            if self.exit:
+                exit_client(signal=signal.SIGINT,
+                            message=message)
+            else:
+                error = 'StatusError'
+                self.raise_error(error, message)
 
     @property
     def incomplete_files(self):
@@ -67,13 +89,18 @@ class Submission:
         self.associated_files = []
         if response:
             for file in response:
-                if file['status'] != 'Complete':
+                if file['status'] != Status.COMPLETE:
                     self.associated_files.append(file['file_user_path'])
 
             return len(self.associated_files) > 0
         else:
-            exit_client(signal=signal.SIGINT,
-                        message='There was an error requesting files for submission {}.'.format(self.submission_id))
+            message='There was an error requesting files for submission {}.'.format(self.submission_id)
+            if self.exit:
+                exit_client(signal=signal.SIGINT,
+                            message=message)
+            else:
+                error = 'SubmissionError'
+                self.raise_error(error, message)
 
     def found_all_files(self, retry_allowed=False):
         print('\nSearching for associated files...')
@@ -204,14 +231,14 @@ class Submission:
                                            desc="Total Upload Progress",
                                            ascii=os.name == 'nt')
             workers = []
-            for x in range(self.cpu_num):
+            for x in range(self.thread_num):
                 worker = Submission.S3Upload(x, self.config, self.upload_queue, self.full_file_path, self.submission_id, self.progress_queue)
                 workers.append(worker)
                 worker.daemon = True
                 worker.start()
             # check status for files that are not yet complete -- associated files
             for file in response:
-                if file['status'] != 'Complete':
+                if file['status'] != Status.COMPLETE:
                     self.upload_queue.put(file)
             self.upload_queue.put("STOP")
             self.upload_tries += 1
@@ -227,30 +254,37 @@ class Submission:
             session = None
 
         else:
-            exit_client(signal=signal.SIGINT,
-                        message='There was an error requesting submission {}.'.format(self.submission_id))
+            message='There was an error requesting submission {}.'.format(self.submission_id)
+            if self.exit:
+                exit_client(signal=signal.SIGINT,
+                            message=message)
+            else:
+                error = 'SubmissionError'
+                self.raise_error(error, message)
         if not hide_progress:
             print('\nUploads complete.')
             print('Checking Submission Status.')
         self.check_status()
-        if self.status == 'Uploading':
+        if self.status == Status.UPLOADING:
             if not self.incomplete_files:
                 t1 = time.time()
-                while self.status == 'Uploading' and (time.time() - t1) < 120:
+                while self.status == Status.UPLOADING and (time.time() - t1) < 120:
                     self.check_status()
-                    if hide_progress:
-                        timeout_message = 'Timed out while waiting for submission status to change.\n'
-                    else:
+                    timeout_message = 'Timed out while waiting for submission status to change.\nYou may try again by resuming the submission.'
+                    if not hide_progress:
                         sys.stdout.write('.')
-                        timeout_message = 'Timed out while waiting for submission status to change.\nYou may try again by resuming the submission: python nda-validationtool-client.py -r {}\n'.format(self.submission_id)
-                if self.status == 'Uploading':
-                    exit_client(signal=signal.SIGINT,
-                                message= timeout_message)
+                if self.status == Status.UPLOADING:
+                    if self.exit:
+                        exit_client(signal=signal.SIGINT,
+                                    message=timeout_message)
+                    else:
+                        error = 'TimeOutError'
+                        self.raise_error(error, timeout_message)
             else:
                 print('There was an error transferring some files, trying again')
                 if self.found_all_files and self.upload_tries < 5:
                     self.submission_upload()
-        if self.status != 'Uploading' and hide_progress:
+        if self.status != Status.UPLOADING and hide_progress:
             sys.exit(0)
 
     class S3Upload(threading.Thread):
@@ -405,3 +439,10 @@ class Submission:
                 self.upload_tries = 0
                 self.upload = None
                 self.upload_queue.task_done()
+
+class Status:
+    UPLOADING = 'Uploading'
+    SYSERROR = 'SystemError'
+    COMPLETE = 'Complete'
+    ERROR = 'Error'
+    PROCESSING = 'processing'
