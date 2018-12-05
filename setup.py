@@ -5,7 +5,7 @@ setup(
         name='nda_tools',
         description="NIMH Data Archive Python Client",
         install_requires=['boto3==1.4.7', 'botocore==1.7.48', 'tqdm','requests'],
-        version='0.1.13',
+        version='0.1.14',
         author='NDA',
         author_email='NDAHelp@mail.nih.gov',
         url="https://github.com/NDAR/nda-tools/tree/master/NDATools",
