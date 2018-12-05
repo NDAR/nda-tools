@@ -32,6 +32,7 @@ class Submission:
         self.progress_queue = queue.Queue()
         self.cpu_num = max([1, multiprocessing.cpu_count() - 1])
         self.directory_list = self.config.directory_list
+        self.credentials_list = []
         self.associated_files = []
         self.status = None
         self.total_files = None
@@ -196,6 +197,10 @@ class Submission:
             self.total_upload_size += file_size
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id, 'files']))
         if response:
+            file_ids = []
+            for file in response:
+                if file['status'] != 'Complete':
+                    file_ids.append(file['id'])
             if hide_progress == False:
                 self.total_progress = tqdm(total=self.total_upload_size,
                                            position=0,
@@ -203,9 +208,26 @@ class Submission:
                                            unit="bytes",
                                            desc="Total Upload Progress",
                                            ascii=os.name == 'nt')
+
+
+            # create a "master list" which is a list of lists containing 50,000 records max
+
+            n = 50000
+            all_credentials = [file_ids[i:i + n] for i in range(0, len(file_ids), n)]
+
+            for credentials_list in all_credentials:
+                print(len(credentials_list), credentials_list, '\n')
+            sys.exit(1)
+
+            # then for every list in master list:
+            self.credentials_list, session = api_request(self, "POST", "/".join([self.api, self.submission_id, 'files/batchMultipartUploadCredentials']),data=json.dumps(file_ids))
+
+            # then add self.credentials_list results to a new "master credentials list" which contains a list of credentials for a list of 50000 recs
+
+            # then for ever credentials list in master credentials:
             workers = []
             for x in range(self.cpu_num):
-                worker = Submission.S3Upload(x, self.config, self.upload_queue, self.full_file_path, self.submission_id, self.progress_queue)
+                worker = Submission.S3Upload(x, self.config, self.upload_queue, self.full_file_path, self.submission_id, self.progress_queue, self.credentials_list)
                 workers.append(worker)
                 worker.daemon = True
                 worker.start()
@@ -230,6 +252,34 @@ class Submission:
             exit_client(signal=signal.SIGINT,
                         message='There was an error requesting submission {}.'.format(self.submission_id))
         if not hide_progress:
+            bulk_status_update = []
+
+            from datetime import datetime
+            startTime = datetime.now()
+
+            for cred in self.credentials_list['credentials']:
+                file = cred['configuration']['destinationURI'].split('/')
+                file = '/'.join(file[1:])
+                size = self.full_file_path[file][1]
+                update = {
+                    "id": str(cred['submissionFileId']),
+                    "md5sum": "None",
+                    "size": size,
+                    "status": "Complete"
+                }
+                bulk_status_update.append(update)
+
+            data = json.dumps(bulk_status_update)
+            print('Time to create data for request: ', datetime.now() - startTime)
+
+            # add try/except
+            url = "/".join([self.api, self.submission_id, 'files/batchUpdate'])
+
+            startTime = datetime.now()
+            api_request(self, "PUT", url, data=data)
+            print('Time to complete request: ', datetime.now() - startTime)
+
+
             print('\nUploads complete.')
             print('Checking Submission Status.')
         self.check_status()
@@ -254,7 +304,7 @@ class Submission:
             sys.exit(0)
 
     class S3Upload(threading.Thread):
-        def __init__(self, index, config, upload_queue, full_file_path, submission_id, progress_queue):
+        def __init__(self, index, config, upload_queue, full_file_path, submission_id, progress_queue, credentials_list):
             threading.Thread.__init__(self)
             self.config = config
             self.upload_queue = upload_queue
@@ -268,23 +318,27 @@ class Submission:
             self.aws_access_key = self.config.aws_access_key
             self.aws_secret_key = self.config.aws_secret_key
             self.full_file_path = full_file_path
+            self.credentials_list = credentials_list
             self.submission_id = submission_id
             self.index = index + 1
             self.progress_queue = progress_queue
             self.shutdown_flag = threading.Event()
 
         def upload_config(self):
-            link = self.upload['_links']['multipartUploadCredentials']['href']
+
             local_path = self.upload['file_user_path']
             remote_path = self.upload['file_remote_path']
             file_id = self.upload['id']
-            credentials, session = api_request(self, "GET", link)
+            for cred in self.credentials_list['credentials']:
+                if str(cred['submissionFileId']) == file_id:
+                    credentials = {'accessKey': cred['accessKey'], 'secretKey': cred['secretKey'],
+                                   'sessionToken': cred['sessionToken']}
+                    break
             paths = remote_path.split('/')
             bucket = paths[2]
             key = "/".join(paths[3:])
             full_path, file_size = self.full_file_path[local_path]
             return file_id, credentials, bucket, key, full_path, file_size
-
         class UpdateProgress(object):
 
             def __init__(self, progress_queue):
@@ -352,9 +406,9 @@ class Submission:
                     self.source_key = '/'.join([self.source_prefix, source_key])
                     self.fileobj = self.source_s3.Object(self.source_bucket, self.source_key).get()['Body']
                     self.bytes = self.source_s3.Object(self.source_bucket, self.source_key).get()['ContentLength']
-                    dest_session = boto3.Session(aws_access_key_id=credentials['access_key'],
-                                                 aws_secret_access_key=credentials['secret_key'],
-                                                 aws_session_token=credentials['session_token'],
+                    dest_session = boto3.Session(aws_access_key_id=credentials['accessKey'],
+                                                 aws_secret_access_key=credentials['secretKey'],
+                                                 aws_session_token=credentials['sessionToken'],
                                                  region_name='us-east-1')
 
                     GB = 1024 ** 3
@@ -373,8 +427,6 @@ class Submission:
                         # ExtraArgs={"Metadata": {"ContentLength": self.bytes}}
                     )
 
-                    api_request(self, "PUT", "/".join([self.api, self.submission_id, "files", file_id])
-                                + "?submissionFileStatus=Complete")
                     self.progress_queue.put(None)
 
                 else:
@@ -384,9 +436,9 @@ class Submission:
 
                     if credentials:
                         session = boto3.session.Session(
-                            aws_access_key_id=credentials['access_key'],
-                            aws_secret_access_key=credentials['secret_key'],
-                            aws_session_token=credentials['session_token'],
+                            aws_access_key_id=credentials['accessKey'],
+                            aws_secret_access_key=credentials['secretKey'],
+                            aws_session_token=credentials['sessionToken'],
                             region_name='us-east-1'
                         )
                         s3 = session.client('s3')
@@ -394,8 +446,6 @@ class Submission:
                         tqdm.monitor_interval = 0
                         s3_transfer.upload_file(full_path, bucket, key, callback=self.UpdateProgress(self.progress_queue))
 
-                        api_request(self, "PUT", "/".join([self.api, self.submission_id, "files", file_id])
-                                    + "?submissionFileStatus=Complete")
                         self.progress_queue.put(None)
                     else:
                         print('There was an error uploading {} after {} retry attempts'.format(full_path,
