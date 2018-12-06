@@ -201,30 +201,23 @@ class Submission:
             for file in response:
                 if file['status'] != 'Complete':
                     file_ids.append(file['id'])
-            if hide_progress == False:
+                    # create a "master list" which is a list of lists containing 50,000 records max
+            n = 111
+            all_ids = [file_ids[i:i + n] for i in range(0, len(file_ids), n)]
+            self.credentials_list = []
+            # then for every list in master list:
+            for ids in all_ids:
+                credentials_list, session = api_request(self, "POST", "/".join(
+                    [self.api, self.submission_id, 'files/batchMultipartUploadCredentials']), data=json.dumps(ids))
+                self.credentials_list = self.credentials_list + credentials_list['credentials']
+
+            if hide_progress is False:
                 self.total_progress = tqdm(total=self.total_upload_size,
                                            position=0,
                                            unit_scale=True,
                                            unit="bytes",
                                            desc="Total Upload Progress",
                                            ascii=os.name == 'nt')
-
-
-            # create a "master list" which is a list of lists containing 50,000 records max
-
-            n = 50000
-            all_credentials = [file_ids[i:i + n] for i in range(0, len(file_ids), n)]
-
-            for credentials_list in all_credentials:
-                print(len(credentials_list), credentials_list, '\n')
-            sys.exit(1)
-
-            # then for every list in master list:
-            self.credentials_list, session = api_request(self, "POST", "/".join([self.api, self.submission_id, 'files/batchMultipartUploadCredentials']),data=json.dumps(file_ids))
-
-            # then add self.credentials_list results to a new "master credentials list" which contains a list of credentials for a list of 50000 recs
-
-            # then for ever credentials list in master credentials:
             workers = []
             for x in range(self.cpu_num):
                 worker = Submission.S3Upload(x, self.config, self.upload_queue, self.full_file_path, self.submission_id, self.progress_queue, self.credentials_list)
@@ -251,13 +244,12 @@ class Submission:
         else:
             exit_client(signal=signal.SIGINT,
                         message='There was an error requesting submission {}.'.format(self.submission_id))
-        if not hide_progress:
+
+        file_info_lists = [self.credentials_list[i:i + n] for i in range(0, len(self.credentials_list), n)]
+
+        for files_list in file_info_lists:
             bulk_status_update = []
-
-            from datetime import datetime
-            startTime = datetime.now()
-
-            for cred in self.credentials_list['credentials']:
+            for cred in files_list:
                 file = cred['configuration']['destinationURI'].split('/')
                 file = '/'.join(file[1:])
                 size = self.full_file_path[file][1]
@@ -268,18 +260,12 @@ class Submission:
                     "status": "Complete"
                 }
                 bulk_status_update.append(update)
-
             data = json.dumps(bulk_status_update)
-            print('Time to create data for request: ', datetime.now() - startTime)
-
             # add try/except
             url = "/".join([self.api, self.submission_id, 'files/batchUpdate'])
-
-            startTime = datetime.now()
             api_request(self, "PUT", url, data=data)
-            print('Time to complete request: ', datetime.now() - startTime)
 
-
+        if not hide_progress:
             print('\nUploads complete.')
             print('Checking Submission Status.')
         self.check_status()
@@ -329,7 +315,7 @@ class Submission:
             local_path = self.upload['file_user_path']
             remote_path = self.upload['file_remote_path']
             file_id = self.upload['id']
-            for cred in self.credentials_list['credentials']:
+            for cred in self.credentials_list:
                 if str(cred['submissionFileId']) == file_id:
                     credentials = {'accessKey': cred['accessKey'], 'secretKey': cred['secretKey'],
                                    'sessionToken': cred['sessionToken']}
