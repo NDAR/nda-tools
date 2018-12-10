@@ -69,25 +69,24 @@ def api_request(api, verb, endpoint, data=None, session=None):
             thread.interrupt_main()
         exit_client(signal.SIGINT)
 
-    if r:
-        if r.ok:
-            if api.__class__.__name__ == 'Download':
-                return r, session
-            else:
-                try:
-                    response = json.loads(r.text)
-                except ValueError:
-                    print('Your request returned an unexpected response, please check your endpoints.\n'
-                          'Action: {}\n'
-                          'Endpoint:{}\n'
-                          'Status:{}\n'
-                          'Reason:{}'.format(verb, endpoint, r.status_code, r.reason))
-                    if api.__class__.__name__.endswith('Task'):
-                        api.shutdown_flag.set()
-                        thread.interrupt_main()
-                    else:
-                        raise Exception(ValueError)
-                        #exit_client(signal.SIGINT)
+    if r and r.ok:
+        if api.__class__.__name__ == 'Download':
+            return r, session
+        else:
+            try:
+                response = json.loads(r.text)
+            except ValueError:
+                print('Your request returned an unexpected response, please check your endpoints.\n'
+                      'Action: {}\n'
+                      'Endpoint:{}\n'
+                      'Status:{}\n'
+                      'Reason:{}'.format(verb, endpoint, r.status_code, r.reason))
+                if api.__class__.__name__.endswith('Task'):
+                    api.shutdown_flag.set()
+                    thread.interrupt_main()
+                else:
+                    raise Exception(ValueError)
+                    #exit_client(signal.SIGINT)
     if r.status_code == 401:
         m = 'The NDA username or password is not recognized.'
         print(m)
