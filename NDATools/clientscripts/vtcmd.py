@@ -161,9 +161,9 @@ def resume_submission(submission_id, config=None):
     submission.check_status()
     if submission.status == 'Uploading':
         if submission.incomplete_files and submission.found_all_files(retry_allowed=True):
+            submission.check_submitted_files()
             submission.submission_upload(hide_progress=False)
         else:
-            # bulk upload status
            submission.submission_upload(hide_progress=False)
 
     else:
