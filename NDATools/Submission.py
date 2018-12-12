@@ -386,9 +386,9 @@ class Submission:
                     self.source_key = '/'.join([self.source_prefix, source_key])
                     self.fileobj = self.source_s3.Object(self.source_bucket, self.source_key).get()['Body']
                     self.bytes = self.source_s3.Object(self.source_bucket, self.source_key).get()['ContentLength']
-                    dest_session = boto3.Session(aws_access_key_id=credentials['access_key'],
-                                                 aws_secret_access_key=credentials['secret_key'],
-                                                 aws_session_token=credentials['session_token'],
+                    dest_session = boto3.Session(aws_access_key_id=credentials['accessKey'],
+                                                 aws_secret_access_key=credentials['secretKey'],
+                                                 aws_session_token=credentials['sessionToken'],
                                                  region_name='us-east-1')
 
                     GB = 1024 ** 3
@@ -418,9 +418,9 @@ class Submission:
 
                     if credentials:
                         session = boto3.session.Session(
-                            aws_access_key_id=credentials['access_key'],
-                            aws_secret_access_key=credentials['secret_key'],
-                            aws_session_token=credentials['session_token'],
+                            aws_access_key_id=credentials['accessKey'],
+                            aws_secret_access_key=credentials['secretKey'],
+                            aws_session_token=credentials['sessionToken'],
                             region_name='us-east-1'
                         )
                         s3 = session.client('s3')

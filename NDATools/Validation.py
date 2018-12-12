@@ -59,11 +59,6 @@ class Validation:
     enter a list of directories only if they have also indicated to build a package for submission.
     """
 
-    def raise_error(self, error, message):
-        m = error + '\n' + message
-        missing_value = Exception(m)
-        raise missing_value
-
     def validate(self):
         if not self.hide_progress:
             self.validation_progress = tqdm(total=len(self.file_list), position=0, ascii=os.name == 'nt')
@@ -92,7 +87,8 @@ class Validation:
         for (response, file) in self.responses:
             if response['status'] == Status.SYSERROR:
                 self.e = True
-                self.raise_error(error = response['status'], message=response['errors']['system'][0]['message'])
+                error = "".join([response['status'], response['errors']['system'][0]['message']])
+                raise Exception(error)
             elif response['errors'] != {}:
                 self.e = True
             if response['associated_file_paths'] and response['errors'] == {}:
@@ -223,9 +219,8 @@ class Validation:
                 self.manifest_path = manifest_path_input.split(' ')
 
             else:
-                error = 'Missing Manifest File'
-                message = 'You must include the path to your manifests files'
-                self.raise_error(error, message)
+                error = 'Missing Manifest File: You must include the path to your manifests files'
+                raise Exception(error)
 
         if not yes_manifest:
             yes_manifest = []
@@ -254,9 +249,9 @@ class Validation:
                             no_manifest.add(validation_manifest.local_file_name)
 
                         except json.decoder.JSONDecodeError as e:
-                            message = 'There was an error in your json file: {}\nPlease review and try again: {}\n'.format\
+                            error = 'JSON Error: There was an error in your json file: {}\nPlease review and try again: {}\n'.format\
                                 (validation_manifest.local_file_name, e)
-                            self.raise_error(error = 'JSON Error', message = message)
+                            raise Exception(error)
 
         for file in no_manifest:
             print('Manifest file not found:',file)
@@ -265,6 +260,7 @@ class Validation:
             print(
                 '\nYou must make sure all manifest files listed in your validation file'
                 ' are located in the specified directory. Please try again.')
+
             retry = input('Press the "Enter" key to specify location(s) for manifest files and try again:')
             self.manifest_path = retry.split(' ')
             self.process_manifests(r, yes_manifest=yes_manifest, validation_results = self.validation_result)
@@ -274,8 +270,8 @@ class Validation:
             self.validation_result = Validation.ValidationManifestResult(response, self.hide_progress)
             for m in self.validation_result.manifests:
                 if m.status == Status.ERROR:
-                    message = 'There was an error in your json file: {}\nPlease review and try again: {}\n'.format(m.local_file_name, m.errors[0])
-                    self.raise_error(error = 'JSON Error', message=message)
+                    error = 'JSON Error: There was an error in your json file: {}\nPlease review and try again: {}\n'.format(m.local_file_name, m.errors[0])
+                    raise Exception(error)
 
     class ValidationManifest:
 
@@ -343,7 +339,8 @@ class Validation:
                     if self.exit:
                         exit_client(signal=signal.SIGINT, message=message)
                     else:
-                        Validation.raise_error(self, error='FileNotFound', message=message)
+                        error = "".join(['FileNotFound:', message])
+                        raise Exception(error)
 
                 except FileNotFoundError:
                     message = 'This file does not exist in current directory: {}'.format(file_name)
@@ -352,7 +349,8 @@ class Validation:
                     if self.exit:
                         exit_client(signal=signal.SIGINT, message=message)
                     else:
-                        Validation.raise_error(self, error='FileNotFound', message=message)
+                        error = "".join(['FileNotFound:', message])
+                        raise Exception(error)
                 data = file.read()
 
                 response, session = api_request(self, "POST", self.api_scope, data)

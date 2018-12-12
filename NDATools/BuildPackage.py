@@ -142,7 +142,7 @@ class SubmissionPackage:
             else:
                 raise Exception(message)
 
-    def retry_file_search(self):
+    def recollect_file_search_info(self):
         retry = input('Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
                       '<bucket name> to locate your associated files:')
         response = retry.split(' ')
@@ -153,18 +153,15 @@ class SubmissionPackage:
             if self.source_prefix == "":
                 self.source_prefix = None
             if self.aws_access_key == "":
-                self.aws_access_key = input('Enter the access_key for your AWS account: ') # should we ask for this again regardless?
+                self.aws_access_key = input('Enter the access_key for your AWS account: ')
             if self.aws_secret_key == "":
-                self.aws_secret_key = input('Enter the secret_key for your AWS account: ') # should we ask for this again regardless?
+                self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
 
 
     def file_search(self, directories=None, source_bucket=None, source_prefix=None, access_key=None, secret_key=None, retry_allowed=False):
-        def raise_error(error, message, list = None):
-            m = error + '\n' + message
-            for l in list:
-                m += (l+'\n')
-            missing_value = Exception(m)
-            raise missing_value
+        def raise_error(error, l = []):
+            m = '\n'.join([error] + list(set(l)))
+            raise Exception(m)
 
         self.directory_list = directories
         self.source_bucket = source_bucket
@@ -174,11 +171,10 @@ class SubmissionPackage:
 
         if not self.directory_list and not self.source_bucket:
             if retry_allowed:
-                self.retry_file_search()
+                self.recollect_file_search_info()
             else:
                 error ='Missing directory and/or an S3 bucket.'
-                message ='\nPlease try again.'
-                raise_error(error, message)
+                raise_error(error)
 
         if not self.no_match:
             for a in self.associated_files:
@@ -200,7 +196,7 @@ class SubmissionPackage:
                         break
 
         # files in s3
-        no_access_buckets = set()
+        no_access_buckets = []
         if self.source_bucket:
             if self.aws_access_key is "":
                 self.aws_access_key = input('Enter the access_key for your AWS account: ')
@@ -224,32 +220,32 @@ class SubmissionPackage:
                     if error_code == 404:
                         pass
                     if error_code == 403:
-                        no_access_buckets.add(self.source_bucket)
+                        no_access_buckets.append(self.source_bucket)
                         pass
 
         if self.no_match:
             if no_access_buckets:
-                message = '\nYour user does NOT have access to the following buckets. Please review the bucket ' \
+                message = 'Your user does NOT have access to the following buckets. Please review the bucket ' \
                           'and/or your AWS credentials and try again.'
                 if retry_allowed:
-                    print(message)
+                    print('\n', message)
                     for b in no_access_buckets:
                         print(b)
                 else:
-                    error = 'Bucket Access'
-                    raise_error(error, message, no_access_buckets)
-            message = '\nYou must make sure all associated files listed in your validation file' \
+                    error = "".join(['Bucket Access:', message])
+                    raise_error(error, no_access_buckets)
+            message = 'You must make sure all associated files listed in your validation file' \
                       ' are located in the specified directory or AWS bucket. Associated file not found in specified directory:\n'
             if retry_allowed:
-                print(message)
+                print('\n', message)
                 for file in self.no_match:
                     print(file)
-                self.retry_file_search()
+                self.recollect_file_search_info()
                 self.file_search(self.directory_list, self.source_bucket, self.source_prefix, self.aws_access_key,self.aws_secret_key,
                                  retry_allowed=True)
             else:
-                error = 'Missing Files'
-                raise_error(error, message, self.no_match)
+                error = "".join(['Missing Files:', message])
+                raise_error(error, self.no_match)
 
         self.config.directory_list = self.directory_list
         self.config.source_bucket = self.source_bucket
@@ -260,8 +256,8 @@ class SubmissionPackage:
 
     def build_package(self):
         def raise_error(value):
-            missing_value = Exception("Missing {}. Please try again.".format(value))
-            raise missing_value
+            raise Exception("Missing {}. Please try again.".format(value))
+
 
         if self.dataset_name is None:
             raise_error('dataset name')
@@ -296,7 +292,7 @@ class SubmissionPackage:
                 self.expiration_date = str(response['expiration_date'])
             except KeyError:
                 message = 'There was an error creating your package.'
-                if response['status'] == Status.ERROR.lower():
+                if response['status'] == Status.ERROR:
                     message = response['errors'][0]['message']
                 if self.exit:
                     exit_client(signal.SIGINT, message=message)
@@ -308,7 +304,7 @@ class SubmissionPackage:
                 response, session = api_request(self, "GET", "/".join([self.api, self.package_id]), session=session)
                 polling += 1
                 self.package_id = response['submission_package_uuid']
-            if response['package_info']['status'] == Status.COMPLETE.lower():
+            if response['package_info']['status'] == Status.COMPLETE:
                 for f in [f for f in response['files']
                           if f['type'] in ('Submission Memento', 'Submission Data Package')]:
                     for key, value in f['_links'].items():
@@ -372,6 +368,6 @@ class SubmissionPackage:
 class Status:
     UPLOADING = 'Uploading'
     SYSERROR = 'SystemError'
-    COMPLETE = 'Complete'
-    ERROR = 'Error'
+    COMPLETE = 'complete'
+    ERROR = 'error'
     PROCESSING = 'processing'
