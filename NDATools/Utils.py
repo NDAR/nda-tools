@@ -67,7 +67,7 @@ def api_request(api, verb, endpoint, data=None, session=None):
         if api.__class__.__name__.endswith('Task'):
             api.shutdown_flag.set()
             thread.interrupt_main()
-        exit_client(signal.SIGINT)
+        exit_client(signal.SIGTERM)
 
     if r and r.ok:
         if api.__class__.__name__ == 'Download':
@@ -86,7 +86,7 @@ def api_request(api, verb, endpoint, data=None, session=None):
                     thread.interrupt_main()
                 else:
                     raise Exception(ValueError)
-                    #exit_client(signal.SIGINT)
+
     if r.status_code == 401:
         m = 'The NDA username or password is not recognized.'
         print(m)
@@ -99,9 +99,8 @@ def api_request(api, verb, endpoint, data=None, session=None):
         r.raise_for_status()
 
     elif r.status_code == 500:
-        response = r.text #json.loads(r.text)
+        response = r.text
         m = response
-        #m = response['error'] + ': ' +  response['message']
         print(m)
         r.raise_for_status()
 

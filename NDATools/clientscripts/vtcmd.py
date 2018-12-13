@@ -9,14 +9,14 @@ import os
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description='This application allows you to validate files and submit data into NDAR. '
+        description='This application allows you to validate files and submit data into NDA. '
                     'You must enter a list of at least one file to be validated. '
                     'If your data contains manifest files, you must specify the location of the manifests. '
                     'If your data also includes associated files, you must enter a list of at least one directory '
                     'where the associated files are saved. Alternatively, if any of your data is stored in AWS, you must'
                     ' provide your account credentials, the AWS bucket, and a prefix, if it exists.  '
                     'Any files that are created while running the client (ie. results files) will be downloaded in '
-                    'your home directory under NDARValidationResults. If your submission was interrupted in the middle'
+                    'your home directory under NDAValidationResults. If your submission was interrupted in the middle'
                     ', you may resume your upload by entering a valid submission ID. ',
         usage='%(prog)s <file_list>')
 
@@ -222,7 +222,7 @@ def build_package(uuid, associated_files, config):
     print('\nA copy of your submission package has been saved to: {}'.
           format(os.path.join(package.package_folder, package.config.submission_packages)))
 
-    return([package.package_id, package.full_file_path])
+    return[package.package_id, package.full_file_path]
 
 def submit_package(package_id, full_file_path, associated_files, threads, config=None):
     submission = Submission(package_id, full_file_path, thread_num=threads, allow_exit=True, config=config)

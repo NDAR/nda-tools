@@ -42,6 +42,7 @@ class Submission:
         self.total_files = None
         self.total_progress = None
         self.upload_tries = 0
+        self.max_submit_time = 120
         if resume:
             self.submission_id = id
             self.no_match = []
@@ -49,10 +50,6 @@ class Submission:
             self.package_id = id
         self.exit = allow_exit
 
-    def raise_error(self, error, message):
-        m = error + '\n' + message
-        exception = Exception(m)
-        raise exception
 
     def submit(self):
         response, session = api_request(self, "POST", "/".join([self.api, self.package_id]))
@@ -62,11 +59,10 @@ class Submission:
         else:
             message = 'There was an error creating your submission'
             if self.exit:
-                exit_client(signal=signal.SIGINT,
+                exit_client(signal=signal.SIGTERM,
                         message=message)
             else:
-                error = 'SubmissionError'
-                self.raise_error(error, message)
+                raise Exception("{}\n{}".format('SubmissionError', message))
 
 
     def check_status(self):
@@ -76,11 +72,10 @@ class Submission:
         else:
             message='An error occurred while checking submission {} status.'.format(self.submission_id)
             if self.exit:
-                exit_client(signal=signal.SIGINT,
+                exit_client(signal=signal.SIGTERM,
                             message=message)
             else:
-                error = 'StatusError'
-                self.raise_error(error, message)
+                raise Exception("{}\n{}".format('StatusError', message))
 
     @property
     def incomplete_files(self):
@@ -96,11 +91,11 @@ class Submission:
         else:
             message='There was an error requesting files for submission {}.'.format(self.submission_id)
             if self.exit:
-                exit_client(signal=signal.SIGINT,
+                exit_client(signal=signal.SIGTERM,
                             message=message)
             else:
-                error = 'SubmissionError'
-                self.raise_error(error, message)
+                raise Exception("{}\n{}".format('SubmissionError', message))
+
 
     def found_all_files(self, retry_allowed=False):
         print('\nSearching for associated files...')
@@ -256,11 +251,10 @@ class Submission:
         else:
             message='There was an error requesting submission {}.'.format(self.submission_id)
             if self.exit:
-                exit_client(signal=signal.SIGINT,
+                exit_client(signal=signal.SIGTERM,
                             message=message)
             else:
-                error = 'SubmissionError'
-                self.raise_error(error, message)
+                raise Exception("{}\n{}".format('SubmissionError', message))
         if not hide_progress:
             print('\nUploads complete.')
             print('Checking Submission Status.')
@@ -268,18 +262,18 @@ class Submission:
         if self.status == Status.UPLOADING:
             if not self.incomplete_files:
                 t1 = time.time()
-                while self.status == Status.UPLOADING and (time.time() - t1) < 120:
+                while self.status == Status.UPLOADING and (time.time() - t1) < self.max_submit_time:
                     self.check_status()
-                    timeout_message = 'Timed out while waiting for submission status to change.\nYou may try again by resuming the submission.'
+                    timeout_message = 'Timed out while waiting for submission status to change. You may try again by resuming the submission.'
                     if not hide_progress:
                         sys.stdout.write('.')
                 if self.status == Status.UPLOADING:
                     if self.exit:
-                        exit_client(signal=signal.SIGINT,
+                        exit_client(signal=signal.SIGTERM,
                                     message=timeout_message)
                     else:
-                        error = 'TimeOutError'
-                        self.raise_error(error, timeout_message)
+                        raise Exception("{}\n{}".format('TimeOutError', timeout_message))
+
             else:
                 print('There was an error transferring some files, trying again')
                 if self.found_all_files and self.upload_tries < 5:

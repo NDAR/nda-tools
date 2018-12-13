@@ -87,7 +87,7 @@ class Validation:
         for (response, file) in self.responses:
             if response['status'] == Status.SYSERROR:
                 self.e = True
-                error = "".join([response['status'], response['errors']['system'][0]['message']])
+                error = " ".join([response['status'], response['errors']['system'][0]['message']])
                 raise Exception(error)
             elif response['errors'] != {}:
                 self.e = True
@@ -212,15 +212,14 @@ class Validation:
     def process_manifests(self, r, validation_results = None, yes_manifest = None, bulk_upload=False):
 
         if not self.manifest_path:
-            if not self.hide_progress:
-                manifest_path_input = input("\nYour data contains manifest files. Please enter a list of "
-                                           "the complete paths to the folder where your manifests are located,"
-                                           "separated by a space:")
-                self.manifest_path = manifest_path_input.split(' ')
-
-            else:
+            if not self.exit:
                 error = 'Missing Manifest File: You must include the path to your manifests files'
                 raise Exception(error)
+            else:
+                manifest_path_input = input("\nYour data contains manifest files. Please enter a list of "
+                                            "the complete paths to the folder where your manifests are located,"
+                                            "separated by a space:")
+                self.manifest_path = manifest_path_input.split(' ')
 
         if not yes_manifest:
             yes_manifest = []
@@ -337,9 +336,9 @@ class Validation:
                     if self.progress_bar:
                         self.progress_bar.close()
                     if self.exit:
-                        exit_client(signal=signal.SIGINT, message=message)
+                        exit_client(signal=signal.SIGTERM, message=message)
                     else:
-                        error = "".join(['FileNotFound:', message])
+                        error = " ".join(['FileNotFound:', message])
                         raise Exception(error)
 
                 except FileNotFoundError:
@@ -347,9 +346,9 @@ class Validation:
                     if self.progress_bar:
                         self.progress_bar.close()
                     if self.exit:
-                        exit_client(signal=signal.SIGINT, message=message)
+                        exit_client(signal=signal.SIGTERM, message=message)
                     else:
-                        error = "".join(['FileNotFound:', message])
+                        error = " ".join(['FileNotFound:', message])
                         raise Exception(error)
                 data = file.read()
 

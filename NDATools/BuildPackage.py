@@ -118,7 +118,7 @@ class SubmissionPackage:
                         else:
                             message = 'Incorrect/Missing collection ID or alternate endpoint.'
                             if self.exit:
-                                exit_client(signal=signal.SIGINT,
+                                exit_client(signal=signal.SIGTERM,
                                             message=message)
                             else:
                                 raise Exception(message)
@@ -130,14 +130,14 @@ class SubmissionPackage:
                     else:
                         message = 'Incorrect/Missing collection ID or alternate endpoint.'
                         if self.exit:
-                            exit_client(signal=signal.SIGINT,
+                            exit_client(signal=signal.SIGTERM,
                                             message=message)
                         else:
                             raise Exception(message)
         else:
             message = 'The user {} does not have permission to submit to any collections or alternate upload locations.'.format(self.config.username)
             if self.exit:
-                exit_client(signal=signal.SIGINT,
+                exit_client(signal=signal.SIGTERM,
                         message=message)
             else:
                 raise Exception(message)
@@ -295,7 +295,7 @@ class SubmissionPackage:
                 if response['status'] == Status.ERROR:
                     message = response['errors'][0]['message']
                 if self.exit:
-                    exit_client(signal.SIGINT, message=message)
+                    exit_client(signal.SIGTERM, message=message)
                 else:
                     raise Exception(message)
 
@@ -315,13 +315,13 @@ class SubmissionPackage:
                 if response['package_info']['status'] == Status.SYSERROR:
                     message=response['errors']['system'][0]['message']
                 if self.exit:
-                    exit_client(signal.SIGINT, message=message)
+                    exit_client(signal.SIGTERM, message=message)
                 else:
                     raise Exception(message)
         else:
             message='There was an error with your package request.'
             if self.exit:
-                exit_client(signal.SIGINT, message=message)
+                exit_client(signal.SIGTERM, message=message)
             else:
                 raise Exception(message)
 

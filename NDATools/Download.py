@@ -89,6 +89,10 @@ class Download(Protocol):
     def get_protocol(cls):
         return cls.XML
 
+    def verbose_print(self, *args, **kwargs):
+        if self.verbose:
+            print(*args, **kwargs)
+
     def useDataManager(self):
         """ Download package files (not associated files) """
 
@@ -118,8 +122,7 @@ class Download(Protocol):
                         file = 's3:/' + p.text
                         self.path_list.add(file)
 
-        if self.verbose:
-            print('Downloading package files for package {}.'.format(self.package))
+        self.verbose_print('Downloading package files for package {}.'.format(self.package))
 
 
 
@@ -156,19 +159,13 @@ class Download(Protocol):
                         if element.startswith('s3://'):
                             self.path_list.add(element)
         except IOError as e:
-            message = '{} not found. Please enter the correct path to your file and try again.'.format(self.dataStructure)
-            if self.verbose:
-                print(message)
-                return
-            else:
-                raise e
+            self.verbose_print(
+                '{} not found. Please enter the correct path to your file and try again.'.format(self.dataStructure))
+            raise e
         except FileNotFoundError:
-            message = '{} not found. Please enter the correct path to your file and try again.'.format(self.dataStructure)
-            if self.verbose:
-                print(message)
-                return
-            else:
-                raise e
+            self.verbose_print(
+                '{} not found. Please enter the correct path to your file and try again.'.format(self.dataStructure))
+            raise FileNotFoundError
 
     def get_links(self, links, files, filters=None):
 
@@ -217,7 +214,6 @@ class Download(Protocol):
         if resume:
             prev_local_filename = os.path.join(prev_directory, key)
             if os.path.isfile(prev_local_filename):
-                #print(prev_local_filename, 'is already downloaded.')
                 downloaded = True
 
 
@@ -236,27 +232,21 @@ class Download(Protocol):
 
             try:
                 s3transfer.download_file(bucket, key, local_filename)
-                if self.verbose:
-                    print('downloaded: ', path)
+                self.verbose_print('downloaded: ', path)
+
             except botocore.exceptions.ClientError as e:
                 # If a client error is thrown, then check that it was a 404 error.
                 # If it was a 404 error, then the bucket does not exist.
                 error_code = int(e.response['Error']['Code'])
                 if error_code == 404:
                     message = 'This path is incorrect: {}. Please try again.'.format(path)
-                    if self.verbose:
-                        print(message)
-                        pass
-                    else:
-                        raise e
-                if error_code == 403:
-                    message = 'This is a private bucket. Please contact NDAR for help: {}\n'.format(path)
-                    if self.verbose:
-                        print(message)
-                        pass
+                    self.verbose_print(message)
+                    raise Exception(e)
 
-                    else:
-                        raise e
+                if error_code == 403:
+                    message = '\nThis is a private bucket. Please contact NDAR for help: {}'.format(path)
+                    self.verbose_print(message)
+                    raise Exception(e)
 
 
     def start_workers(self, resume, prev_directory, thread_num=None):
