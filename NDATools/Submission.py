@@ -69,10 +69,6 @@ class Submission:
         file_ids = []
         file_ids.extend(file['id'] for file in response if file['status'] != 'Complete')
 
-        #for file in response:
-        #    if file['status'] != 'Complete':
-        #        self.file_ids.append(file['id'])
-
         return file_ids
 
 
