@@ -326,7 +326,8 @@ class Submission:
 
             workers = []
             for x in range(self.thread_num):
-                worker = Submission.S3Upload(x, self.config, self.upload_queue, self.full_file_path, self.submission_id, self.progress_queue)
+                worker = Submission.S3Upload(x, self.config, self.upload_queue, self.full_file_path, self.submission_id,
+                                             self.progress_queue, self.credentials_list)
 
                 workers.append(worker)
                 worker.daemon = True

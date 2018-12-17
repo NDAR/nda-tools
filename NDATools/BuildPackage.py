@@ -284,9 +284,8 @@ class SubmissionPackage:
         if response:
             try:
                 self.package_id = response['submission_package_uuid']
-                #for r in response['validation_results']:
-                #    self.validation_results.append(r['id'])
-                self.validation_results = response['validation_results']
+                for r in response['validation_results']:
+                    self.validation_results.append(r['id'])
                 self.submission_package_uuid = str(response['submission_package_uuid'])
                 self.create_date = str(response['created_date'])
                 self.expiration_date = str(response['expiration_date'])
