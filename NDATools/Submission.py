@@ -145,8 +145,9 @@ class Submission:
             if file['id'] in unsubmitted_ids:
                 file_ids.remove(file['id'])
 
-        self.credentials_list = self.get_multipart_credentials(file_ids)
-        self.batch_update_status()
+        if file_ids:
+            self.credentials_list = self.get_multipart_credentials(file_ids)
+            self.batch_update_status()
 
         #update full_file_path list
         self.credentials_list = self.get_multipart_credentials(unsubmitted_ids)
