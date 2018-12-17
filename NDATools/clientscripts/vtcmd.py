@@ -133,7 +133,11 @@ def resume_submission(submission_id, config=None):
     submission.check_status()
     if submission.status == Status.UPLOADING:
         if submission.incomplete_files and submission.found_all_files(retry_allowed=True):
+            submission.check_submitted_files()
             submission.submission_upload(hide_progress=False)
+        else:
+           submission.submission_upload(hide_progress=False)
+
     else:
         print('Submission Completed with status {}'.format(submission.status))
         return
@@ -253,7 +257,6 @@ def main():
         if validation_results is not None:
             uuid = validation_results[0]
             associated_files = validation_results[1]
-
             # If user requested to build a package
             if bp:
                 package_results = build_package(uuid, associated_files, config=config)

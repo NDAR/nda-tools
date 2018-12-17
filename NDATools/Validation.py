@@ -286,8 +286,8 @@ class Validation:
 
         def upload_manifest(self, _fp):
             manifest_object = json.load(_fp)
-            if not self.hide_progress:
-                print('Uploading', _fp.name, '\n')
+            #if not self.hide_progress:
+             #   print('Uploading', _fp.name, '\n')
             api_request(self, "PUT", self.url, data=json.dumps(manifest_object))
 
     class ValidationManifestResult:
