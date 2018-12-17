@@ -165,9 +165,9 @@ def api_request(api, verb, endpoint, data=None, session=None):
         r.raise_for_status()
 
     if r.status_code == 500:
-        response = json.loads(r.text)
-        m = response['error'] + ': ' +  response['message']
-        print(m)
+        #response = json.loads(r.text)
+        #m = response['error'] + ': ' +  response['message']
+        print(r.text)
         r.raise_for_status()
         #exit_client(signal.SIGINT, message=m)
 
