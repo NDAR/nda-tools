@@ -106,7 +106,7 @@ class Submission:
 
         for files_list in batched_file_info_lists:
             for cred in files_list:
-                file = cred['configuration']['destinationURI'].split('/')
+                file = cred['destination_uri'].split('/')
                 file = '/'.join(file[1:])
                 size = self.full_file_path[file][1]
                 update = {
@@ -413,8 +413,8 @@ class Submission:
             file_id = self.upload['id']
             for cred in self.credentials_list:
                 if str(cred['submissionFileId']) == file_id:
-                    credentials = {'accessKey': cred['accessKey'], 'secretKey': cred['secretKey'],
-                                   'sessionToken': cred['sessionToken']}
+                    credentials = {'access_key': cred['access_key'], 'secret_key': cred['secret_key'],
+                                   'session_token': cred['session_token']}
                     break
             paths = remote_path.split('/')
             bucket = paths[2]
@@ -492,9 +492,9 @@ class Submission:
                     self.source_key = '/'.join([self.source_prefix, source_key])
                     self.fileobj = self.source_s3.Object(self.source_bucket, self.source_key).get()['Body']
                     self.bytes = self.source_s3.Object(self.source_bucket, self.source_key).get()['ContentLength']
-                    dest_session = boto3.Session(aws_access_key_id=credentials['accessKey'],
-                                                 aws_secret_access_key=credentials['secretKey'],
-                                                 aws_session_token=credentials['sessionToken'],
+                    dest_session = boto3.Session(aws_access_key_id=credentials['access_key'],
+                                                 aws_secret_access_key=credentials['secret_key'],
+                                                 aws_session_token=credentials['session_token'],
                                                  region_name='us-east-1')
 
                     #GB = 1024 ** 3
@@ -522,9 +522,9 @@ class Submission:
 
                     if credentials:
                         session = boto3.session.Session(
-                            aws_access_key_id=credentials['accessKey'],
-                            aws_secret_access_key=credentials['secretKey'],
-                            aws_session_token=credentials['sessionToken'],
+                            aws_access_key_id=credentials['access_key'],
+                            aws_secret_access_key=credentials['secret_key'],
+                            aws_session_token=credentials['session_token'],
                             region_name='us-east-1'
                         )
                         s3 = session.client('s3')
