@@ -107,7 +107,7 @@ class Submission:
         for files_list in batched_file_info_lists:
             for cred in files_list:
                 file = cred['destination_uri'].split('/')
-                file = '/'.join(file[1:])
+                file = '/'.join(file[4:])
                 size = self.full_file_path[file][1]
                 update = {
                     "id": str(cred['submissionFileId']),
@@ -180,7 +180,7 @@ class Submission:
         full_file_path = {}
 
         for credentials in self.credentials_list:
-            full_path = (credentials['destinationURI'].split(self.submission_id)[1][1:])
+            full_path = (credentials['destination_uri'].split(self.submission_id)[1][1:])
             for key,value in self.full_file_path.items():
                 if full_path == key:
                     full_file_path[key] = value
@@ -311,6 +311,7 @@ class Submission:
         for associated_file in self.full_file_path:
             path, file_size = self.full_file_path[associated_file]
             self.total_upload_size += file_size
+
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id, 'files']))
         if response:
             file_ids = self.create_file_id_list(response)
