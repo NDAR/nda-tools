@@ -10,16 +10,20 @@ if sys.version_info[0] < 3:
 else:
     import queue
 from NDATools.Configuration import *
+from NDATools.Utils import *
+
+import threading
+import signal
 
 
 class Validation:
-    def __init__(self, file_list, config=None, hide_progress=True):
-        if config:
-            self.config = config
-        else:
-            self.config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'))
+    def __init__(self, file_list, config, hide_progress=True, allow_exit=False, thread_num=None):
+        self.config = config
         self.hide_progress = hide_progress
         self.api = self.config.validation_api.strip('/')
+        self.thread_num = max([1, multiprocessing.cpu_count() - 1])
+        if thread_num:
+            self.thread_num = thread_num
         self.scope = self.config.scope
         self.api_scope = self.api
         if self.scope is not None:
@@ -37,8 +41,6 @@ class Validation:
         self.w = False
         self.manifest_data_files = []
         self.manifest_path = self.config.manifest_path
-        if not self.config.validation_results:
-            self.config.validation_results = 'NDAValidationResults'
         self.validation_result_dir = os.path.join(os.path.expanduser('~'), self.config.validation_results)
         if not os.path.exists(self.validation_result_dir):
             os.mkdir(self.validation_result_dir)
@@ -49,6 +51,7 @@ class Validation:
 
         self.field_names = ['FILE', 'ID', 'STATUS', 'EXPIRATION_DATE', 'ERRORS', 'COLUMN', 'MESSAGE', 'RECORD']
         self.validation_progress = None
+        self.exit = allow_exit
 
     """
     Validates a list of csv files and saves a new csv file with the results in the Home directory.
@@ -57,15 +60,11 @@ class Validation:
     """
 
     def validate(self):
-        # find out how many cpu in your computer to get max threads
         if not self.hide_progress:
             self.validation_progress = tqdm(total=len(self.file_list), position=0, ascii=os.name == 'nt')
-        cpu_num = multiprocessing.cpu_count()
-        if cpu_num > 1:
-            cpu_num -= 1
         workers = []
-        for x in range(cpu_num):
-            worker = Validation.ValidationTask(self.file_queue, self.result_queue, self.api, self.api_scope, self.responses, self.validation_progress)
+        for x in range(self.thread_num):
+            worker = Validation.ValidationTask(self.file_queue, self.result_queue, self.api, self.api_scope, self.responses, self.validation_progress, self.exit)
             workers.append(worker)
             worker.daemon = True
             worker.start()
@@ -86,18 +85,17 @@ class Validation:
             except queue.Empty:
                 break
         for (response, file) in self.responses:
-            if response['status'] == "SystemError":
+            if response['status'] == Status.SYSERROR:
                 self.e = True
-                m = 'SystemError while validating {}'.format(file)
-                exit_client(signal.SIGINT, message=m)#response['errors']['system'][0]['message'])
-
+                error = " ".join([response['status'], response['errors']['system'][0]['message']])
+                raise Exception(error)
             elif response['errors'] != {}:
                 self.e = True
             if response['associated_file_paths'] and response['errors'] == {}:
                 self.associated_files.append(response['associated_file_paths'])
             if response['warnings'] != {}:
                 self.w = True
-            if response['status'] == "PendingManifestFiles" and response['errors'] == {}:
+            if response['status'] == Status.PENDING_MANIFEST and response['errors'] == {}:
                 self.process_manifests(response)
                 response, session = api_request(self, "GET", "/".join([self.api, response['id']]))
                 self.associated_files.append(response['associated_file_paths'])
@@ -214,15 +212,14 @@ class Validation:
     def process_manifests(self, r, validation_results = None, yes_manifest = None, bulk_upload=False):
 
         if not self.manifest_path:
-            if not self.hide_progress:
-                manifest_path_input = input("\nYour data contains manifest files. Please enter a list of "
-                                           "the complete paths to the folder where your manifests are located,"
-                                           "separated by a space:")
-                self.manifest_path = manifest_path_input.split(' ')
-
+            if not self.exit:
+                error = 'Missing Manifest File: You must include the path to your manifests files'
+                raise Exception(error)
             else:
-                print('\nYou must include the path to your manifests files')
-                sys.exit()
+                manifest_path_input = input("\nYour data contains manifest files. Please enter a list of "
+                                            "the complete paths to the folder where your manifests are located,"
+                                            "separated by a space:")
+                self.manifest_path = manifest_path_input.split(' ')
 
         if not yes_manifest:
             yes_manifest = []
@@ -251,10 +248,9 @@ class Validation:
                             no_manifest.add(validation_manifest.local_file_name)
 
                         except json.decoder.JSONDecodeError as e:
-                            message = 'There was an error in your json file: {}\nPlease review and try again: {}\n'.format\
+                            error = 'JSON Error: There was an error in your json file: {}\nPlease review and try again: {}\n'.format\
                                 (validation_manifest.local_file_name, e)
-                            exit_client(signal=signal.SIGINT,
-                                       message=message)
+                            raise Exception(error)
 
         for file in no_manifest:
             print('Manifest file not found:',file)
@@ -263,18 +259,18 @@ class Validation:
             print(
                 '\nYou must make sure all manifest files listed in your validation file'
                 ' are located in the specified directory. Please try again.')
+
             retry = input('Press the "Enter" key to specify location(s) for manifest files and try again:')
             self.manifest_path = retry.split(' ')
             self.process_manifests(r, yes_manifest=yes_manifest, validation_results = self.validation_result)
 
-        while not self.validation_result.status.startswith('Complete'):
+        while not self.validation_result.status.startswith(Status.COMPLETE):
             response, session = api_request(self, "GET", "/".join([self.api, r['id']]))
             self.validation_result = Validation.ValidationManifestResult(response, self.hide_progress)
             for m in self.validation_result.manifests:
-                if m.status == 'Error':
-                    message = 'There was an error in your json file: {}\nPlease review and try again: {}\n'.format(m.local_file_name, m.errors[0])
-                    exit_client(signal=signal.SIGINT,
-                                message=message)
+                if m.status == Status.ERROR:
+                    error = 'JSON Error: There was an error in your json file: {}\nPlease review and try again: {}\n'.format(m.local_file_name, m.errors[0])
+                    raise Exception(error)
 
     class ValidationManifest:
 
@@ -290,8 +286,8 @@ class Validation:
 
         def upload_manifest(self, _fp):
             manifest_object = json.load(_fp)
-            if not self.hide_progress:
-                print('Uploading', _fp.name, '\n')
+            #if not self.hide_progress:
+             #   print('Uploading', _fp.name, '\n')
             api_request(self, "PUT", self.url, data=json.dumps(manifest_object))
 
     class ValidationManifestResult:
@@ -309,8 +305,8 @@ class Validation:
             self.manifests = manifests
 
 
-    class ValidationTask(threading.Thread):
-        def __init__(self, file_queue, result_queue, api, scope, responses, validation_progress):
+    class ValidationTask(threading.Thread, Protocol):
+        def __init__(self, file_queue, result_queue, api, scope, responses, validation_progress, exit):
             threading.Thread.__init__(self)
             self.file_queue = file_queue
             self.result_queue = result_queue
@@ -319,6 +315,11 @@ class Validation:
             self.responses = responses
             self.progress_bar = validation_progress
             self.shutdown_flag = threading.Event()
+            self.exit = exit
+
+        @staticmethod
+        def get_protocol(cls):
+            return cls.CSV
 
         def run(self):
             while True and not self.shutdown_flag.is_set():
@@ -331,13 +332,24 @@ class Validation:
                 try:
                     file = open(file_name, 'rb')
                 except IOError:
-                    print('This file does not exist in current directory:', file_name)
-                    exit_client(signal=signal.SIGINT,
-                                message=None)
+                    message = 'This file does not exist in current directory: {}'.format(file_name)
+                    if self.progress_bar:
+                        self.progress_bar.close()
+                    if self.exit:
+                        exit_client(signal=signal.SIGTERM, message=message)
+                    else:
+                        error = " ".join(['FileNotFound:', message])
+                        raise Exception(error)
+
                 except FileNotFoundError:
-                    print('This file does not exist in current directory:', file_name)
-                    exit_client(signal=signal.SIGINT,
-                                message=None)
+                    message = 'This file does not exist in current directory: {}'.format(file_name)
+                    if self.progress_bar:
+                        self.progress_bar.close()
+                    if self.exit:
+                        exit_client(signal=signal.SIGTERM, message=message)
+                    else:
+                        error = " ".join(['FileNotFound:', message])
+                        raise Exception(error)
                 data = file.read()
 
                 response, session = api_request(self, "POST", self.api_scope, data)
@@ -355,3 +367,9 @@ class Validation:
                 # Stop thread after adding validation response
                 self.file_queue.task_done()
 
+class Status:
+    UPLOADING = 'Uploading'
+    SYSERROR = 'SystemError'
+    PENDING_MANIFEST = 'PendingManifestFiles'
+    COMPLETE = 'Complete'
+    ERROR = 'Error'
