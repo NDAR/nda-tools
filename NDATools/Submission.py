@@ -98,7 +98,7 @@ class Submission:
 
         return all_credentials
 
-    def generate_data_for_request(self):
+    def generate_data_for_request(self, status="Complete"):
         batch_status_update = []
         batched_file_info_lists = [self.credentials_list[i:i + self.batch_size] for i in
                                    range(0, len(self.credentials_list),
@@ -113,7 +113,7 @@ class Submission:
                     "id": str(cred['submissionFileId']),
                     "md5sum": "None",
                     "size": size,
-                    "status": "Complete"
+                    "status": status
                 }
                 batch_status_update.append(update)
 
@@ -296,10 +296,9 @@ class Submission:
             return len(self.source_bucket) > 0
 
 
-    def batch_update_status(self):
-        data = self.generate_data_for_request()
+    def batch_update_status(self, status="Complete"):
+        data = self.generate_data_for_request(status)
         url = "/".join([self.api, self.submission_id, 'files/batchUpdate'])
-
         api_request(self, "PUT", url, data=data)
 
     def submission_upload(self, hide_progress=True):
@@ -316,6 +315,7 @@ class Submission:
         if response:
             file_ids = self.create_file_id_list(response)
             self.credentials_list = self.get_multipart_credentials(file_ids)
+            self.batch_update_status(status="Ready") #update the file size before submission, so service can compare.
 
             if hide_progress is False:
                 self.total_progress = tqdm(total=self.total_upload_size,
@@ -384,7 +384,7 @@ class Submission:
                 if self.found_all_files and self.upload_tries < 5:
                     self.submission_upload()
         if self.status != Status.UPLOADING and hide_progress:
-            sys.exit(0)
+            return
 
     class S3Upload(threading.Thread):
         def __init__(self, index, config, upload_queue, full_file_path, submission_id, progress_queue, credentials_list):
