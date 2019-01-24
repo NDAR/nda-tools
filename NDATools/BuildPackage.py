@@ -254,6 +254,7 @@ class SubmissionPackage:
         self.config.aws_secret_key = self.aws_secret_key
 
 
+
     def build_package(self):
         def raise_error(value):
             raise Exception("Missing {}. Please try again.".format(value))
