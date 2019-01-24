@@ -4,8 +4,6 @@ import sys
 if sys.version_info[0] < 3:
     input = raw_input
 import argparse
-import shutil
-import fileinput
 from NDATools.Download import Download
 from NDATools.Configuration import *
 
@@ -42,43 +40,29 @@ def parse_args():
     parser.add_argument('-d', '--directory', metavar='<arg>', type=str, nargs=1, action='store',
                         help='Enter an alternate full directory path where you would like your files to be saved.')
 
+    parser.add_argument('-wt', '--workerThreads', metavar='<arg>', type=int, action='store',
+                        help='Number of worker threads')
+
+    parser.add_argument('-v', '--verbose', action='store_true',
+                        help='Option to print out more detailed messages as the program runs.')
     args = parser.parse_args()
 
     return args
 
-def configure(args):
-    if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
-        config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'))
-    else:
-        config = ClientConfiguration('clientscripts/config/settings.cfg')
-        if args.username:
-            config.username = args.username
-        if args.password:
-            config.password = args.password
-        config.nda_login()
-        file_path = os.path.join(os.path.expanduser('~'), '.NDATools')
-        os.makedirs(file_path, exist_ok=True)
-        file_copy = os.path.join(file_path, 'settings.cfg')
 
-        config_location = resource_filename(__name__, '/config/settings.cfg')
-        shutil.copy(config_location, file_copy) # make sure you can find this file
-        with fileinput.FileInput(file_copy, inplace=True) as file:
-            for line in file:
-                if line.startswith('username'):
-                    print(line.replace('=', '= {}'.format(config.username)))
-                elif line.startswith('password'):
-                    print(line.replace('=', '= {}'.format(config.password)))
-                else:
-                    print(line)
-    if args.username:
-        config.username = args.username
-    if args.password:
-        config.password = args.password
+
+def configure(username, password):
+    if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
+        config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'), username, password)
+    else:
+        config = ClientConfiguration('clientscripts/config/settings.cfg', username, password)
+        config.read_user_credentials()
+        config.make_config()
     return config
 
 def main():
     args = parse_args()
-    config = configure(args)
+    config = configure(args.username, args.password)
 
     # directory where files will be downloaded
     if args.directory:
@@ -106,17 +90,24 @@ def main():
         resume = True
         prev_directory = args.resume[0]
 
-    s3Download = Download(dir, config)
+    verbose = False
+    if args.verbose:
+        verbose = True
+
+    s3Download = Download(dir, config, verbose=verbose)
     s3Download.get_links(links, args.paths, filters=None)
+    if len(s3Download.path_list) == 0:
+        return
     s3Download.get_tokens()
-    s3Download.start_workers(resume, prev_directory)
+    s3Download.start_workers(resume, prev_directory, args.workerThreads)
 
     # download associated files from package
     #if args.package:
     #    s3Download.searchForDataStructure(resume, prev_directory)
 
 
-    print('Finished downloading all files.')
+    if verbose:
+        print('Finished downloading all files.')
 
 if __name__ == "__main__":
     main()
