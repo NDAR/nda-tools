@@ -118,9 +118,7 @@ class Submission:
                 batch_status_update.append(update)
 
         self.batch_status_update = batch_status_update
-        data = json.dumps(self.batch_status_update)
-
-        return data
+        return batch_status_update
 
     @property
     def incomplete_files(self):
@@ -297,9 +295,13 @@ class Submission:
 
 
     def batch_update_status(self, status="Complete"):
-        data = self.generate_data_for_request(status)
+        list_data = self.generate_data_for_request(status)
         url = "/".join([self.api, self.submission_id, 'files/batchUpdate'])
-        api_request(self, "PUT", url, data=data)
+        data = [list_data[i:i + self.batch_status_update] for i in range(0, len(list_data), self.batch_status_update)]
+        for d in data:
+            data = json.dumps(d)
+            api_request(self, "PUT", url, data=data)
+
 
     def submission_upload(self, hide_progress=True):
         with self.upload_queue.mutex:
