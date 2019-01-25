@@ -297,7 +297,7 @@ class Submission:
     def batch_update_status(self, status="Complete"):
         list_data = self.generate_data_for_request(status)
         url = "/".join([self.api, self.submission_id, 'files/batchUpdate'])
-        data = [list_data[i:i + self.batch_status_update] for i in range(0, len(list_data), self.batch_status_update)]
+        data = [list_data[i:i + self.batch_size] for i in range(0, len(list_data), self.batch_size)]
         for d in data:
             data = json.dumps(d)
             api_request(self, "PUT", url, data=data)
