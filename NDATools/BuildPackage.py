@@ -266,11 +266,11 @@ class SubmissionPackage:
             message = 'You must make sure you have read-access to all the of the associated files listed in your validation file. ' \
                       'Please update your permissions for the following associated files:\n'
             if retry_allowed:
-                print('\n', message)
+                print(message)
                 for file in self.no_read_access:
                     print(file)
                 self.recollect_file_search_info()
-                for file in self.no_read_access:
+                for file in self.no_read_access.copy():
                     self.check_read_permissions(file)
             else:
                 error = "".join(['Read Permission Error:', message])
