@@ -52,7 +52,7 @@ class SubmissionPackage:
         self.get_collections()
         self.get_custom_endpoints()
         self.validation_results = []
-        self.no_read_access = []
+        self.no_read_access = set()
         self.submission_packages_dir = os.path.join(os.path.expanduser('~'), self.config.submission_packages)
         if not os.path.exists(self.submission_packages_dir):
             os.mkdir(self.submission_packages_dir)
@@ -162,11 +162,14 @@ class SubmissionPackage:
     def check_read_permissions(self, file):
         try:
             open(file)
+            if file in self.no_read_access:
+                self.no_read_access.remove(file)
         except IOError as e:
             #print(e, file)
-            self.no_read_access.append(file)
+            self.no_read_access.add(file)
         except PermissionError as e:
-            self.no_read_access.append(file)
+            self.no_read_access.add(file)
+
 
     def file_search(self, directories=None, source_bucket=None, source_prefix=None, access_key=None, secret_key=None, retry_allowed=False):
         def raise_error(error, l = []):
@@ -200,6 +203,7 @@ class SubmissionPackage:
                     f = file
                 for d in self.directory_list:
                     file_name = os.path.join(d, f)
+                    #self.check_read_permissions(file_name)
                     if os.path.isfile(file_name):
                         self.check_read_permissions(file_name)
                         self.full_file_path[file] = (file_name, os.path.getsize(file_name))
@@ -258,17 +262,16 @@ class SubmissionPackage:
                 error = "".join(['Missing Files:', message])
                 raise_error(error, self.no_match)
 
-        if self.no_read_access:
-            message = 'You must make sure you have read-access to all the of the associated files listed in your validation file' \
+        while self.no_read_access:
+            message = 'You must make sure you have read-access to all the of the associated files listed in your validation file. ' \
                       'Please update your permissions for the following associated files:\n'
             if retry_allowed:
                 print('\n', message)
                 for file in self.no_read_access:
                     print(file)
                 self.recollect_file_search_info()
-                self.file_search(self.directory_list, self.source_bucket, self.source_prefix, self.aws_access_key,
-                                 self.aws_secret_key,
-                                 retry_allowed=True)
+                for file in self.no_read_access:
+                    self.check_read_permissions(file)
             else:
                 error = "".join(['Read Permission Error:', message])
                 raise_error(error, self.no_match)
@@ -278,7 +281,6 @@ class SubmissionPackage:
         self.config.source_prefix = self.source_prefix
         self.config.aws_access_key = self.aws_access_key
         self.config.aws_secret_key = self.aws_secret_key
-        sys.exit(1)
 
     def build_package(self):
         def raise_error(value):
