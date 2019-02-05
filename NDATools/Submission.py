@@ -37,7 +37,7 @@ class Submission:
         self.thread_num = max([1, multiprocessing.cpu_count() - 1])
         if thread_num:
             self.thread_num = thread_num
-        self.batch_size = 50000
+        self.batch_size = 1000
         self.batch_status_update = []
         self.directory_list = self.config.directory_list
         self.credentials_list = []
@@ -92,6 +92,7 @@ class Submission:
         all_credentials = []
         batched_ids = [file_ids[i:i + self.batch_size] for i in range(0, len(file_ids), self.batch_size)]
         for ids in batched_ids:
+            print(len(ids))
             credentials_list, session = api_request(self, "POST", "/".join(
                 [self.api, self.submission_id, 'files/batchMultipartUploadCredentials']), data=json.dumps(ids))
             all_credentials = all_credentials + credentials_list['credentials']

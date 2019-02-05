@@ -60,6 +60,7 @@ def api_request(api, verb, endpoint, data=None, session=None):
     try:
         r = session.send(requests.Request(verb, endpoint, headers, auth=auth, data=data).prepare(),
                          timeout=300, stream=False)
+
     except requests.exceptions.RequestException as e:
         print('\nAn error occurred while making {} request, check your endpoint configuration:\n'.
               format(e.request.method))
