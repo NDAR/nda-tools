@@ -98,7 +98,7 @@ class Submission:
 
         return all_credentials
 
-    def generate_data_for_request(self, status="Complete"):
+    def generate_data_for_request(self, status):
         batch_status_update = []
         batched_file_info_lists = [self.credentials_list[i:i + self.batch_size] for i in
                                    range(0, len(self.credentials_list),
@@ -145,7 +145,7 @@ class Submission:
         file_ids = self.create_file_id_list(response)
         self.credentials_list = self.get_multipart_credentials(file_ids)
 
-        data = self.generate_data_for_request()
+        data = self.generate_data_for_request(Status.COMPLETE)
         url = "/".join([self.api, self.submission_id, 'files/batchUpdate'])
         auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
         headers = {'content-type': 'application/json'}
@@ -294,11 +294,11 @@ class Submission:
             return len(self.source_bucket) > 0
 
 
-    def batch_update_status(self, status="Complete"):
+    def batch_update_status(self, status=Status.COMPLETE): #is this ok? I am getting a warning that this is dynamic dispatch and duck typing.
         list_data = self.generate_data_for_request(status)
         url = "/".join([self.api, self.submission_id, 'files/batchUpdate'])
-        data = [list_data[i:i + self.batch_size] for i in range(0, len(list_data), self.batch_size)]
-        for d in data:
+        data_to_dump = [list_data[i:i + self.batch_size] for i in range(0, len(list_data), self.batch_size)]
+        for d in data_to_dump:
             data = json.dumps(d)
             api_request(self, "PUT", url, data=data)
 
@@ -317,7 +317,7 @@ class Submission:
         if response:
             file_ids = self.create_file_id_list(response)
             self.credentials_list = self.get_multipart_credentials(file_ids)
-            self.batch_update_status(status="Ready") #update the file size before submission, so service can compare.
+            self.batch_update_status(status=Status.READY) #update the file size before submission, so service can compare.
 
             if hide_progress is False:
                 self.total_progress = tqdm(total=self.total_upload_size,
@@ -551,3 +551,4 @@ class Status:
     COMPLETE = 'Complete'
     ERROR = 'Error'
     PROCESSING = 'processing'
+    READY = 'Ready'
