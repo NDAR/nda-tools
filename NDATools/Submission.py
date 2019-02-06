@@ -17,6 +17,14 @@ from NDATools.Configuration import *
 from NDATools.Utils import *
 
 
+class Status:
+    UPLOADING = 'Uploading'
+    SYSERROR = 'SystemError'
+    COMPLETE = 'Complete'
+    ERROR = 'Error'
+    PROCESSING = 'processing'
+    READY = 'Ready'
+
 
 class Submission:
     def __init__(self, id, full_file_path, config, resume=False, allow_exit=False, username=None, password=None, thread_num=None):
@@ -545,10 +553,3 @@ class Submission:
                 self.upload = None
                 self.upload_queue.task_done()
 
-class Status:
-    UPLOADING = 'Uploading'
-    SYSERROR = 'SystemError'
-    COMPLETE = 'Complete'
-    ERROR = 'Error'
-    PROCESSING = 'processing'
-    READY = 'Ready'
