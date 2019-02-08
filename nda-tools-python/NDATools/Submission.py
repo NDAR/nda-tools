@@ -73,6 +73,7 @@ class Submission:
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id]))
         if response:
             self.status = response['submission_status']
+            print('Checking Submission Status:  (STATUS=' + self.status + ")")
         else:
             message='An error occurred while checking submission {} status.'.format(self.submission_id)
             if self.exit:
@@ -360,9 +361,8 @@ class Submission:
 
         self.batch_update_status()
 
-        if not hide_progress:
-            print('\nUploads complete.')
-            print('Checking Submission Status.')
+        print('\nUploads complete.')
+        print('Checking Submission Status.')
         self.check_status()
         if self.status == Status.UPLOADING:
             if not self.incomplete_files:
@@ -383,8 +383,8 @@ class Submission:
                 print('There was an error transferring some files, trying again')
                 if self.found_all_files and self.upload_tries < 5:
                     self.submission_upload()
-        if self.status != Status.UPLOADING and hide_progress:
-            sys.exit(0)
+        #if self.status != Status.UPLOADING and hide_progress:
+        #    sys.exit(0)
 
     class S3Upload(threading.Thread):
         def __init__(self, index, config, upload_queue, full_file_path, submission_id, progress_queue, credentials_list):
