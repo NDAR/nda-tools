@@ -80,6 +80,10 @@ def parse_args():
 
     parser.add_argument('-wt', '--workerThreads', metavar='<arg>', type=int, action='store',
                         help='Number of worker threads')
+
+    parser.add_argument('--hideProgress', action='store_true',
+                        help='Hides upload/proccessing progress')
+
     args = parser.parse_args()
 
     return args
@@ -121,6 +125,7 @@ def configure(args):
         config.validation_api = args.validationAPI[0]
     if args.JSON:
             config.JSON = True
+    config.hideProgress = args.hideProgress
 
     return config
 
@@ -134,9 +139,9 @@ def resume_submission(submission_id, config=None):
     if submission.status == Status.UPLOADING:
         if submission.incomplete_files and submission.found_all_files(retry_allowed=True):
             submission.check_submitted_files()
-            submission.submission_upload(hide_progress=False)
+            submission.submission_upload(hide_progress=config.hideProgress)
         else:
-           submission.submission_upload(hide_progress=False)
+           submission.submission_upload(hide_progress=config.hideProgress)
 
     else:
         print('Submission Completed with status {}'.format(submission.status))
@@ -144,7 +149,7 @@ def resume_submission(submission_id, config=None):
 
 
 def validate_files(file_list, warnings, build_package, threads, config=None):
-    validation = Validation(file_list, config=config, hide_progress=False, thread_num=threads, allow_exit=True)
+    validation = Validation(file_list, config=config, hide_progress=config.hideProgress, thread_num=threads, allow_exit=True)
     print('\nValidating files...')
     validation.validate()
     for (response, file) in validation.responses:
@@ -222,7 +227,7 @@ def build_package(uuid, associated_files, config):
     print('\nPackage finished building.\n')
 
     print('Downloading submission package.')
-    package.download_package(hide_progress=False)
+    package.download_package(hide_progress=config.hideProgress)
     print('\nA copy of your submission package has been saved to: {}'.
           format(os.path.join(package.package_folder, package.config.submission_packages)))
 
@@ -237,7 +242,7 @@ def submit_package(package_id, full_file_path, associated_files, threads, config
         print('Submission ID: {}'.format(str(submission.submission_id)))
     if associated_files:
         print('Preparing to upload associated files.')
-        submission.submission_upload(hide_progress=False)
+        submission.submission_upload(hide_progress=config.hideProgress)
     if submission.status != Status.UPLOADING:
         print('\nYou have successfully completed uploading files for submission {}!'.format(submission.submission_id))
 
