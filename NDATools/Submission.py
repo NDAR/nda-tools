@@ -302,6 +302,29 @@ class Submission:
 
         api_request(self, "PUT", url, data=data)
 
+
+    def complete_partial_uploads(self):
+        from boto.s3.connection import S3Connection, OrdinaryCallingFormat
+
+        #use mod to determine NDAR_Central bucket instead of making a request
+        response, session = api_request(self, "GET", "/".join([self.api, self.submission_id, 'files']))
+        if response:
+            for file in response:
+                if file['status'] != Status.COMPLETE:
+                    remote_path = file['file_remote_path']
+                    #print(remote_path)
+                    paths = remote_path.split('/')
+                    bucket = paths[2]
+                    prefix = paths[3]
+                    connection = S3Connection(calling_format=OrdinaryCallingFormat())
+                    bucket = connection.get_bucket(bucket)
+                    uploads = bucket.get_all_multipart_uploads(prefix=prefix)
+                    print (len(uploads), "incomplete multi-part uploads found.")
+                    for u in uploads:
+                        print(u, '\n')
+
+        sys.exit(1)
+
     def submission_upload(self, hide_progress=True):
         with self.upload_queue.mutex:
             self.upload_queue.queue.clear()

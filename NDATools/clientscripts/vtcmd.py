@@ -134,6 +134,7 @@ def resume_submission(submission_id, config=None):
     if submission.status == Status.UPLOADING:
         if submission.incomplete_files and submission.found_all_files(retry_allowed=True):
             submission.check_submitted_files()
+            #submission.complete_partial_uploads()
             submission.submission_upload(hide_progress=False)
         else:
            submission.submission_upload(hide_progress=False)
