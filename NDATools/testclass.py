@@ -3,6 +3,8 @@
 import os
 import boto3
 import math
+import hashlib
+import inspect
 from boto3.s3.transfer import TransferConfig, S3Transfer
 
 class S3MultipartUpload:
@@ -37,7 +39,10 @@ class S3MultipartUpload:
                 self.uploaded_parts["{}".format(part.part_number)] = part
                 print("wtf: {}".format(self.uploaded_parts))
                 
-        parts = list(map(lambda x : dict(ETag=x.etag, PartNumber=x.part_number) , self.uploaded_parts.values()))
+        parts = list(map(lambda x : dict(ETag=x.etag, PartNumber=x.part_number) , filter(lambda y: not isinstance(y,dict), self.uploaded_parts.values())))
+        parts.extend(list(map(lambda x : dict(ETag=x['ETag'], PartNumber=x['PartNumber']), filter(lambda y: isinstance(y,dict), self.uploaded_parts.values()))))
+        print(parts)
+        parts.sort(key=lambda x: x['PartNumber'])
         response = s3.complete_multipart_upload(Bucket=self.bucket, Key=self.key, UploadId=self.mpu_id, MultipartUpload=dict(Parts=parts))
         print("response: {}".format(response))
         # TODO - maybe add step to check check-sum so that what was uploaded is the same as what we intended to upload
@@ -66,6 +71,8 @@ class S3MultipartUpload:
             self.part_number = part_number
             self.offset = self.calculate_offset()
             self.etag = None
+        def __str__(self):
+            return "offset: {} \r\n part number: {} \r\n ,size: {}".format(self.offset, self.part_number, len(self.data))
         def calculate_offset(self):
             return (self.part_number - 1) * self.s3_multipart_upload.normal_part_size
         def upload_part(self):
@@ -93,15 +100,27 @@ s3 = boto3.client('s3')
 #upload parts of a test file for multi-part upload
 bucket="test.nimhda.org"
 key="testmpu"
+s3.delete_object(Bucket=bucket,Key=key)
+response = s3.list_multipart_uploads( Bucket=bucket) 
+
+if "Uploads" in response:
+    for x in response['Uploads']:
+        s3.abort_multipart_upload(Bucket=bucket, Key=key, UploadId=x['UploadId'])
+
 mpu = s3.create_multipart_upload(Bucket=bucket, Key=key)
 print("mpu:{}".format(mpu))
 parts = []
 mpu_id = mpu["UploadId"]
 f=open("C:\\Users\\magditsgs\\workspaces\\misc\\scripts\\orgochem.pdf", "rb")
-data = f.read(int(5e6))
+data = f.read(int(5 * 1024 * 1024))
+data2 = f.read(int(5 * 1024 * 1024))
+md5Sum=hashlib.md5(open("C:\\Users\\magditsgs\\workspaces\\misc\\scripts\\orgochem.pdf", 'rb').read()).hexdigest()
+
 part = s3.upload_part(Body=data, Bucket=bucket, Key=key, UploadId=mpu_id, PartNumber=1)
+part2 = s3.upload_part(Body=data2, Bucket=bucket, Key=key, UploadId=mpu_id, PartNumber=2)
 parts.append(part)
-print("part:{}".format(part))
+parts.append(part2)
+print("parts:{}".format(parts))
 
 #run the function we will make that resumes submission of a file
 resume_mpu(Bucket=bucket, Key=key, File=f, Mpu_Id=mpu_id)
@@ -112,6 +131,10 @@ resume_mpu(Bucket=bucket, Key=key, File=f, Mpu_Id=mpu_id)
 response = s3.list_multipart_uploads( Bucket=bucket) 
 print("response - outer scope: {}".format(response))
 assert 'Uploads' not in response
+response = s3.get_object(Bucket=bucket, Key=key)
+md5Sum_2=hashlib.md5(response['Body'].read()).hexdigest()
+print("md5sum: {} \r\n md5sum_2: {}".format(md5Sum, md5Sum_2))
+assert md5Sum == md5Sum_2
 
 # TODO - need to determine how localfiles are mapped to s3 files in Ushnas script and incorporate that logic into the final code
 
