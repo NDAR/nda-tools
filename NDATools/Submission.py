@@ -15,6 +15,8 @@ else:
     import queue
 from NDATools.Configuration import *
 from NDATools.Utils import *
+from NDATools.MultiPartUploads import *
+from NDATools.TokenGenerator import *
 
 
 
@@ -47,12 +49,14 @@ class Submission:
         self.total_progress = None
         self.upload_tries = 0
         self.max_submit_time = 120
+        self.url = self.config.datamanager_api
         if resume:
             self.submission_id = id
             self.no_match = []
         else:
             self.package_id = id
         self.exit = allow_exit
+        self.all_mpus = []
 
 
     def submit(self):
@@ -174,7 +178,6 @@ class Submission:
         #update full_file_path list
         self.credentials_list = self.get_multipart_credentials(unsubmitted_ids)
         self.update_full_file_paths()
-
 
     def update_full_file_paths(self):
         full_file_path = {}
@@ -304,26 +307,21 @@ class Submission:
 
 
     def complete_partial_uploads(self):
-        from boto.s3.connection import S3Connection, OrdinaryCallingFormat
+        print(self.full_file_path, '\n')
 
-        #use mod to determine NDAR_Central bucket instead of making a request
-        response, session = api_request(self, "GET", "/".join([self.api, self.submission_id, 'files']))
-        if response:
-            for file in response:
-                if file['status'] != Status.COMPLETE:
-                    remote_path = file['file_remote_path']
-                    #print(remote_path)
-                    paths = remote_path.split('/')
-                    bucket = paths[2]
-                    prefix = paths[3]
-                    connection = S3Connection(calling_format=OrdinaryCallingFormat())
-                    bucket = connection.get_bucket(bucket)
-                    uploads = bucket.get_all_multipart_uploads(prefix=prefix)
-                    print (len(uploads), "incomplete multi-part uploads found.")
-                    for u in uploads:
-                        print(u, '\n')
+        bucket = 'NDAR_Central_{}'.format((int(self.submission_id) % 4) + 1)
+        prefix = 'submission_{}'.format(self.submission_id)
 
-        sys.exit(1)
+        multipart_uploads = MultiPartsUpload(bucket, prefix, self.config)
+        multipart_uploads.get_multipart_uploads()
+        for upload in multipart_uploads.incomplete_mpu:
+            #print(upload)
+            self.all_mpus.append(upload)
+
+        """for upload in multipart_uploads.incomplete_mpu:
+            u = UploadMultiParts(upload, self.full_file_path, bucket, prefix, self.config)
+            u.upload_all_parts()"""
+
 
     def submission_upload(self, hide_progress=True):
         with self.upload_queue.mutex:
@@ -351,7 +349,7 @@ class Submission:
             workers = []
             for x in range(self.thread_num):
                 worker = Submission.S3Upload(x, self.config, self.upload_queue, self.full_file_path, self.submission_id,
-                                             self.progress_queue, self.credentials_list)
+                                             self.progress_queue, self.credentials_list, self.all_mpus)
 
                 workers.append(worker)
                 worker.daemon = True
@@ -410,7 +408,8 @@ class Submission:
             sys.exit(0)
 
     class S3Upload(threading.Thread):
-        def __init__(self, index, config, upload_queue, full_file_path, submission_id, progress_queue, credentials_list):
+        def __init__(self, index, config, upload_queue, full_file_path, submission_id, progress_queue, credentials_list,
+                     all_mpus):
             threading.Thread.__init__(self)
             self.config = config
             self.upload_queue = upload_queue
@@ -426,6 +425,7 @@ class Submission:
             self.full_file_path = full_file_path
             self.credentials_list = credentials_list
             self.submission_id = submission_id
+            self.all_mpus = all_mpus
             self.index = index + 1
             self.progress_queue = progress_queue
             self.shutdown_flag = threading.Event()
@@ -467,8 +467,7 @@ class Submission:
 
 
                 file_id, credentials, bucket, key, full_path, file_size = self.upload_config()
-
-
+                prefix = 'submission_{}'.format(self.submission_id)
 
                 """
                 Methods for  file transfer: 
@@ -478,7 +477,34 @@ class Submission:
 
                 If the source file is from S3, use a specific AWS Profile to retrieve the source file, and uses
                 credentials supplied by the submission API to upload to remote S3 location.
+                
+                If the file was uploaded using multi-part, it will first complete the multi part uploads.
                 """
+
+                for upload in self.all_mpus:
+                    if upload['Key'] == key:
+                        u = UploadMultiParts(upload, self.full_file_path, bucket, prefix, self.config)
+                        u.get_parts_information()
+                        self.progress_queue.put(u.completed_bytes)
+
+                        seq = u.completed_parts + 1
+
+                        f = open(full_path, 'rb+')
+                        f.seek(u.completed_bytes)
+                        while True:
+                            buffer = f.read(u.chunk_size)
+                            if len(buffer) == 0:  # EOF
+                                break
+                            u.upload_part(buffer, seq)
+                            self.progress_queue.put(len(buffer))
+                            seq += 1
+                        u.complete()
+                    break
+
+
+                self.progress_queue.put(None)
+                self.upload = None
+                self.upload_queue.task_done()
 
                 if full_path.startswith('s3'):
 
