@@ -159,17 +159,14 @@ class SubmissionPackage:
                 self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
 
 
-    def check_read_permissions(self, file):
+    def check(self, file):
         try:
             open(file)
-            if file in self.no_read_access:
-                self.no_read_access.remove(file)
-        except IOError as e:
-            #print(e, file)
-            self.no_read_access.add(file)
-        except PermissionError as e:
-            self.no_read_access.add(file)
-
+            return True
+        except IOError:
+            return False
+        except PermissionError:
+            return False
 
     def file_search(self, directories=None, source_bucket=None, source_prefix=None, access_key=None, secret_key=None, retry_allowed=False):
         def raise_error(error, l = []):
@@ -203,12 +200,14 @@ class SubmissionPackage:
                     f = file
                 for d in self.directory_list:
                     file_name = os.path.join(d, f)
-                    #self.check_read_permissions(file_name)
                     if os.path.isfile(file_name):
-                        self.check_read_permissions(file_name)
+                        if not self.check(file_name):
+                            self.no_read_access.add(file_name)
                         self.full_file_path[file] = (file_name, os.path.getsize(file_name))
                         self.no_match.remove(file)
                         break
+
+
 
         # files in s3
         no_access_buckets = []
@@ -270,8 +269,7 @@ class SubmissionPackage:
                 for file in self.no_read_access:
                     print(file)
                 self.recollect_file_search_info()
-                for file in self.no_read_access.copy():
-                    self.check_read_permissions(file)
+                self.no_read_access.remove(i) for i in [file for file in self.no_read_access if self.check(file)]
             else:
                 error = "".join(['Read Permission Error:', message])
                 raise_error(error, self.no_match)
