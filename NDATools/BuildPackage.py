@@ -159,7 +159,7 @@ class SubmissionPackage:
                 self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
 
 
-    def check(self, file):
+    def check_read_permissions(self, file):
         try:
             open(file)
             return True
@@ -201,13 +201,11 @@ class SubmissionPackage:
                 for d in self.directory_list:
                     file_name = os.path.join(d, f)
                     if os.path.isfile(file_name):
-                        if not self.check(file_name):
+                        if not self.check_read_permissions(file_name):
                             self.no_read_access.add(file_name)
                         self.full_file_path[file] = (file_name, os.path.getsize(file_name))
                         self.no_match.remove(file)
                         break
-
-
 
         # files in s3
         no_access_buckets = []
@@ -269,7 +267,7 @@ class SubmissionPackage:
                 for file in self.no_read_access:
                     print(file)
                 self.recollect_file_search_info()
-                self.no_read_access.remove(i) for i in [file for file in self.no_read_access if self.check(file)]
+                [self.no_read_access.remove(i) for i in [file for file in self.no_read_access if self.check_read_permissions(file)]]
             else:
                 error = "".join(['Read Permission Error:', message])
                 raise_error(error, self.no_match)
