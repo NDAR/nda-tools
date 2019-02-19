@@ -526,8 +526,6 @@ class Submission:
                         self.progress_queue.put(u.completed_bytes)
                         seq = 1
 
-                        # f.seek(buffer_start)
-                        buffer_start = u.chunk_size * (seq - 1)
                         for buffer in self.fileobj.iter_chunks(chunk_size=u.chunk_size):
                             if seq in u.parts_completed:
                                 part = u.parts[seq - 1]
