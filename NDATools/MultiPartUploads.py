@@ -1,6 +1,10 @@
 import boto3
 import botocore
+import hashlib
+
 from NDATools.TokenGenerator import *
+from NDATools.Utils import *
+
 
 
 
@@ -23,7 +27,6 @@ class MultiPartsUpload:
         try:
             uploads = self.client.list_multipart_uploads(Bucket=self.bucket, Prefix=self.prefix)['Uploads']
             for u in uploads:
-                #print(u, '\n')
                 if u not in self.incomplete_mpu:
                     self.incomplete_mpu.append(u)
                 else:
@@ -39,12 +42,10 @@ class MultiPartsUpload:
         for upload_id, key in self.mpu_to_abort.items():
             self.client.abort_multipart_upload(
                 Bucket=self.bucket, Key=key, UploadId=upload_id)
-           # print('aborted', upload_id)
 
 
 class UploadMultiParts:
     def __init__(self, upload_obj, full_file_path, bucket, prefix, config):
-        #self.multipart_chunk_size_mb = #15  # MB
         self.chunk_size = 0
         self.upload_obj = upload_obj
         self.full_file_path = full_file_path
@@ -65,27 +66,33 @@ class UploadMultiParts:
         self.completed_bytes = 0
         self.completed_parts = 0
         self.parts = []
+        self.parts_completed = []
 
 
     def get_parts_information(self):
         self.upload_obj = self.client.list_parts(Bucket=self.bucket, Key=self.key,
                                              UploadId=self.upload_id)
 
-        parts = dict()
-
         if 'Parts' in self.upload_obj:
+            self.chunk_size = self.upload_obj['Parts'][0]['Size'] # size of first part should be size of all subsequent parts
             for p in self.upload_obj['Parts']:
                 try:
-                    parts[int(p['PartNumber'])] = {'checksum': p['ETag'], 'size': p['Size']}
+                    self.parts.append({"PartNumber": p['PartNumber'], "ETag": p["ETag"]})
+                    self.parts_completed.append(p["PartNumber"])
                 except KeyError:
                     pass
 
-        self.completed_parts = len(parts)
-        print(self.completed_parts)
-        self.chunk_size = parts[self.completed_parts]['size']
-        self.completed_bytes = self.chunk_size * self.completed_parts
+        self.completed_bytes = self.chunk_size * len(self.parts)
 
-        return parts
+
+    def check_md5(self, part, data):
+
+        ETag = (part["ETag"]).split('"')[1]
+
+        md5 = hashlib.md5(data).hexdigest()
+        if md5 != ETag:
+            message = "The file seems to be modified since previous upload attempt(md5 value does not match)."
+            exit_client(signal=signal.SIGTERM, message=message) # force exit because file has been modified (data integrity)
 
     def upload_part(self, data, i):
         part = self.client.upload_part(Body=data, Bucket=self.bucket, Key=self.key, UploadId=self.upload_id, PartNumber=i)
