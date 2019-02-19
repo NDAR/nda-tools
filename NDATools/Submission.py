@@ -4,6 +4,7 @@ import sys
 import signal
 import multiprocessing
 import boto3
+import botocore
 from boto3.s3.transfer import S3Transfer, TransferConfig
 from tqdm import tqdm
 from botocore.client import Config, ClientError
