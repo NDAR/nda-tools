@@ -75,6 +75,7 @@ class Submission:
 
     def check_status(self):
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id]))
+
         if response:
             self.status = response['submission_status']
         else:
@@ -573,20 +574,20 @@ class Submission:
                         self.progress_queue.put(u.completed_bytes)
                         seq = 1
 
-                        f = open(full_path, 'rb+')
-                        while True:
-                            buffer_start = u.chunk_size * (seq - 1)
-                            f.seek(buffer_start)
-                            buffer = f.read(u.chunk_size)
-                            if len(buffer) == 0:  # EOF
-                                break
-                            if seq in u.parts_completed:
-                                part = u.parts[seq - 1]
-                                u.check_md5(part, buffer)
-                            else:
-                                u.upload_part(buffer, seq)
-                                self.progress_queue.put(len(buffer))
-                            seq += 1
+                        with  open(full_path, 'rb+') as f:
+                            while True:
+                                buffer_start = u.chunk_size * (seq - 1)
+                                f.seek(buffer_start)
+                                buffer = f.read(u.chunk_size)
+                                if len(buffer) == 0:  # EOF
+                                    break
+                                if seq in u.parts_completed:
+                                    part = u.parts[seq - 1]
+                                    u.check_md5(part, buffer)
+                                else:
+                                    u.upload_part(buffer, seq)
+                                    self.progress_queue.put(len(buffer))
+                                seq += 1
                         u.complete()
                         self.progress_queue.put(None)
 
@@ -599,7 +600,12 @@ class Submission:
                                 region_name='us-east-1'
                             )
                             s3 = session.client('s3')
-                            s3_transfer = S3Transfer(s3)
+                            config = TransferConfig(
+                                multipart_threshold=8 * 1024 * 1024,
+                                max_concurrency=10,
+                                num_download_attempts=10)
+
+                            s3_transfer = S3Transfer(s3, config)
                             tqdm.monitor_interval = 0
                             s3_transfer.upload_file(full_path, bucket, key, callback=self.UpdateProgress(self.progress_queue))
 

@@ -42,6 +42,11 @@ class MultiPartsUpload:
         for upload_id, key in self.mpu_to_abort.items():
             self.client.abort_multipart_upload(
                 Bucket=self.bucket, Key=key, UploadId=upload_id)
+class Constants:
+    PARTS = 'Parts'
+    SIZE = 'Size'
+    PART_NUM = 'PartNumber'
+    ETAG = 'ETag'
 
 
 class UploadMultiParts:
@@ -73,12 +78,12 @@ class UploadMultiParts:
         self.upload_obj = self.client.list_parts(Bucket=self.bucket, Key=self.key,
                                              UploadId=self.upload_id)
 
-        if 'Parts' in self.upload_obj:
-            self.chunk_size = self.upload_obj['Parts'][0]['Size'] # size of first part should be size of all subsequent parts
-            for p in self.upload_obj['Parts']:
+        if Constants.PARTS in self.upload_obj:
+            self.chunk_size = self.upload_obj[Constants.PARTS][0][Constants.SIZE] # size of first part should be size of all subsequent parts
+            for p in self.upload_obj[Constants.PARTS]:
                 try:
-                    self.parts.append({"PartNumber": p['PartNumber'], "ETag": p["ETag"]})
-                    self.parts_completed.append(p["PartNumber"])
+                    self.parts.append({Constants.PART_NUM: p[Constants.PART_NUM], Constants.ETAG: p[Constants.ETAG]})
+                    self.parts_completed.append(p[Constants.PART_NUM])
                 except KeyError:
                     pass
 
@@ -87,7 +92,7 @@ class UploadMultiParts:
 
     def check_md5(self, part, data):
 
-        ETag = (part["ETag"]).split('"')[1]
+        ETag = (part[Constants.ETAG]).split('"')[1]
 
         md5 = hashlib.md5(data).hexdigest()
         if md5 != ETag:
@@ -96,7 +101,7 @@ class UploadMultiParts:
 
     def upload_part(self, data, i):
         part = self.client.upload_part(Body=data, Bucket=self.bucket, Key=self.key, UploadId=self.upload_id, PartNumber=i)
-        self.parts.append({"PartNumber": i, "ETag": part["ETag"]})
+        self.parts.append({Constants.PART_NUM: i, Constants.ETAG: part[Constants.ETAG]})
         self.completed_bytes += len(data)
 
 
@@ -105,7 +110,4 @@ class UploadMultiParts:
             Bucket=self.bucket,
             Key=self.key,
             UploadId=self.upload_id,
-            MultipartUpload={"Parts": self.parts})
-        print('finished uploading all parts!')
-
-
+            MultipartUpload={Constants.PARTS: self.parts})
