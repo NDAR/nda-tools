@@ -18,6 +18,14 @@ from NDATools.Configuration import *
 from NDATools.Utils import *
 
 
+class Status:
+    UPLOADING = 'Uploading'
+    SYSERROR = 'SystemError'
+    COMPLETE = 'Complete'
+    ERROR = 'Error'
+    PROCESSING = 'processing'
+    READY = 'Ready'
+
 
 class Submission:
     def __init__(self, id, full_file_path, config, resume=False, allow_exit=False, username=None, password=None, thread_num=None):
@@ -100,7 +108,7 @@ class Submission:
 
         return all_credentials
 
-    def generate_data_for_request(self):
+    def generate_data_for_request(self, status):
         batch_status_update = []
         batched_file_info_lists = [self.credentials_list[i:i + self.batch_size] for i in
                                    range(0, len(self.credentials_list),
@@ -115,14 +123,12 @@ class Submission:
                     "id": str(cred['submissionFileId']),
                     "md5sum": "None",
                     "size": size,
-                    "status": "Complete"
+                    "status": status
                 }
                 batch_status_update.append(update)
 
         self.batch_status_update = batch_status_update
-        data = json.dumps(self.batch_status_update)
-
-        return data
+        return batch_status_update
 
     @property
     def incomplete_files(self):
@@ -149,7 +155,7 @@ class Submission:
         file_ids = self.create_file_id_list(response)
         self.credentials_list = self.get_multipart_credentials(file_ids)
 
-        data = self.generate_data_for_request()
+        data = self.generate_data_for_request(Status.COMPLETE)
         url = "/".join([self.api, self.submission_id, 'files/batchUpdate'])
         auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
         headers = {'content-type': 'application/json'}
@@ -329,11 +335,14 @@ class Submission:
             return len(self.source_bucket) > 0
 
 
-    def batch_update_status(self):
-        data = self.generate_data_for_request()
+    def batch_update_status(self, status=Status.COMPLETE): #is this ok? I am getting a warning that this is dynamic dispatch and duck typing.
+        list_data = self.generate_data_for_request(status)
         url = "/".join([self.api, self.submission_id, 'files/batchUpdate'])
+        data_to_dump = [list_data[i:i + self.batch_size] for i in range(0, len(list_data), self.batch_size)]
+        for d in data_to_dump:
+            data = json.dumps(d)
+            api_request(self, "PUT", url, data=data)
 
-        api_request(self, "PUT", url, data=data)
 
     def submission_upload(self, hide_progress=True):
         with self.upload_queue.mutex:
@@ -349,6 +358,7 @@ class Submission:
         if response:
             file_ids = self.create_file_id_list(response)
             self.credentials_list = self.get_multipart_credentials(file_ids)
+            self.batch_update_status(status=Status.READY) #update the file size before submission, so service can compare.
 
             if hide_progress is False:
                 self.total_progress = tqdm(total=self.total_upload_size,
@@ -417,7 +427,7 @@ class Submission:
                 if self.found_all_files and self.upload_tries < 5:
                     self.submission_upload()
         if self.status != Status.UPLOADING and hide_progress:
-            sys.exit(0)
+            return
 
     class S3Upload(threading.Thread):
         def __init__(self, index, config, upload_queue, full_file_path, submission_id, progress_queue, credentials_list):
@@ -576,9 +586,3 @@ class Submission:
                 self.upload = None
                 self.upload_queue.task_done()
 
-class Status:
-    UPLOADING = 'Uploading'
-    SYSERROR = 'SystemError'
-    COMPLETE = 'Complete'
-    ERROR = 'Error'
-    PROCESSING = 'processing'
