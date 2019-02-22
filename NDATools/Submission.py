@@ -4,6 +4,7 @@ import sys
 import signal
 import multiprocessing
 import boto3
+import botocore
 from boto3.s3.transfer import S3Transfer, TransferConfig
 from tqdm import tqdm
 from botocore.client import Config, ClientError
@@ -58,6 +59,7 @@ class Submission:
         if resume:
             self.submission_id = id
             self.no_match = []
+            self.no_read_access = set()
         else:
             self.package_id = id
         self.exit = allow_exit
@@ -193,39 +195,48 @@ class Submission:
                     break
         self.full_file_path = full_file_path
 
-    def found_all_files(self, retry_allowed=False):
-        print('\nSearching for associated files...')
+    def recollect_file_search_info(self):
+        retry = input('Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
+                      '<bucket name> to locate your associated files:')
+        response = retry.split(' ')
+        self.directory_list = response
+        if response[0] == '-s3':
+            self.source_bucket = response[1]
+            self.source_prefix = input('Enter any prefix for your S3 object, or hit "Enter": ')
+            if self.source_prefix == "":
+                self.source_prefix = None
+            if self.aws_access_key == "":
+                self.aws_access_key = input('Enter the access_key for your AWS account: ')
+            if self.aws_secret_key == "":
+                self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
 
-        s3 = False
-        self.directory_list = self.config.directory_list
-        self.source_bucket = self.config.source_bucket
-        if self.source_bucket:
-            s3 = True
-        self.source_prefix = self.config.source_prefix
-        self.aws_access_key = self.config.aws_access_key
-        self.aws_secret_key = self.config.aws_secret_key
+
+    def check_read_permissions(self, file):
+        try:
+            open(file)
+            return True
+        except IOError:
+            return False
+        except PermissionError:
+            return False
+
+    def found_all_files(self, directories=None, source_bucket=None, source_prefix=None, access_key=None, secret_key=None, retry_allowed=False):
+        def raise_error(error, l = []):
+            m = '\n'.join([error] + list(set(l)))
+            raise Exception(m)
+
+        self.directory_list = directories
+        self.source_bucket = source_bucket
+        self.source_prefix = source_prefix
+        self.aws_access_key = access_key
+        self.aws_secret_key = secret_key
 
         if not self.directory_list and not self.source_bucket:
-            retry = input('Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
-                          '<bucket name> to locate your associated files:')  # prefix and profile can be blank (None)
-            response = retry.split(' ')
-            self.directory_list = response
-            if response[0] == '-s3':
-                s3 = True
-                self.source_bucket = response[1]
-                self.source_prefix = input('Enter any prefix for your S3 object, or hit "Enter": ')
-                if self.source_prefix == "":
-                    self.source_prefix = None
-                if self.aws_access_key == "":
-                    self.aws_access_key = input('Enter the access_key for your AWS account: ')
-                if self.aws_secret_key == "":
-                    self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
-
-                self.config.source_bucket = self.source_bucket
-                self.config.source_prefix = self.source_prefix
-                self.config.aws_access_key = self.aws_access_key
-                self.config.aws_secret_key = self.aws_secret_key
-                self.directory_list = None
+            if retry_allowed:
+                self.recollect_file_search_info()
+            else:
+                error ='Missing directory and/or an S3 bucket.'
+                raise_error(error)
 
         if not self.no_match:
             for file in self.associated_files:
@@ -241,17 +252,19 @@ class Submission:
                 for d in self.directory_list:
                     file_name = os.path.join(d, f)
                     if os.path.isfile(file_name):
+                        if not self.check_read_permissions(file_name):
+                            self.no_read_access.add(file_name)
                         self.full_file_path[file] = (file_name, os.path.getsize(file_name))
                         self.no_match.remove(file)
                         break
 
         # files in s3
-        if s3:
-            if self.aws_access_key is None:
+        no_access_buckets = []
+        if self.source_bucket:
+            if self.aws_access_key is "":
                 self.aws_access_key = input('Enter the access_key for your AWS account: ')
-            if self.aws_secret_key is None:
+            if self.aws_secret_key is "":
                 self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
-
             s3 = boto3.session.Session(aws_access_key_id=self.aws_access_key, aws_secret_access_key=self.aws_secret_key)
             s3_client = s3.client('s3')
             for file in self.no_match[:]:
@@ -259,43 +272,63 @@ class Submission:
                 if self.source_prefix:
                     key = '/'.join([self.source_prefix, file])
                 file_name = '/'.join(['s3:/', self.source_bucket, key])
-
                 try:
                     response = s3_client.head_object(Bucket=self.source_bucket, Key=key)
                     self.full_file_path[file] = (file_name, int(response['ContentLength']))
                     self.no_match.remove(file)
-                except ClientError as e:
-                    pass
+                except botocore.exceptions.ClientError as e:
+                    # If a client error is thrown, then check that it was a 404 error.
+                    # If it was a 404 error, then the bucket does not exist.
+                    error_code = int(e.response['Error']['Code'])
+                    if error_code == 404:
+                        pass
+                    if error_code == 403:
+                        no_access_buckets.append(self.source_bucket)
+                        pass
 
-        for file in self.no_match:
-            print('Associated file not found in specified directory:', file)
         if self.no_match:
-            print('\nYou must make sure all associated files listed in your validation file'
-                  ' are located in the specified directory or AWS bucket. Please try again.')
+            if no_access_buckets:
+                message = 'Your user does NOT have access to the following buckets. Please review the bucket ' \
+                          'and/or your AWS credentials and try again.'
+                if retry_allowed:
+                    print('\n', message)
+                    for b in no_access_buckets:
+                        print(b)
+                else:
+                    error = "".join(['Bucket Access:', message])
+                    raise_error(error, no_access_buckets)
+            message = 'You must make sure all associated files listed in your validation file' \
+                      ' are located in the specified directory or AWS bucket. Associated file not found in specified directory:\n'
             if retry_allowed:
-                retry = input(
-                    'Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
-                    '<bucket name> to locate your associated files:')  # prefix and profile can be blank (None)
-                response = retry.split(' ')
-                self.directory_list = response
-                if response[0] == '-s3':
-                    self.source_bucket = response[1]
-                    self.source_prefix = input('Enter any prefix for your S3 object, or hit "Enter": ')
-                    if self.source_prefix == "":
-                        self.source_prefix = None
-                    self.aws_access_key = input('Enter the access_key for your AWS account: ')
-                    self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
-                    self.directory_list = None
-
-                self.config.source_bucket = self.source_bucket
-                self.config.source_prefix = self.source_prefix
-                self.config.aws_access_key = self.aws_access_key
-                self.config.aws_secret_key = self.aws_secret_key
-
-                self.found_all_files(retry_allowed=True)
+                print('\n', message)
+                for file in self.no_match:
+                    print(file)
+                self.recollect_file_search_info()
+                self.found_all_files(self.directory_list, self.source_bucket, self.source_prefix, self.aws_access_key,
+                                     self.aws_secret_key, retry_allowed=True)
             else:
-                print("\nYou did not enter all the correct directories or AWS bucket. Try again.")
-                sys.exit(1)
+                error = "".join(['Missing Files:', message])
+                raise_error(error, self.no_match)
+
+        while self.no_read_access:
+            message = 'You must make sure you have read-access to all the of the associated files listed in your validation file. ' \
+                      'Please update your permissions for the following associated files:\n'
+            if retry_allowed:
+                print(message)
+                for file in self.no_read_access:
+                    print(file)
+                self.recollect_file_search_info()
+                [self.no_read_access.remove(i) for i in [file for file in self.no_read_access if self.check_read_permissions(file)]]
+            else:
+                error = "".join(['Read Permission Error:', message])
+                raise_error(error, self.no_match)
+
+        self.config.directory_list = self.directory_list
+        self.config.source_bucket = self.source_bucket
+        self.config.source_prefix = self.source_prefix
+        self.config.aws_access_key = self.aws_access_key
+        self.config.aws_secret_key = self.aws_secret_key
+
         try:
             return len(self.directory_list) > 0
         except TypeError:
