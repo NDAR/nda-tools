@@ -16,6 +16,8 @@ else:
     import queue
 from NDATools.Configuration import *
 from NDATools.Utils import *
+from NDATools.MultiPartUploads import *
+from NDATools.TokenGenerator import *
 
 
 class Status:
@@ -56,6 +58,7 @@ class Submission:
         self.total_progress = None
         self.upload_tries = 0
         self.max_submit_time = 120
+        self.url = self.config.datamanager_api
         if resume:
             self.submission_id = id
             self.no_match = []
@@ -63,6 +66,7 @@ class Submission:
         else:
             self.package_id = id
         self.exit = allow_exit
+        self.all_mpus = []
 
 
     def submit(self):
@@ -81,6 +85,7 @@ class Submission:
 
     def check_status(self):
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id]))
+
         if response:
             self.status = response['submission_status']
         else:
@@ -182,7 +187,6 @@ class Submission:
         #update full_file_path list
         self.credentials_list = self.get_multipart_credentials(unsubmitted_ids)
         self.update_full_file_paths()
-
 
     def update_full_file_paths(self):
         full_file_path = {}
@@ -344,6 +348,18 @@ class Submission:
             api_request(self, "PUT", url, data=data)
 
 
+
+    def complete_partial_uploads(self):
+
+        bucket = 'NDAR_Central_{}'.format((int(self.submission_id) % 4) + 1)
+        prefix = 'submission_{}'.format(self.submission_id)
+
+        multipart_uploads = MultiPartsUpload(bucket, prefix, self.config)
+        multipart_uploads.get_multipart_uploads()
+        for upload in multipart_uploads.incomplete_mpu:
+            self.all_mpus.append(upload)
+
+
     def submission_upload(self, hide_progress=True):
         with self.upload_queue.mutex:
             self.upload_queue.queue.clear()
@@ -371,7 +387,7 @@ class Submission:
             workers = []
             for x in range(self.thread_num):
                 worker = Submission.S3Upload(x, self.config, self.upload_queue, self.full_file_path, self.submission_id,
-                                             self.progress_queue, self.credentials_list)
+                                             self.progress_queue, self.credentials_list, self.all_mpus)
 
                 workers.append(worker)
                 worker.daemon = True
@@ -430,7 +446,8 @@ class Submission:
             return
 
     class S3Upload(threading.Thread):
-        def __init__(self, index, config, upload_queue, full_file_path, submission_id, progress_queue, credentials_list):
+        def __init__(self, index, config, upload_queue, full_file_path, submission_id, progress_queue, credentials_list,
+                     all_mpus):
             threading.Thread.__init__(self)
             self.config = config
             self.upload_queue = upload_queue
@@ -446,6 +463,7 @@ class Submission:
             self.full_file_path = full_file_path
             self.credentials_list = credentials_list
             self.submission_id = submission_id
+            self.all_mpus = all_mpus
             self.index = index + 1
             self.progress_queue = progress_queue
             self.shutdown_flag = threading.Event()
@@ -487,7 +505,7 @@ class Submission:
 
 
                 file_id, credentials, bucket, key, full_path, file_size = self.upload_config()
-
+                prefix = 'submission_{}'.format(self.submission_id)
 
 
                 """
@@ -498,7 +516,16 @@ class Submission:
 
                 If the source file is from S3, use a specific AWS Profile to retrieve the source file, and uses
                 credentials supplied by the submission API to upload to remote S3 location.
+                
+                If the file was uploaded using multi-part, it will first complete the multi part uploads.
                 """
+
+                mpu_exist = False
+                for upload in self.all_mpus:
+                    if upload['Key'] == key:
+                        mpu_exist = True
+                        mpu_to_complete = upload
+                        break
 
                 if full_path.startswith('s3'):
 
@@ -534,28 +561,49 @@ class Submission:
                     source_key = key.split('/')[1:]
                     source_key = '/'.join(source_key)
                     self.source_key = '/'.join([self.source_prefix, source_key])
-                    self.fileobj = self.source_s3.Object(self.source_bucket, self.source_key).get()['Body']
-                    self.bytes = self.source_s3.Object(self.source_bucket, self.source_key).get()['ContentLength']
-                    dest_session = boto3.Session(aws_access_key_id=credentials['access_key'],
-                                                 aws_secret_access_key=credentials['secret_key'],
-                                                 aws_session_token=credentials['session_token'],
-                                                 region_name='us-east-1')
+                    self.fileobj = self.source_s3.Object(self.source_bucket, self.source_key).get()['Body'] # file stream
+                    # self.bytes = self.source_s3.Object(self.source_bucket, self.source_key).get()['ContentLength']
 
-                    #GB = 1024 ** 3
-                    config = TransferConfig(multipart_threshold=8 * 1024 * 1024)
-                    self.dest = dest_session.client('s3')
-                    self.dest_bucket = bucket
-                    self.dest_key = key
-                    self.temp_key = self.dest_key + '.temp'
+                    if mpu_exist:
+                        u = UploadMultiParts(mpu_to_complete, self.full_file_path, bucket, prefix, self.config)
+                        u.get_parts_information()
+                        self.progress_queue.put(u.completed_bytes)
+                        seq = 1
 
-                    self.dest.upload_fileobj(
-                        self.fileobj,
-                        self.dest_bucket,
-                        self.dest_key,
-                        Callback=self.UpdateProgress(self.progress_queue),
-                        Config=config # ,
-                        # ExtraArgs={"Metadata": {"ContentLength": self.bytes}}
-                    )
+                        for buffer in self.fileobj.iter_chunks(chunk_size=u.chunk_size):
+                            if seq in u.parts_completed:
+                                part = u.parts[seq - 1]
+                                u.check_md5(part, buffer)
+                            else:
+                                u.upload_part(buffer, seq)
+                                self.progress_queue.put(len(buffer))
+                                # upload missing part
+                            seq += 1
+                        u.complete()
+                        self.progress_queue.put(None)
+
+                    else:
+
+                        dest_session = boto3.Session(aws_access_key_id=credentials['access_key'],
+                                                     aws_secret_access_key=credentials['secret_key'],
+                                                     aws_session_token=credentials['session_token'],
+                                                     region_name='us-east-1')
+
+                        #GB = 1024 ** 3
+                        config = TransferConfig(multipart_threshold=8 * 1024 * 1024)
+                        self.dest = dest_session.client('s3')
+                        self.dest_bucket = bucket
+                        self.dest_key = key
+                        self.temp_key = self.dest_key + '.temp'
+
+                        self.dest.upload_fileobj(
+                            self.fileobj,
+                            self.dest_bucket,
+                            self.dest_key,
+                            Callback=self.UpdateProgress(self.progress_queue),
+                            Config=config # ,
+                            # ExtraArgs={"Metadata": {"ContentLength": self.bytes}}
+                        )
 
                     self.progress_queue.put(None)
 
@@ -563,26 +611,52 @@ class Submission:
                     """
                     Assumes the file is being uploaded from local file system
                     """
+                    if mpu_exist:
+                        u = UploadMultiParts(mpu_to_complete, self.full_file_path, bucket, prefix, self.config)
+                        u.get_parts_information()
+                        self.progress_queue.put(u.completed_bytes)
+                        seq = 1
 
-                    if credentials:
-                        session = boto3.session.Session(
-                            aws_access_key_id=credentials['access_key'],
-                            aws_secret_access_key=credentials['secret_key'],
-                            aws_session_token=credentials['session_token'],
-                            region_name='us-east-1'
-                        )
-                        s3 = session.client('s3')
-                        s3_transfer = S3Transfer(s3)
-                        tqdm.monitor_interval = 0
-                        s3_transfer.upload_file(full_path, bucket, key, callback=self.UpdateProgress(self.progress_queue))
-
+                        with  open(full_path, 'rb+') as f:
+                            while True:
+                                buffer_start = u.chunk_size * (seq - 1)
+                                f.seek(buffer_start)
+                                buffer = f.read(u.chunk_size)
+                                if len(buffer) == 0:  # EOF
+                                    break
+                                if seq in u.parts_completed:
+                                    part = u.parts[seq - 1]
+                                    u.check_md5(part, buffer)
+                                else:
+                                    u.upload_part(buffer, seq)
+                                    self.progress_queue.put(len(buffer))
+                                seq += 1
+                        u.complete()
                         self.progress_queue.put(None)
-                    else:
-                        print('There was an error uploading {} after {} retry attempts'.format(full_path,
-                                                                                               self.upload_tries))
-                        continue
 
+                    else:
+                        if credentials:
+                            session = boto3.session.Session(
+                                aws_access_key_id=credentials['access_key'],
+                                aws_secret_access_key=credentials['secret_key'],
+                                aws_session_token=credentials['session_token'],
+                                region_name='us-east-1'
+                            )
+                            s3 = session.client('s3')
+                            config = TransferConfig(
+                                multipart_threshold=8 * 1024 * 1024,
+                                max_concurrency=2,
+                                num_download_attempts=10)
+
+                            s3_transfer = S3Transfer(s3, config)
+                            tqdm.monitor_interval = 0
+                            s3_transfer.upload_file(full_path, bucket, key, callback=self.UpdateProgress(self.progress_queue))
+
+                            self.progress_queue.put(None)
+                        else:
+                            print('There was an error uploading {} after {} retry attempts'.format(full_path,
+                                                                                                   self.upload_tries))
+                            continue
                 self.upload_tries = 0
                 self.upload = None
                 self.upload_queue.task_done()
-

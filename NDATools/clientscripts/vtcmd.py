@@ -140,6 +140,7 @@ def resume_submission(submission_id, config=None):
         if submission.incomplete_files and submission.found_all_files(directories, source_bucket, source_prefix,
                                                                       access_key, secret_key, retry_allowed=True):
             submission.check_submitted_files()
+            submission.complete_partial_uploads()
             submission.submission_upload(hide_progress=False)
         else:
            submission.submission_upload(hide_progress=False)
