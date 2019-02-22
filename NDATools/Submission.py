@@ -602,7 +602,7 @@ class Submission:
                             s3 = session.client('s3')
                             config = TransferConfig(
                                 multipart_threshold=8 * 1024 * 1024,
-                                max_concurrency=10,
+                                max_concurrency=2,
                                 num_download_attempts=10)
 
                             s3_transfer = S3Transfer(s3, config)
