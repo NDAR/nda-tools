@@ -617,10 +617,3 @@ class Submission:
                 self.upload_tries = 0
                 self.upload = None
                 self.upload_queue.task_done()
-
-class Status:
-    UPLOADING = 'Uploading'
-    SYSERROR = 'SystemError'
-    COMPLETE = 'Complete'
-    ERROR = 'Error'
-    PROCESSING = 'processing'
