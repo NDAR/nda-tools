@@ -166,7 +166,7 @@ class Submission:
         headers = {'content-type': 'application/json'}
 
         session = requests.session()
-        r = session.send(requests.Request('PUT', url, headers, auth=auth, data=data).prepare(),
+        r = session.send(requests.Request('PUT', url, headers, auth=auth, data=json.dumps(data)).prepare(),
                          timeout=300, stream=False)
 
         response = r.text
