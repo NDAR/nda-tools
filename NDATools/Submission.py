@@ -166,7 +166,7 @@ class Submission:
         headers = {'content-type': 'application/json'}
 
         session = requests.session()
-        r = session.send(requests.Request('PUT', url, headers, auth=auth, data=data).prepare(),
+        r = session.send(requests.Request('PUT', url, headers, auth=auth, data=json.dumps(data)).prepare(),
                          timeout=300, stream=False)
 
         response = r.text
@@ -339,7 +339,7 @@ class Submission:
             return len(self.source_bucket) > 0
 
 
-    def batch_update_status(self, status=Status.COMPLETE): #is this ok? I am getting a warning that this is dynamic dispatch and duck typing.
+    def batch_update_status(self, status=Status.COMPLETE):
         list_data = self.generate_data_for_request(status)
         url = "/".join([self.api, self.submission_id, 'files/batchUpdate'])
         data_to_dump = [list_data[i:i + self.batch_size] for i in range(0, len(list_data), self.batch_size)]
@@ -351,11 +351,18 @@ class Submission:
 
     def complete_partial_uploads(self):
 
-        bucket = 'NDAR_Central_{}'.format((int(self.submission_id) % 4) + 1)
+        bucket = (self.credentials_list[0]['destination_uri']).split('/')[2] # 'NDAR_Central_{}'.format((int(self.submission_id) % 4) + 1)
         prefix = 'submission_{}'.format(self.submission_id)
 
-        multipart_uploads = MultiPartsUpload(bucket, prefix, self.config)
+        # use self.credentials list to pass in a set of temporary tokens, which should allow listMultiPartUpload
+        # for the entire submission and not just the specific file object.
+        access_key = self.credentials_list[0]['access_key']
+        secret_key = self.credentials_list[0]['secret_key']
+        session_token = self.credentials_list[0]['session_token']
+
+        multipart_uploads = MultiPartsUpload(bucket, prefix, self.config, access_key, secret_key, session_token)
         multipart_uploads.get_multipart_uploads()
+
         for upload in multipart_uploads.incomplete_mpu:
             self.all_mpus.append(upload)
 
@@ -565,7 +572,7 @@ class Submission:
                     # self.bytes = self.source_s3.Object(self.source_bucket, self.source_key).get()['ContentLength']
 
                     if mpu_exist:
-                        u = UploadMultiParts(mpu_to_complete, self.full_file_path, bucket, prefix, self.config)
+                        u = UploadMultiParts(mpu_to_complete, self.full_file_path, bucket, prefix, self.config, credentials)
                         u.get_parts_information()
                         self.progress_queue.put(u.completed_bytes)
                         seq = 1
@@ -612,7 +619,7 @@ class Submission:
                     Assumes the file is being uploaded from local file system
                     """
                     if mpu_exist:
-                        u = UploadMultiParts(mpu_to_complete, self.full_file_path, bucket, prefix, self.config)
+                        u = UploadMultiParts(mpu_to_complete, self.full_file_path, bucket, prefix, self.config, credentials)
                         u.get_parts_information()
                         self.progress_queue.put(u.completed_bytes)
                         seq = 1
