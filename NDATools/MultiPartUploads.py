@@ -2,24 +2,24 @@ import boto3
 import botocore
 import hashlib
 
-from NDATools.TokenGenerator import *
 from NDATools.Utils import *
 
 
 
 
 class MultiPartsUpload:
-    def __init__(self, bucket, prefix, config):
+    def __init__(self, bucket, prefix, config, access_key, secret_key, session_token):
         self.bucket = bucket
         self.prefix = prefix
         self.config = config
-        self.url = self.config.datamanager_api
-        generator = NDATokenGenerator(self.url)
-        self.token = generator.generate_token(self.config.username, self.config.password)
-        self.access_key = self.token.access_key
-        self.secret_key = self.token.secret_key
-        self.session = self.token.session
-        self.client = boto3.session.Session().client(service_name='s3')
+        self.access_key = access_key
+        self.secret_key = secret_key
+        self.session_token = session_token
+        session = boto3.Session(aws_access_key_id=self.access_key,
+                                aws_secret_access_key=self.secret_key,
+                                aws_session_token=self.session_token,
+                                region_name='us-east-1')
+        self.client = session.client(service_name='s3')
         self.incomplete_mpu = []
         self.mpu_to_abort = {}
 
@@ -50,7 +50,7 @@ class Constants:
 
 
 class UploadMultiParts:
-    def __init__(self, upload_obj, full_file_path, bucket, prefix, config):
+    def __init__(self, upload_obj, full_file_path, bucket, prefix, config, credentials):
         self.chunk_size = 0
         self.upload_obj = upload_obj
         self.full_file_path = full_file_path
@@ -60,14 +60,15 @@ class UploadMultiParts:
         filename = self.key.split(prefix+'/')
         filename = "".join(filename[1:])
         self.filename, self.file_size = self.full_file_path[filename]
-        self.config= config
-        self.url = self.config.datamanager_api
-        generator = NDATokenGenerator(self.url)
-        self.token = generator.generate_token(self.config.username, self.config.password)
-        self.access_key = self.token.access_key
-        self.secret_key = self.token.secret_key
-        self.session = self.token.session
-        self.client = boto3.session.Session().client(service_name='s3')
+        self.config = config
+        self.access_key = credentials['access_key']
+        self.secret_key = credentials['secret_key']
+        self.session_token = credentials['session_token']
+        session = boto3.Session(aws_access_key_id=self.access_key,
+                                aws_secret_access_key=self.secret_key,
+                                aws_session_token=self.session_token,
+                                region_name='us-east-1')
+        self.client = session.client(service_name='s3')
         self.completed_bytes = 0
         self.completed_parts = 0
         self.parts = []
