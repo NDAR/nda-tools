@@ -164,7 +164,7 @@ def validate_files(file_list, warnings, build_package, threads, config=None):
     print('Validation report output to: {}'.format(validation.log_file))
 
     if warnings:
-        validation.warnings()
+        validation.get_warnings()
         print('Warnings output to: {}'.format(validation.log_file))
 
     else:
