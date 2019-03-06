@@ -169,11 +169,13 @@ class Submission:
         r = session.send(requests.Request('PUT', url, headers, auth=auth, data=json.dumps(data)).prepare(),
                          timeout=300, stream=False)
 
-        response = r.text
-        list = response.split(': ')
+        response = json.loads(r.text)
 
-        unsubmitted_ids = list[1].split(',')
+        errors = response['errors']
 
+        unsubmitted_ids = []
+        for e in errors:
+           unsubmitted_ids.append(e['submissionFileId'])
 
         #update status of files already submitted
         for file in self.batch_status_update:
