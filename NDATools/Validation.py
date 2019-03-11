@@ -210,7 +210,6 @@ class Validation:
         return uuid_list
 
     def process_manifests(self, r, validation_results = None, yes_manifest = None, bulk_upload=False):
-
         if not self.manifest_path:
             if not self.exit:
                 error = 'Missing Manifest File: You must include the path to your manifests files'
