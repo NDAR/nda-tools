@@ -54,21 +54,29 @@ class ClientConfiguration:
 
     def make_config(self):
         file_path = os.path.join(os.path.expanduser('~'), '.NDATools')
-        os.makedirs(file_path, exist_ok=True)
+        if not os.path.exists(file_path):
+            os.makedirs(file_path)
         config_path = os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')
 
         copy_config = configparser.ConfigParser()
-        copy_config['Endpoints'] = {'data_manager': self.datamanager_api,
-                                    'validation': self.validation_api,
-                                    'submission_package': self.submission_package_api,
-                                    'submission': self.submission_api,
-                                    'validationtool': self.validationtool_api}
-        copy_config['Files'] = {'validation_results': self.validation_results,
-                                'submission_packages': self.submission_packages}
-        copy_config['User'] = {'username': self.username,
-                               'password': self.password,
-                               'access_key': self.aws_access_key,
-                               'secret_key': self.aws_secret_key}
+
+        copy_config.add_section("Endpoints")
+        copy_config.set("Endpoints", "data_manager", self.datamanager_api)
+        copy_config.set("Endpoints", "validation", self.validation_api)
+        copy_config.set("Endpoints", "submission_package", self.submission_package_api)
+        copy_config.set("Endpoints", "submission", self.submission_api)
+        copy_config.set("Endpoints", "validationtool", self.validationtool_api)
+
+        copy_config.add_section("Files")
+        copy_config.set("Files", "validation_results", self.validation_results)
+        copy_config.set("Files", "submission_packages", self.submission_packages)
+
+        copy_config.add_section("User")
+        copy_config.set("User", "username", self.username)
+        copy_config.set("User", "password", self.password)
+        copy_config.set("User", "access_key", self.aws_access_key)
+        copy_config.set("User", "secret_key", self.aws_secret_key)
+
 
         with open(config_path, 'w') as configfile:
             copy_config.write(configfile)
