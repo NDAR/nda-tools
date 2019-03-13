@@ -492,6 +492,19 @@ class Submission:
             key = "/".join(paths[3:])
             full_path, file_size = self.full_file_path[local_path]
             return file_id, credentials, bucket, key, full_path, file_size
+
+        def update_tokens(self):
+            link = self.upload['_links']['multipartUploadCredentials']['href']
+            credentials, session = api_request(self, "GET", link)
+
+            for creds in self.credentials_list:
+                if creds['fileId'] == credentials['fileId']:
+                    self.credentials_list.remove(creds)
+                    break
+            self.credentials_list.append(credentials)
+
+            return credentials
+
         class UpdateProgress(object):
 
             def __init__(self, progress_queue):
@@ -500,7 +513,6 @@ class Submission:
             def __call__(self, bytes_amount):
                 self.progress_queue.put(bytes_amount)
 
-
         def run(self):
             while True and not self.shutdown_flag.is_set():
                 if self.upload and self.upload_tries < 5:
@@ -508,9 +520,15 @@ class Submission:
                 else:
                     self.upload = self.upload_queue.get()
                 if self.upload == "STOP":
-                    self.upload_queue.put("STOP")
-                    self.shutdown_flag.set()
-                    break
+                    if self.upload_queue.qsize() == 0:
+                        self.upload_queue.put("STOP")
+                        self.shutdown_flag.set()
+                        break
+                    else:
+                        self.upload_tries = 0
+                        self.upload = None
+                        self.upload_queue.task_done() # will go to next item??
+                        self.upload = self.upload_queue.get()
 
 
                 file_id, credentials, bucket, key, full_path, file_size = self.upload_config()
@@ -623,10 +641,11 @@ class Submission:
                     if mpu_exist:
                         u = UploadMultiParts(mpu_to_complete, self.full_file_path, bucket, prefix, self.config, credentials)
                         u.get_parts_information()
-                        self.progress_queue.put(u.completed_bytes)
+                        #if self.resume or something...
+                        #self.progress_queue.put(u.completed_bytes)
                         seq = 1
 
-                        with  open(full_path, 'rb+') as f:
+                        with open(full_path, 'rb+') as f:
                             while True:
                                 buffer_start = u.chunk_size * (seq - 1)
                                 f.seek(buffer_start)
@@ -636,6 +655,7 @@ class Submission:
                                 if seq in u.parts_completed:
                                     part = u.parts[seq - 1]
                                     u.check_md5(part, buffer)
+                                    #self.progress_queue.put(len(buffer))
                                 else:
                                     u.upload_part(buffer, seq)
                                     self.progress_queue.put(len(buffer))
@@ -659,13 +679,41 @@ class Submission:
 
                             s3_transfer = S3Transfer(s3, config)
                             tqdm.monitor_interval = 0
-                            s3_transfer.upload_file(full_path, bucket, key, callback=self.UpdateProgress(self.progress_queue))
+                            try:
+                                s3_transfer.upload_file(full_path, bucket, key,
+                                                        callback=self.UpdateProgress(self.progress_queue))
+                                self.progress_queue.put(None)
+                                self.upload_tries = 0
+                                self.upload = None
+                                self.upload_queue.task_done()
+                            except Exception as e:
+                                # If expired token:
+                                #  1. Add to upload_queue so it is picked up by another thread again
+                                self.upload_queue.put(self.upload)  # need to figure out how to test this and if it is the best way to retry a single file upload
+                                self.upload_queue.put("STOP") # need to add the sentinel value again
 
-                            self.progress_queue.put(None)
+                                # 2. Add a function to get new credentials and update self.credentials_list AND
+                                # 3. In upload.config, edit it so it knows we need new credentials
+                                new_credentials = self.update_tokens()
+
+                                # 4. Check if file has mpu, add to self.mpu
+
+                                multipart_uploads = MultiPartsUpload(bucket, prefix, self.config, new_credentials['access_key'],
+                                                                     new_credentials['secret_key'], new_credentials['session_token'])
+                                multipart_uploads.get_multipart_uploads()
+
+                                # 5 update part to self.all_mpus
+                                self.all_mpus = multipart_uploads.incomplete_mpu
+                                self.progress_queue.put(None)
+                                #self.upload_tries = 0
+                                #self.upload = None
+                                #self.upload_queue.task_done()
+
                         else:
                             print('There was an error uploading {} after {} retry attempts'.format(full_path,
                                                                                                    self.upload_tries))
                             continue
+
                 self.upload_tries = 0
                 self.upload = None
                 self.upload_queue.task_done()
