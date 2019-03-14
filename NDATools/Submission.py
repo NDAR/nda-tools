@@ -30,7 +30,8 @@ class Status:
 
 
 class Submission:
-    def __init__(self, id, full_file_path, config, resume=False, allow_exit=False, username=None, password=None, thread_num=None):
+    def __init__(self, id, full_file_path, config, resume=False, allow_exit=False, username=None, password=None,
+                 thread_num=None, batch_size=None):
         self.config = config
         self.api = self.config.submission_api
         if username:
@@ -49,6 +50,8 @@ class Submission:
         if thread_num:
             self.thread_num = thread_num
         self.batch_size = 50000
+        if batch_size:
+            self.batch_size = batch_size
         self.batch_status_update = []
         self.directory_list = self.config.directory_list
         self.credentials_list = []
@@ -106,6 +109,7 @@ class Submission:
     def get_multipart_credentials(self, file_ids):
         all_credentials = []
         batched_ids = [file_ids[i:i + self.batch_size] for i in range(0, len(file_ids), self.batch_size)]
+
         for ids in batched_ids:
             credentials_list, session = api_request(self, "POST", "/".join(
                 [self.api, self.submission_id, 'files/batchMultipartUploadCredentials']), data=json.dumps(ids))

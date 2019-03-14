@@ -80,6 +80,10 @@ def parse_args():
 
     parser.add_argument('-wt', '--workerThreads', metavar='<arg>', type=int, action='store',
                         help='Number of worker threads')
+
+    parser.add_argument('-bc', '--batch', metavar='<arg>', type=int, action='store',
+                        help='Batch size')
+
     args = parser.parse_args()
 
     return args
@@ -236,8 +240,8 @@ def build_package(uuid, associated_files, config):
     return[package.package_id, package.full_file_path]
 
 
-def submit_package(package_id, full_file_path, associated_files, threads, config=None):
-    submission = Submission(id=package_id, full_file_path=full_file_path, thread_num=threads, allow_exit=True, config=config)
+def submit_package(package_id, full_file_path, associated_files, threads, batch, config=None):
+    submission = Submission(id=package_id, full_file_path=full_file_path, thread_num=threads, batch_size=batch, allow_exit=True, config=config)
     print('Requesting submission for package: {}'.format(submission.package_id))
     submission.submit()
     if submission.submission_id:
@@ -270,7 +274,8 @@ def main():
                 package_results = build_package(uuid, associated_files, config=config)
                 package_id = package_results[0]
                 full_file_path = package_results[1]
-                submit_package(package_id=package_id, full_file_path=full_file_path, associated_files=associated_files, threads=args.workerThreads, config=config)
+                submit_package(package_id=package_id, full_file_path=full_file_path, associated_files=associated_files,
+                               threads=args.workerThreads, batch=args.batch, config=config)
 
 if __name__ == "__main__":
     main()
