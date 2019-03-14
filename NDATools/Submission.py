@@ -525,9 +525,10 @@ class Submission:
                         self.shutdown_flag.set()
                         break
                     else:
+                        self.progress_queue.put(None)
                         self.upload_tries = 0
                         self.upload = None
-                        self.upload_queue.task_done() # will go to next item??
+                        self.upload_queue.task_done()
                         self.upload = self.upload_queue.get()
 
 
@@ -638,6 +639,7 @@ class Submission:
                     """
                     Assumes the file is being uploaded from local file system
                     """
+
                     if mpu_exist:
                         u = UploadMultiParts(mpu_to_complete, self.full_file_path, bucket, prefix, self.config, credentials)
                         u.get_parts_information()
@@ -702,12 +704,9 @@ class Submission:
                                                                      new_credentials['secret_key'], new_credentials['session_token'])
                                 multipart_uploads.get_multipart_uploads()
 
-                                # 5 update part to self.all_mpus
                                 self.all_mpus = multipart_uploads.incomplete_mpu
+
                                 self.progress_queue.put(None)
-                                #self.upload_tries = 0
-                                #self.upload = None
-                                #self.upload_queue.task_done()
 
                         else:
                             print('There was an error uploading {} after {} retry attempts'.format(full_path,
