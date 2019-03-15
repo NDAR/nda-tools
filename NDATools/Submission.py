@@ -724,7 +724,7 @@ class Submission:
                                                         callback=self.UpdateProgress(self.progress_queue))
                             except Exception as e:
                                 self.add_back_to_queue(bucket, prefix)
-                                
+
                             self.progress_queue.put(None)
 
                         else:
