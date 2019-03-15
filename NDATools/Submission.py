@@ -722,13 +722,10 @@ class Submission:
                             try:
                                 s3_transfer.upload_file(full_path, bucket, key,
                                                         callback=self.UpdateProgress(self.progress_queue))
-                                self.progress_queue.put(None)
-                                self.upload_tries = 0
-                                self.upload = None
-                                self.upload_queue.task_done()
                             except Exception as e:
                                 self.add_back_to_queue(bucket, prefix)
-                                self.progress_queue.put(None)
+                                
+                            self.progress_queue.put(None)
 
                         else:
                             print('There was an error uploading {} after {} retry attempts'.format(full_path,
