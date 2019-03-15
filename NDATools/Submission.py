@@ -411,14 +411,12 @@ class Submission:
             while any(map(lambda w: w.is_alive(), workers)):
                 if hide_progress == False:
                     for progress in iter(self.progress_queue.get, None):
-                        # print(self.total_progress.n, self.total_progress.total)
                         if (self.total_progress.n < self.total_progress.total
                                 and progress <= (self.total_progress.total - self.total_progress.n)):
                             self.total_progress.update(progress)
                 time.sleep(0.1)
 
             if hide_progress == False:
-                print(self.total_progress.n, self.total_progress.total, (self.total_progress.total - self.total_progress.n))
                 if self.total_progress.n < self.total_progress.total:
                     self.total_progress.update(self.total_progress.total - self.total_progress.n)
                 self.total_progress.close()
@@ -679,7 +677,6 @@ class Submission:
                     if mpu_exist:
                         u = UploadMultiParts(mpu_to_complete, self.full_file_path, bucket, prefix, self.config, credentials)
                         u.get_parts_information()
-                        print(self.expired)
                         if not self.expired:
                             self.progress_queue.put(u.completed_bytes)
                         seq = 1
@@ -694,7 +691,6 @@ class Submission:
                                 if seq in u.parts_completed:
                                     part = u.parts[seq - 1]
                                     u.check_md5(part, buffer)
-                                    #self.progress_queue.put(len(buffer))
                                 else:
                                     try:
                                         u.upload_part(buffer, seq)
