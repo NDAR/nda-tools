@@ -180,12 +180,19 @@ class Submission:
 
         unsubmitted_ids = []
         for e in errors:
-           unsubmitted_ids.append(e['submissionFileId'])
+            unsubmitted_ids.append(e['submissionFileId'])
 
-        # check if credentials_list is updated
+        # update status of files already submitted
+        for file in self.batch_status_update:
+            if file['id'] in unsubmitted_ids:
+                file_ids.remove(file['id'])
 
-        #update full_file_path list
-        self.credentials_list = self.get_multipart_credentials(unsubmitted_ids) # don't do this. instead, update credentials list to only have unsubmitted_ids.
+        if file_ids:
+            self.credentials_list = self.get_multipart_credentials(file_ids)
+            self.batch_update_status()
+
+        # update full_file_path list
+        self.credentials_list = self.get_multipart_credentials(unsubmitted_ids)
         self.update_full_file_paths()
 
     def update_full_file_paths(self):
