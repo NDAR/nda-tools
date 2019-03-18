@@ -110,6 +110,7 @@ class Submission:
         all_credentials = []
         batched_ids = [file_ids[i:i + self.batch_size] for i in range(0, len(file_ids), self.batch_size)]
 
+
         for ids in batched_ids:
             credentials_list, session = api_request(self, "POST", "/".join(
                 [self.api, self.submission_id, 'files/batchMultipartUploadCredentials']), data=json.dumps(ids))
@@ -121,7 +122,7 @@ class Submission:
         batch_status_update = []
         batched_file_info_lists = [self.credentials_list[i:i + self.batch_size] for i in
                                    range(0, len(self.credentials_list),
-                                         self.batch_size)]
+                                         self.batch_size)] # move this to  check_submitted_files so it's actually working in batch
 
         for files_list in batched_file_info_lists:
             for cred in files_list:
@@ -181,17 +182,10 @@ class Submission:
         for e in errors:
            unsubmitted_ids.append(e['submissionFileId'])
 
-        #update status of files already submitted
-        for file in self.batch_status_update:
-            if file['id'] in unsubmitted_ids:
-                file_ids.remove(file['id'])
-
-        if file_ids:
-            self.credentials_list = self.get_multipart_credentials(file_ids)
-            self.batch_update_status()
+        # check if credentials_list is updated
 
         #update full_file_path list
-        self.credentials_list = self.get_multipart_credentials(unsubmitted_ids)
+        self.credentials_list = self.get_multipart_credentials(unsubmitted_ids) # don't do this. instead, update credentials list to only have unsubmitted_ids.
         self.update_full_file_paths()
 
     def update_full_file_paths(self):

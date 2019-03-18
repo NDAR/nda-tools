@@ -98,7 +98,7 @@ def api_request(api, verb, endpoint, data=None, session=None):
         print(m)
         r.raise_for_status()
 
-    elif r.status_code == 500:
+    elif r.status_code in (500, 502, 503, 504):
         response = r.text
         m = response
         print(m)

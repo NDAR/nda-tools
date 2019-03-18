@@ -132,8 +132,8 @@ class Status:
     UPLOADING = 'Uploading'
     SYSERROR = 'SystemError'
 
-def resume_submission(submission_id, config=None):
-    submission = Submission(id=submission_id, full_file_path=None, config=config, resume=True)
+def resume_submission(submission_id, batch, config=None):
+    submission = Submission(id=submission_id, full_file_path=None, config=config, resume=True, batch_size=batch)
     submission.check_status()
     if submission.status == Status.UPLOADING:
         directories = config.directory_list
@@ -232,10 +232,10 @@ def build_package(uuid, associated_files, config):
     print('expiration date: {}'.format(package.expiration_date))
     print('\nPackage finished building.\n')
 
-    print('Downloading submission package.')
-    package.download_package(hide_progress=False)
-    print('\nA copy of your submission package has been saved to: {}'.
-          format(os.path.join(package.package_folder, package.config.submission_packages)))
+    #print('Downloading submission package.')
+    #package.download_package(hide_progress=False)
+    #print('\nA copy of your submission package has been saved to: {}'.
+    #      format(os.path.join(package.package_folder, package.config.submission_packages)))
 
     return[package.package_id, package.full_file_path]
 
@@ -257,7 +257,7 @@ def main():
     config = configure(args)
     if args.resume:
         submission_id = args.files[0]
-        resume_submission(submission_id, config=config)
+        resume_submission(submission_id, batch=args.batch, config=config)
     else:
         w = False
         bp = False
