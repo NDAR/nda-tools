@@ -120,22 +120,18 @@ class Submission:
 
     def generate_data_for_request(self, status):
         batch_status_update = []
-        batched_file_info_lists = [self.credentials_list[i:i + self.batch_size] for i in
-                                   range(0, len(self.credentials_list),
-                                         self.batch_size)] # move this to  check_submitted_files so it's actually working in batch
 
-        for files_list in batched_file_info_lists:
-            for cred in files_list:
-                file = cred['destination_uri'].split('/')
-                file = '/'.join(file[4:])
-                size = self.full_file_path[file][1]
-                update = {
-                    "id": str(cred['submissionFileId']),
-                    "md5sum": "None",
-                    "size": size,
-                    "status": status
-                }
-                batch_status_update.append(update)
+        for cred in self.credentials_list:
+            file = cred['destination_uri'].split('/')
+            file = '/'.join(file[4:])
+            size = self.full_file_path[file][1]
+            update = {
+                "id": str(cred['submissionFileId']),
+                "md5sum": "None",
+                "size": size,
+                "status": status
+            }
+            batch_status_update.append(update)
 
         self.batch_status_update = batch_status_update
         return batch_status_update
@@ -165,34 +161,35 @@ class Submission:
         file_ids = self.create_file_id_list(response)
         self.credentials_list = self.get_multipart_credentials(file_ids)
 
+
         data = self.generate_data_for_request(Status.COMPLETE)
         url = "/".join([self.api, self.submission_id, 'files/batchUpdate'])
         auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
         headers = {'content-type': 'application/json'}
 
-        session = requests.session()
-        r = session.send(requests.Request('PUT', url, headers, auth=auth, data=json.dumps(data)).prepare(),
-                         timeout=300, stream=False)
 
-        response = json.loads(r.text)
-
-        errors = response['errors']
-
+        batched_data = [data[i:i + self.batch_size] for i in
+                                   range(0, len(data),
+                                         self.batch_size)]
         unsubmitted_ids = []
-        for e in errors:
-            unsubmitted_ids.append(e['submissionFileId'])
 
-        # update status of files already submitted
-        for file in self.batch_status_update:
-            if file['id'] in unsubmitted_ids:
-                file_ids.remove(file['id'])
+        for batch in batched_data:
+            session = requests.session()
+            r = session.send(requests.Request('PUT', url, headers, auth=auth, data=json.dumps(batch)).prepare(),
+                             timeout=300, stream=False)
+            response = json.loads(r.text)
+            errors = response['errors']
 
-        if file_ids:
-            self.credentials_list = self.get_multipart_credentials(file_ids)
-            self.batch_update_status()
+            for e in errors:
+                unsubmitted_ids.append(e['submissionFileId'])
 
-        # update full_file_path list
-        self.credentials_list = self.get_multipart_credentials(unsubmitted_ids)
+        # update self.credentials_list and full_file_path list
+        new_cred = []
+        for cred in self.credentials_list:
+            if cred['fileId'] in unsubmitted_ids:
+                new_cred.append(cred)
+
+        self.credentials_list = new_cred
         self.update_full_file_paths()
 
     def update_full_file_paths(self):
