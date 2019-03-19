@@ -115,6 +115,8 @@ class Submission:
             credentials_list, session = api_request(self, "POST", "/".join(
                 [self.api, self.submission_id, 'files/batchMultipartUploadCredentials']), data=json.dumps(ids))
             all_credentials = all_credentials + credentials_list['credentials']
+            time.sleep(2)
+
 
         return all_credentials
 
