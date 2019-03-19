@@ -232,10 +232,10 @@ def build_package(uuid, associated_files, config):
     print('expiration date: {}'.format(package.expiration_date))
     print('\nPackage finished building.\n')
 
-    #print('Downloading submission package.')
-    #package.download_package(hide_progress=False)
-    #print('\nA copy of your submission package has been saved to: {}'.
-    #      format(os.path.join(package.package_folder, package.config.submission_packages)))
+    print('Downloading submission package.')
+    package.download_package(hide_progress=False)
+    print('\nA copy of your submission package has been saved to: {}'.
+          format(os.path.join(package.package_folder, package.config.submission_packages)))
 
     return[package.package_id, package.full_file_path]
 
