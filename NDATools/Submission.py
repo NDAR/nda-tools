@@ -4,10 +4,12 @@ import sys
 import signal
 import multiprocessing
 import boto3
-import botocore
+from boto3.exceptions import S3UploadFailedError
 from boto3.s3.transfer import S3Transfer, TransferConfig
 from tqdm import tqdm
-from botocore.client import Config, ClientError
+from botocore.client import Config
+from botocore.exceptions import ClientError
+
 import requests
 if sys.version_info[0] < 3:
     import Queue as queue
@@ -634,9 +636,13 @@ class Submission:
                                     u.upload_part(buffer, seq)
                                     self.progress_queue.put(len(buffer))
                                     # upload missing part
-                                except Exception as e:
-                                    self.add_back_to_queue(bucket, prefix)
-                                    expired_error = True
+                                except boto3.exceptions.S3UploadFailedError as error:
+                                    e = str(error)
+                                    if "ExpiredToken" in e:
+                                        self.add_back_to_queue(bucket, prefix)
+                                        expired_error = True
+                                    else:
+                                        raise error
                             seq += 1
                         if not expired_error:
                             u.complete()
@@ -665,8 +671,12 @@ class Submission:
                             Config=config # ,
                             # ExtraArgs={"Metadata": {"ContentLength": self.bytes}}
                             )
-                        except Exception as e:
-                            self.add_back_to_queue(bucket, prefix)
+                        except boto3.exceptions.S3UploadFailedError as error:
+                            e = str(error)
+                            if "ExpiredToken" in e:
+                                self.add_back_to_queue(bucket, prefix)
+                            else:
+                                raise error
                     self.progress_queue.put(None)
 
                 else:
@@ -695,10 +705,15 @@ class Submission:
                                     try:
                                         u.upload_part(buffer, seq)
                                         self.progress_queue.put(len(buffer))
-                                    except Exception as e:
-                                        self.add_back_to_queue(bucket, prefix)
-                                        expired_error = True
-                                        break
+                                    except boto3.exceptions.S3UploadFailedError as error:
+                                        e = str(error)
+                                        if "ExpiredToken" in e:
+                                            self.add_back_to_queue(bucket, prefix)
+                                            expired_error = True
+                                            break
+                                        else:
+                                            raise error
+
                                 seq += 1
                         if not expired_error:
                             u.complete()
@@ -722,8 +737,12 @@ class Submission:
                             try:
                                 s3_transfer.upload_file(full_path, bucket, key,
                                                         callback=self.UpdateProgress(self.progress_queue))
-                            except Exception as e:
-                                self.add_back_to_queue(bucket, prefix)
+                            except boto3.exceptions.S3UploadFailedError as error:
+                                e = str(error)
+                                if "ExpiredToken" in e:
+                                    self.add_back_to_queue(bucket, prefix)
+                                else:
+                                    raise error
 
                             self.progress_queue.put(None)
 
