@@ -636,7 +636,7 @@ class Submission:
                                     u.upload_part(buffer, seq)
                                     self.progress_queue.put(len(buffer))
                                     # upload missing part
-                                except boto3.exceptions.S3UploadFailedError as error:
+                                except Exception as error:
                                     e = str(error)
                                     if "ExpiredToken" in e:
                                         self.add_back_to_queue(bucket, prefix)
@@ -705,7 +705,7 @@ class Submission:
                                     try:
                                         u.upload_part(buffer, seq)
                                         self.progress_queue.put(len(buffer))
-                                    except boto3.exceptions.S3UploadFailedError as error:
+                                    except Exception as error:
                                         e = str(error)
                                         if "ExpiredToken" in e:
                                             self.add_back_to_queue(bucket, prefix)
