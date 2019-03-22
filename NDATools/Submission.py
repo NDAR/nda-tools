@@ -369,7 +369,7 @@ class Submission:
             self.all_mpus.append(upload)
 
 
-    def submission_upload(self, hide_progress=True):
+    def submission_upload(self, hide_progress):
         with self.upload_queue.mutex:
             self.upload_queue.queue.clear()
         with self.progress_queue.mutex:
@@ -385,7 +385,7 @@ class Submission:
             self.credentials_list = self.get_multipart_credentials(file_ids)
             self.batch_update_status(status=Status.READY) #update the file size before submission, so service can compare.
 
-            if hide_progress is False:
+            if not hide_progress:
                 self.total_progress = tqdm(total=self.total_upload_size,
                                            position=0,
                                            unit_scale=True,
@@ -408,11 +408,11 @@ class Submission:
             self.upload_queue.put("STOP")
             self.upload_tries += 1
             while any(map(lambda w: w.is_alive(), workers)):
-                if hide_progress == False:
+                if not hide_progress:
                     for progress in iter(self.progress_queue.get, None):
                         self.total_progress.update(progress)
                 time.sleep(0.1)
-            if hide_progress == False:
+            if not hide_progress:
                 if self.total_progress.n < self.total_progress.total:
                     self.total_progress.update(self.total_progress.total - self.total_progress.n)
                 self.total_progress.close()

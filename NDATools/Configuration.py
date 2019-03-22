@@ -40,6 +40,7 @@ class ClientConfiguration:
         self.title = None
         self.description = None
         self.JSON = False
+        self.hideProgress = False
         self.username = self.config.get("User", "username")
         self.password = self.config.get("User", "password")
         if username:

@@ -349,7 +349,7 @@ class SubmissionPackage:
             else:
                 raise Exception(message)
 
-    def download_package(self, hide_progress=True):
+    def download_package(self, hide_progress):
         folder = self.download_links[0][1]
         folder = folder.split('/')
         self.package_folder = folder[0]

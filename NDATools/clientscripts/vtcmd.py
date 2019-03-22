@@ -101,7 +101,6 @@ def configure(args):
         config.read_user_credentials()
         config.make_config()
 
-
     if args.collectionID:
         config.collection_id = args.collectionID
     if args.alternateEndpoint:
@@ -124,9 +123,7 @@ def configure(args):
         config.validation_api = args.validationAPI[0]
     if args.JSON:
             config.JSON = True
-
     config.hideProgress = args.hideProgress
-
 
     return config
 
@@ -252,7 +249,9 @@ def submit_package(package_id, full_file_path, associated_files, threads, config
         print('Preparing to upload associated files.')
         submission.submission_upload(hide_progress=config.hideProgress)
     if submission.status != Status.UPLOADING:
-        print('\nYou have successfully completed uploading files for submission {}!'.format(submission.submission_id))
+        print('\nYou have successfully completed uploading files for submission {} with status: {}'.format
+              (submission.submission_id, submission.status)) 
+               #do we want to include this??
 
 def main():
     args = parse_args()
