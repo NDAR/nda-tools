@@ -62,7 +62,8 @@ class Submission:
         self.upload_tries = 0
         self.max_submit_time = 120
         self.url = self.config.datamanager_api
-        if resume:
+        self.resume = resume
+        if self.resume:
             self.submission_id = id
             self.no_match = []
             self.no_read_access = set()
@@ -87,6 +88,7 @@ class Submission:
 
 
     def check_status(self):
+        print('here.')
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id]))
 
         if response:
@@ -114,6 +116,7 @@ class Submission:
         for ids in batched_ids:
             credentials_list, session = api_request(self, "POST", "/".join(
                 [self.api, self.submission_id, 'files/batchMultipartUploadCredentials']), data=json.dumps(ids))
+            print(len(ids))
             all_credentials = all_credentials + credentials_list['credentials']
             time.sleep(2)
 
@@ -385,9 +388,10 @@ class Submission:
 
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id, 'files']))
         if response:
-            file_ids = self.create_file_id_list(response)
-            self.credentials_list = self.get_multipart_credentials(file_ids)
-            self.batch_update_status(status=Status.READY) #update the file size before submission, so service can compare.
+            if not self.resume:
+                file_ids = self.create_file_id_list(response)
+                self.credentials_list = self.get_multipart_credentials(file_ids)
+                self.batch_update_status(status=Status.READY) #update the file size before submission, so service can compare.
 
             if hide_progress is False:
                 self.total_progress = tqdm(total=self.total_upload_size,
