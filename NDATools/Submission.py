@@ -88,7 +88,6 @@ class Submission:
 
 
     def check_status(self):
-        print('here.')
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id]))
 
         if response:
@@ -116,7 +115,6 @@ class Submission:
         for ids in batched_ids:
             credentials_list, session = api_request(self, "POST", "/".join(
                 [self.api, self.submission_id, 'files/batchMultipartUploadCredentials']), data=json.dumps(ids))
-            print(len(ids))
             all_credentials = all_credentials + credentials_list['credentials']
             time.sleep(2)
 
