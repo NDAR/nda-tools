@@ -48,7 +48,7 @@ class Submission:
         self.thread_num = max([1, multiprocessing.cpu_count() - 1])
         if thread_num:
             self.thread_num = thread_num
-        self.batch_size = 1000
+        self.batch_size = 50000
         self.batch_status_update = []
         self.directory_list = self.config.directory_list
         self.credentials_list = []
