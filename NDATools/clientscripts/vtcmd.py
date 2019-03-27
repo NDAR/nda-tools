@@ -132,8 +132,15 @@ def resume_submission(submission_id, config=None):
     submission = Submission(id=submission_id, full_file_path=None, config=config, resume=True)
     submission.check_status()
     if submission.status == Status.UPLOADING:
-        if submission.incomplete_files and submission.found_all_files(retry_allowed=True):
+        directories = config.directory_list
+        source_bucket = config.source_bucket
+        source_prefix = config.source_prefix
+        access_key = config.aws_access_key
+        secret_key = config.aws_secret_key
+        if submission.incomplete_files and submission.found_all_files(directories, source_bucket, source_prefix,
+                                                                      access_key, secret_key, retry_allowed=True):
             submission.check_submitted_files()
+            submission.complete_partial_uploads()
             submission.submission_upload(hide_progress=False)
         else:
            submission.submission_upload(hide_progress=False)
@@ -157,7 +164,7 @@ def validate_files(file_list, warnings, build_package, threads, config=None):
     print('Validation report output to: {}'.format(validation.log_file))
 
     if warnings:
-        validation.warnings()
+        validation.get_warnings()
         print('Warnings output to: {}'.format(validation.log_file))
 
     else:

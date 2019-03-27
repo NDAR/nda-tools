@@ -4,6 +4,7 @@ import sys
 import signal
 import multiprocessing
 import boto3
+import botocore
 from boto3.s3.transfer import S3Transfer, TransferConfig
 from tqdm import tqdm
 from botocore.client import Config, ClientError
@@ -15,7 +16,17 @@ else:
     import queue
 from NDATools.Configuration import *
 from NDATools.Utils import *
+from NDATools.MultiPartUploads import *
+from NDATools.TokenGenerator import *
 
+
+class Status:
+    UPLOADING = 'Uploading'
+    SYSERROR = 'SystemError'
+    COMPLETE = 'Complete'
+    ERROR = 'Error'
+    PROCESSING = 'processing'
+    READY = 'Ready'
 
 
 class Submission:
@@ -47,12 +58,15 @@ class Submission:
         self.total_progress = None
         self.upload_tries = 0
         self.max_submit_time = 120
+        self.url = self.config.datamanager_api
         if resume:
             self.submission_id = id
             self.no_match = []
+            self.no_read_access = set()
         else:
             self.package_id = id
         self.exit = allow_exit
+        self.all_mpus = []
 
 
     def submit(self):
@@ -71,6 +85,7 @@ class Submission:
 
     def check_status(self):
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id]))
+
         if response:
             self.status = response['submission_status']
         else:
@@ -99,7 +114,7 @@ class Submission:
 
         return all_credentials
 
-    def generate_data_for_request(self):
+    def generate_data_for_request(self, status):
         batch_status_update = []
         batched_file_info_lists = [self.credentials_list[i:i + self.batch_size] for i in
                                    range(0, len(self.credentials_list),
@@ -114,14 +129,12 @@ class Submission:
                     "id": str(cred['submissionFileId']),
                     "md5sum": "None",
                     "size": size,
-                    "status": "Complete"
+                    "status": status
                 }
                 batch_status_update.append(update)
 
         self.batch_status_update = batch_status_update
-        data = json.dumps(self.batch_status_update)
-
-        return data
+        return batch_status_update
 
     @property
     def incomplete_files(self):
@@ -148,20 +161,22 @@ class Submission:
         file_ids = self.create_file_id_list(response)
         self.credentials_list = self.get_multipart_credentials(file_ids)
 
-        data = self.generate_data_for_request()
+        data = self.generate_data_for_request(Status.COMPLETE)
         url = "/".join([self.api, self.submission_id, 'files/batchUpdate'])
         auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
         headers = {'content-type': 'application/json'}
 
         session = requests.session()
-        r = session.send(requests.Request('PUT', url, headers, auth=auth, data=data).prepare(),
+        r = session.send(requests.Request('PUT', url, headers, auth=auth, data=json.dumps(data)).prepare(),
                          timeout=300, stream=False)
 
-        response = r.text
-        list = response.split(': ')
+        response = json.loads(r.text)
 
-        unsubmitted_ids = list[1].split(',')
+        errors = response['errors']
 
+        unsubmitted_ids = []
+        for e in errors:
+           unsubmitted_ids.append(e['submissionFileId'])
 
         #update status of files already submitted
         for file in self.batch_status_update:
@@ -176,7 +191,6 @@ class Submission:
         self.credentials_list = self.get_multipart_credentials(unsubmitted_ids)
         self.update_full_file_paths()
 
-
     def update_full_file_paths(self):
         full_file_path = {}
 
@@ -188,39 +202,48 @@ class Submission:
                     break
         self.full_file_path = full_file_path
 
-    def found_all_files(self, retry_allowed=False):
-        print('\nSearching for associated files...')
+    def recollect_file_search_info(self):
+        retry = input('Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
+                      '<bucket name> to locate your associated files:')
+        response = retry.split(' ')
+        self.directory_list = response
+        if response[0] == '-s3':
+            self.source_bucket = response[1]
+            self.source_prefix = input('Enter any prefix for your S3 object, or hit "Enter": ')
+            if self.source_prefix == "":
+                self.source_prefix = None
+            if self.aws_access_key == "":
+                self.aws_access_key = input('Enter the access_key for your AWS account: ')
+            if self.aws_secret_key == "":
+                self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
 
-        s3 = False
-        self.directory_list = self.config.directory_list
-        self.source_bucket = self.config.source_bucket
-        if self.source_bucket:
-            s3 = True
-        self.source_prefix = self.config.source_prefix
-        self.aws_access_key = self.config.aws_access_key
-        self.aws_secret_key = self.config.aws_secret_key
+
+    def check_read_permissions(self, file):
+        try:
+            open(file)
+            return True
+        except IOError:
+            return False
+        except PermissionError:
+            return False
+
+    def found_all_files(self, directories=None, source_bucket=None, source_prefix=None, access_key=None, secret_key=None, retry_allowed=False):
+        def raise_error(error, l = []):
+            m = '\n'.join([error] + list(set(l)))
+            raise Exception(m)
+
+        self.directory_list = directories
+        self.source_bucket = source_bucket
+        self.source_prefix = source_prefix
+        self.aws_access_key = access_key
+        self.aws_secret_key = secret_key
 
         if not self.directory_list and not self.source_bucket:
-            retry = input('Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
-                          '<bucket name> to locate your associated files:')  # prefix and profile can be blank (None)
-            response = retry.split(' ')
-            self.directory_list = response
-            if response[0] == '-s3':
-                s3 = True
-                self.source_bucket = response[1]
-                self.source_prefix = input('Enter any prefix for your S3 object, or hit "Enter": ')
-                if self.source_prefix == "":
-                    self.source_prefix = None
-                if self.aws_access_key == "":
-                    self.aws_access_key = input('Enter the access_key for your AWS account: ')
-                if self.aws_secret_key == "":
-                    self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
-
-                self.config.source_bucket = self.source_bucket
-                self.config.source_prefix = self.source_prefix
-                self.config.aws_access_key = self.aws_access_key
-                self.config.aws_secret_key = self.aws_secret_key
-                self.directory_list = None
+            if retry_allowed:
+                self.recollect_file_search_info()
+            else:
+                error ='Missing directory and/or an S3 bucket.'
+                raise_error(error)
 
         if not self.no_match:
             for file in self.associated_files:
@@ -236,17 +259,19 @@ class Submission:
                 for d in self.directory_list:
                     file_name = os.path.join(d, f)
                     if os.path.isfile(file_name):
+                        if not self.check_read_permissions(file_name):
+                            self.no_read_access.add(file_name)
                         self.full_file_path[file] = (file_name, os.path.getsize(file_name))
                         self.no_match.remove(file)
                         break
 
         # files in s3
-        if s3:
-            if self.aws_access_key is None:
+        no_access_buckets = []
+        if self.source_bucket:
+            if self.aws_access_key is "":
                 self.aws_access_key = input('Enter the access_key for your AWS account: ')
-            if self.aws_secret_key is None:
+            if self.aws_secret_key is "":
                 self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
-
             s3 = boto3.session.Session(aws_access_key_id=self.aws_access_key, aws_secret_access_key=self.aws_secret_key)
             s3_client = s3.client('s3')
             for file in self.no_match[:]:
@@ -254,54 +279,96 @@ class Submission:
                 if self.source_prefix:
                     key = '/'.join([self.source_prefix, file])
                 file_name = '/'.join(['s3:/', self.source_bucket, key])
-
                 try:
                     response = s3_client.head_object(Bucket=self.source_bucket, Key=key)
                     self.full_file_path[file] = (file_name, int(response['ContentLength']))
                     self.no_match.remove(file)
-                except ClientError as e:
-                    pass
+                except botocore.exceptions.ClientError as e:
+                    # If a client error is thrown, then check that it was a 404 error.
+                    # If it was a 404 error, then the bucket does not exist.
+                    error_code = int(e.response['Error']['Code'])
+                    if error_code == 404:
+                        pass
+                    if error_code == 403:
+                        no_access_buckets.append(self.source_bucket)
+                        pass
 
-        for file in self.no_match:
-            print('Associated file not found in specified directory:', file)
         if self.no_match:
-            print('\nYou must make sure all associated files listed in your validation file'
-                  ' are located in the specified directory or AWS bucket. Please try again.')
+            if no_access_buckets:
+                message = 'Your user does NOT have access to the following buckets. Please review the bucket ' \
+                          'and/or your AWS credentials and try again.'
+                if retry_allowed:
+                    print('\n', message)
+                    for b in no_access_buckets:
+                        print(b)
+                else:
+                    error = "".join(['Bucket Access:', message])
+                    raise_error(error, no_access_buckets)
+            message = 'You must make sure all associated files listed in your validation file' \
+                      ' are located in the specified directory or AWS bucket. Associated file not found in specified directory:\n'
             if retry_allowed:
-                retry = input(
-                    'Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
-                    '<bucket name> to locate your associated files:')  # prefix and profile can be blank (None)
-                response = retry.split(' ')
-                self.directory_list = response
-                if response[0] == '-s3':
-                    self.source_bucket = response[1]
-                    self.source_prefix = input('Enter any prefix for your S3 object, or hit "Enter": ')
-                    if self.source_prefix == "":
-                        self.source_prefix = None
-                    self.aws_access_key = input('Enter the access_key for your AWS account: ')
-                    self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
-                    self.directory_list = None
-
-                self.config.source_bucket = self.source_bucket
-                self.config.source_prefix = self.source_prefix
-                self.config.aws_access_key = self.aws_access_key
-                self.config.aws_secret_key = self.aws_secret_key
-
-                self.found_all_files(retry_allowed=True)
+                print('\n', message)
+                for file in self.no_match:
+                    print(file)
+                self.recollect_file_search_info()
+                self.found_all_files(self.directory_list, self.source_bucket, self.source_prefix, self.aws_access_key,
+                                     self.aws_secret_key, retry_allowed=True)
             else:
-                print("\nYou did not enter all the correct directories or AWS bucket. Try again.")
-                sys.exit(1)
+                error = "".join(['Missing Files:', message])
+                raise_error(error, self.no_match)
+
+        while self.no_read_access:
+            message = 'You must make sure you have read-access to all the of the associated files listed in your validation file. ' \
+                      'Please update your permissions for the following associated files:\n'
+            if retry_allowed:
+                print(message)
+                for file in self.no_read_access:
+                    print(file)
+                self.recollect_file_search_info()
+                [self.no_read_access.remove(i) for i in [file for file in self.no_read_access if self.check_read_permissions(file)]]
+            else:
+                error = "".join(['Read Permission Error:', message])
+                raise_error(error, self.no_match)
+
+        self.config.directory_list = self.directory_list
+        self.config.source_bucket = self.source_bucket
+        self.config.source_prefix = self.source_prefix
+        self.config.aws_access_key = self.aws_access_key
+        self.config.aws_secret_key = self.aws_secret_key
+
         try:
             return len(self.directory_list) > 0
         except TypeError:
             return len(self.source_bucket) > 0
 
 
-    def batch_update_status(self):
-        data = self.generate_data_for_request()
+    def batch_update_status(self, status=Status.COMPLETE):
+        list_data = self.generate_data_for_request(status)
         url = "/".join([self.api, self.submission_id, 'files/batchUpdate'])
+        data_to_dump = [list_data[i:i + self.batch_size] for i in range(0, len(list_data), self.batch_size)]
+        for d in data_to_dump:
+            data = json.dumps(d)
+            api_request(self, "PUT", url, data=data)
 
-        api_request(self, "PUT", url, data=data)
+
+
+    def complete_partial_uploads(self):
+
+        bucket = (self.credentials_list[0]['destination_uri']).split('/')[2] # 'NDAR_Central_{}'.format((int(self.submission_id) % 4) + 1)
+        prefix = 'submission_{}'.format(self.submission_id)
+
+        # use self.credentials list to pass in a set of temporary tokens, which should allow listMultiPartUpload
+        # for the entire submission and not just the specific file object.
+        access_key = self.credentials_list[0]['access_key']
+        secret_key = self.credentials_list[0]['secret_key']
+        session_token = self.credentials_list[0]['session_token']
+
+        multipart_uploads = MultiPartsUpload(bucket, prefix, self.config, access_key, secret_key, session_token)
+        multipart_uploads.get_multipart_uploads()
+
+        for upload in multipart_uploads.incomplete_mpu:
+            self.all_mpus.append(upload)
+
 
     def submission_upload(self, hide_progress=True):
         with self.upload_queue.mutex:
@@ -317,6 +384,7 @@ class Submission:
         if response:
             file_ids = self.create_file_id_list(response)
             self.credentials_list = self.get_multipart_credentials(file_ids)
+            self.batch_update_status(status=Status.READY) #update the file size before submission, so service can compare.
 
             if hide_progress is False:
                 self.total_progress = tqdm(total=self.total_upload_size,
@@ -329,7 +397,7 @@ class Submission:
             workers = []
             for x in range(self.thread_num):
                 worker = Submission.S3Upload(x, self.config, self.upload_queue, self.full_file_path, self.submission_id,
-                                             self.progress_queue, self.credentials_list)
+                                             self.progress_queue, self.credentials_list, self.all_mpus)
 
                 workers.append(worker)
                 worker.daemon = True
@@ -385,10 +453,11 @@ class Submission:
                 if self.found_all_files and self.upload_tries < 5:
                     self.submission_upload()
         if self.status != Status.UPLOADING and hide_progress:
-            sys.exit(0)
+            return
 
     class S3Upload(threading.Thread):
-        def __init__(self, index, config, upload_queue, full_file_path, submission_id, progress_queue, credentials_list):
+        def __init__(self, index, config, upload_queue, full_file_path, submission_id, progress_queue, credentials_list,
+                     all_mpus):
             threading.Thread.__init__(self)
             self.config = config
             self.upload_queue = upload_queue
@@ -404,6 +473,7 @@ class Submission:
             self.full_file_path = full_file_path
             self.credentials_list = credentials_list
             self.submission_id = submission_id
+            self.all_mpus = all_mpus
             self.index = index + 1
             self.progress_queue = progress_queue
             self.shutdown_flag = threading.Event()
@@ -445,7 +515,7 @@ class Submission:
 
 
                 file_id, credentials, bucket, key, full_path, file_size = self.upload_config()
-
+                prefix = 'submission_{}'.format(self.submission_id)
 
 
                 """
@@ -456,7 +526,16 @@ class Submission:
 
                 If the source file is from S3, use a specific AWS Profile to retrieve the source file, and uses
                 credentials supplied by the submission API to upload to remote S3 location.
+                
+                If the file was uploaded using multi-part, it will first complete the multi part uploads.
                 """
+
+                mpu_exist = False
+                for upload in self.all_mpus:
+                    if upload['Key'] == key:
+                        mpu_exist = True
+                        mpu_to_complete = upload
+                        break
 
                 if full_path.startswith('s3'):
 
@@ -492,28 +571,49 @@ class Submission:
                     source_key = key.split('/')[1:]
                     source_key = '/'.join(source_key)
                     self.source_key = '/'.join([self.source_prefix, source_key])
-                    self.fileobj = self.source_s3.Object(self.source_bucket, self.source_key).get()['Body']
-                    self.bytes = self.source_s3.Object(self.source_bucket, self.source_key).get()['ContentLength']
-                    dest_session = boto3.Session(aws_access_key_id=credentials['access_key'],
-                                                 aws_secret_access_key=credentials['secret_key'],
-                                                 aws_session_token=credentials['session_token'],
-                                                 region_name='us-east-1')
+                    self.fileobj = self.source_s3.Object(self.source_bucket, self.source_key).get()['Body'] # file stream
+                    # self.bytes = self.source_s3.Object(self.source_bucket, self.source_key).get()['ContentLength']
 
-                    #GB = 1024 ** 3
-                    config = TransferConfig(multipart_threshold=8 * 1024 * 1024)
-                    self.dest = dest_session.client('s3')
-                    self.dest_bucket = bucket
-                    self.dest_key = key
-                    self.temp_key = self.dest_key + '.temp'
+                    if mpu_exist:
+                        u = UploadMultiParts(mpu_to_complete, self.full_file_path, bucket, prefix, self.config, credentials)
+                        u.get_parts_information()
+                        self.progress_queue.put(u.completed_bytes)
+                        seq = 1
 
-                    self.dest.upload_fileobj(
-                        self.fileobj,
-                        self.dest_bucket,
-                        self.dest_key,
-                        Callback=self.UpdateProgress(self.progress_queue),
-                        Config=config # ,
-                        # ExtraArgs={"Metadata": {"ContentLength": self.bytes}}
-                    )
+                        for buffer in self.fileobj.iter_chunks(chunk_size=u.chunk_size):
+                            if seq in u.parts_completed:
+                                part = u.parts[seq - 1]
+                                u.check_md5(part, buffer)
+                            else:
+                                u.upload_part(buffer, seq)
+                                self.progress_queue.put(len(buffer))
+                                # upload missing part
+                            seq += 1
+                        u.complete()
+                        self.progress_queue.put(None)
+
+                    else:
+
+                        dest_session = boto3.Session(aws_access_key_id=credentials['access_key'],
+                                                     aws_secret_access_key=credentials['secret_key'],
+                                                     aws_session_token=credentials['session_token'],
+                                                     region_name='us-east-1')
+
+                        #GB = 1024 ** 3
+                        config = TransferConfig(multipart_threshold=8 * 1024 * 1024)
+                        self.dest = dest_session.client('s3')
+                        self.dest_bucket = bucket
+                        self.dest_key = key
+                        self.temp_key = self.dest_key + '.temp'
+
+                        self.dest.upload_fileobj(
+                            self.fileobj,
+                            self.dest_bucket,
+                            self.dest_key,
+                            Callback=self.UpdateProgress(self.progress_queue),
+                            Config=config # ,
+                            # ExtraArgs={"Metadata": {"ContentLength": self.bytes}}
+                        )
 
                     self.progress_queue.put(None)
 
@@ -521,32 +621,52 @@ class Submission:
                     """
                     Assumes the file is being uploaded from local file system
                     """
+                    if mpu_exist:
+                        u = UploadMultiParts(mpu_to_complete, self.full_file_path, bucket, prefix, self.config, credentials)
+                        u.get_parts_information()
+                        self.progress_queue.put(u.completed_bytes)
+                        seq = 1
 
-                    if credentials:
-                        session = boto3.session.Session(
-                            aws_access_key_id=credentials['access_key'],
-                            aws_secret_access_key=credentials['secret_key'],
-                            aws_session_token=credentials['session_token'],
-                            region_name='us-east-1'
-                        )
-                        s3 = session.client('s3')
-                        s3_transfer = S3Transfer(s3)
-                        tqdm.monitor_interval = 0
-                        s3_transfer.upload_file(full_path, bucket, key, callback=self.UpdateProgress(self.progress_queue))
-
+                        with  open(full_path, 'rb+') as f:
+                            while True:
+                                buffer_start = u.chunk_size * (seq - 1)
+                                f.seek(buffer_start)
+                                buffer = f.read(u.chunk_size)
+                                if len(buffer) == 0:  # EOF
+                                    break
+                                if seq in u.parts_completed:
+                                    part = u.parts[seq - 1]
+                                    u.check_md5(part, buffer)
+                                else:
+                                    u.upload_part(buffer, seq)
+                                    self.progress_queue.put(len(buffer))
+                                seq += 1
+                        u.complete()
                         self.progress_queue.put(None)
-                    else:
-                        print('There was an error uploading {} after {} retry attempts'.format(full_path,
-                                                                                               self.upload_tries))
-                        continue
 
+                    else:
+                        if credentials:
+                            session = boto3.session.Session(
+                                aws_access_key_id=credentials['access_key'],
+                                aws_secret_access_key=credentials['secret_key'],
+                                aws_session_token=credentials['session_token'],
+                                region_name='us-east-1'
+                            )
+                            s3 = session.client('s3')
+                            config = TransferConfig(
+                                multipart_threshold=8 * 1024 * 1024,
+                                max_concurrency=2,
+                                num_download_attempts=10)
+
+                            s3_transfer = S3Transfer(s3, config)
+                            tqdm.monitor_interval = 0
+                            s3_transfer.upload_file(full_path, bucket, key, callback=self.UpdateProgress(self.progress_queue))
+
+                            self.progress_queue.put(None)
+                        else:
+                            print('There was an error uploading {} after {} retry attempts'.format(full_path,
+                                                                                                   self.upload_tries))
+                            continue
                 self.upload_tries = 0
                 self.upload = None
                 self.upload_queue.task_done()
-
-class Status:
-    UPLOADING = 'Uploading'
-    SYSERROR = 'SystemError'
-    COMPLETE = 'Complete'
-    ERROR = 'Error'
-    PROCESSING = 'processing'
