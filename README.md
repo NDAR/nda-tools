@@ -59,7 +59,7 @@ You can read more about what is needed for contributing data into NDAR [here](ht
 Please note that if you encounter SSL errors when running the client, you may need to re-run pip installation of requests, with
 `pip install requests[secure]` which will install some additional packages with more support for SSL connections.
 
-##Using the Client
+## Using the Client
 To view options available for the validation tool python client, enter the following command:
 
 `vtcmd -h`
