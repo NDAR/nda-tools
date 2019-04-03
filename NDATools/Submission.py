@@ -27,7 +27,7 @@ class Status:
     SYSERROR = 'SystemError'
     COMPLETE = 'Complete'
     ERROR = 'Error'
-    PROCESSING = 'processing'
+    PROCESSING = 'In Progress'
     READY = 'Ready'
 
 
