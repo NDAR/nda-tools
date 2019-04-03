@@ -49,7 +49,7 @@ class Submission:
         self.thread_num = max([1, multiprocessing.cpu_count() - 1])
         if thread_num:
             self.thread_num = thread_num
-        self.batch_size = 15000
+        self.batch_size = 5000
         if batch_size:
             self.batch_size = batch_size
         self.batch_status_update = []
