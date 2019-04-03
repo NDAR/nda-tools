@@ -51,7 +51,7 @@ class Constants:
 
 class UploadMultiParts:
     def __init__(self, upload_obj, full_file_path, bucket, prefix, config, credentials):
-        self.chunk_size = 0
+        self.chunk_size = 8388608 #default
         self.upload_obj = upload_obj
         self.full_file_path = full_file_path
         self.upload_id = self.upload_obj['UploadId']
@@ -80,7 +80,9 @@ class UploadMultiParts:
                                              UploadId=self.upload_id)
 
         if Constants.PARTS in self.upload_obj:
-            self.chunk_size = self.upload_obj[Constants.PARTS][0][Constants.SIZE] # size of first part should be size of all subsequent parts
+            chunk_size = self.upload_obj[Constants.PARTS][0][Constants.SIZE] # size of first part should be size of all subsequent parts
+            if chunk_size != 0:
+                self.chunk_size = chunk_size
             for p in self.upload_obj[Constants.PARTS]:
                 try:
                     self.parts.append({Constants.PART_NUM: p[Constants.PART_NUM], Constants.ETAG: p[Constants.ETAG]})
