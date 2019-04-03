@@ -10,6 +10,10 @@ from requests.adapters import HTTPAdapter
 import requests.packages.urllib3.util
 import json
 import signal
+import os
+import logging
+log_file = os.path.join(os.path.expanduser('~'), "NDAValidationResults/debug_log_{}.txt").format(time.strftime("%Y%m%dT%H%M%S"))
+logging.basicConfig(filename=log_file, level=logging.DEBUG, format="%(asctime)s:%(levelname)s:%(message)s")
 
 if sys.version_info[0] < 3:
     import ConfigParser as configparser
@@ -63,7 +67,7 @@ def api_request(api, verb, endpoint, data=None, session=None):
     except requests.exceptions.RequestException as e:
         print('\nAn error occurred while making {} request, check your endpoint configuration:\n'.
               format(e.request.method))
-        print(e)
+        logging.error(e)
         if api.__class__.__name__.endswith('Task'):
             api.shutdown_flag.set()
             thread.interrupt_main()
@@ -76,6 +80,7 @@ def api_request(api, verb, endpoint, data=None, session=None):
             try:
                 response = json.loads(r.text)
             except ValueError:
+                logging.error(ValueError)
                 print('Your request returned an unexpected response, please check your endpoints.\n'
                       'Action: {}\n'
                       'Endpoint:{}\n'
@@ -90,18 +95,21 @@ def api_request(api, verb, endpoint, data=None, session=None):
     if r.status_code == 401:
         m = 'The NDA username or password is not recognized.'
         print(m)
+        logging.error(m)
         r.raise_for_status()
 
     elif r.status_code == 400:
         response = json.loads(r.text)
         m = response['error'] + ': ' + response['message']
         print(m)
+        logging.error(m)
         r.raise_for_status()
 
-    elif r.status_code == 500:
+    elif r.status_code in (500, 502, 503, 504):
         response = r.text
         m = response
         print(m)
+        logging.error(m)
         r.raise_for_status()
 
     return response, session
