@@ -17,7 +17,7 @@ import signal
 
 
 class Validation:
-    def __init__(self, file_list, config, hide_progress=True, allow_exit=False, thread_num=None):
+    def __init__(self, file_list, config, hide_progress, allow_exit=False, thread_num=None):
         self.config = config
         self.hide_progress = hide_progress
         self.api = self.config.validation_api.strip('/')
@@ -285,8 +285,6 @@ class Validation:
 
         def upload_manifest(self, _fp):
             manifest_object = json.load(_fp)
-            #if not self.hide_progress:
-             #   print('Uploading', _fp.name, '\n')
             api_request(self, "PUT", self.url, data=json.dumps(manifest_object))
 
     class ValidationManifestResult:
