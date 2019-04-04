@@ -391,7 +391,7 @@ class Submission:
             if not self.resume:
                 file_ids = self.create_file_id_list(response)
                 self.credentials_list = self.get_multipart_credentials(file_ids)
-                self.batch_update_status(status=Status.READY) #update the file size before submission, so service can compare.
+                self.batch_update_status(status=Status.PROCESSING) #update the file size before submission, so service can compare.
 
             if hide_progress is False:
                 self.total_progress = tqdm(total=self.total_upload_size,
