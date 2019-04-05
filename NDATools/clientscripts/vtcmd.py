@@ -81,12 +81,11 @@ def parse_args():
     parser.add_argument('-wt', '--workerThreads', metavar='<arg>', type=int, action='store',
                         help='Number of worker threads')
 
-<<<<<<< HEAD
-    parser.add_argument('--hideProgress', action='store_true', help='Hides upload/proccessing progress')
-=======
     parser.add_argument('-bc', '--batch', metavar='<arg>', type=int, action='store',
                         help='Batch size')
->>>>>>> 184f5933c6aea2ffd575d60071d7da04b7a8b3c1
+
+    parser.add_argument('--hideProgress', action='store_true', help='Hides upload/proccessing progress')
+
 
     args = parser.parse_args()
 
