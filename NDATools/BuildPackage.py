@@ -5,22 +5,20 @@ import requests.packages.urllib3.util
 from tqdm import tqdm
 import boto3
 import botocore
+import signal
 
 if sys.version_info[0] < 3:
     input = raw_input
 
-
 from NDATools.Configuration import *
+from NDATools.Utils import *
+
 
 class SubmissionPackage:
-    def __init__(self, uuid, associated_files, username=None, password=None, collection=None, title=None,
-                 description=None, alternate_location=None, config=None):
-        if config:
-            self.config = config
-        else:
-            self.config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'))
-            self.config.username = username
-            self.config.password = password
+    def __init__(self, uuid, associated_files, config, username=None, password=None, collection=None, title=None,
+                 description=None, alternate_location=None, allow_exit=False):
+
+        self.config = config
         self.aws_access_key = self.config.aws_access_key
         self.aws_secret_key = self.config.aws_secret_key
         self.api = self.config.submission_package_api
@@ -31,21 +29,18 @@ class SubmissionPackage:
         self.username = self.config.username
         self.password = self.config.password
         self.no_match = []
+        if username:
+            self.config.username = username
+        if password:
+            self.config.password = password
         if title:
-            self.dataset_name = title
-        elif self.config.title:
-            self.dataset_name = self.config.title
-        else:
-            print('\nYou must enter a title for dataset name.')
-            sys.exit(1)
+            self.config.title = title
         if description:
-            self.dataset_description = description
-
-        elif self.config.description:
-            self.dataset_description = self.config.description
-        else:
-            print('\nYou must enter a description for dataset submission.')
-            sys.exit(1)
+            self.config.description = description
+        self.username = self.config.username
+        self.password = self.config.password
+        self.dataset_name = self.config.title
+        self.dataset_description = self.config.description
         self.package_info = {}
         self.download_links = []
         self.package_id = None
@@ -57,11 +52,11 @@ class SubmissionPackage:
         self.get_collections()
         self.get_custom_endpoints()
         self.validation_results = []
-        if not self.config.submission_packages:
-            self.config.submission_packages = 'NDASubmissionPackages'
+        self.no_read_access = set()
         self.submission_packages_dir = os.path.join(os.path.expanduser('~'), self.config.submission_packages)
         if not os.path.exists(self.submission_packages_dir):
             os.mkdir(self.submission_packages_dir)
+        self.exit = allow_exit
 
     def get_collections(self):
         collections, session = api_request(self,
@@ -111,64 +106,85 @@ class SubmissionPackage:
                     elif self.endpoint_title in self.endpoints:
                         break
                     else:
-                        print('Collection IDs:')
-                        for k, v in self.collections.items():
-                            print('{}: {}'.format(k, v.encode('ascii', 'ignore')))
-                        print('\nAlternate Endpoints:')
-                        for endpoint in self.endpoints:
-                            print(endpoint.encode('ascii', 'ignore'))
-                        print('\nYou do not have access to submit to the collection or alternate upload location: {} '.
-                              format(self.collection_id or self.endpoint_title))
                         if not hide_input:
+                            print ('Collection IDs:')
+                            for k, v in self.collections.items():
+                                print('{}: {}'.format(k, v.encode('ascii', 'ignore')))
+                            print('\nAlternate Endpoints:')
+                            for endpoint in self.endpoints:
+                                print(endpoint.encode('ascii', 'ignore'))
+                            message = '\nYou do not have access to submit to the collection or alternate upload location: {} '.format(self.collection_id or self.endpoint_title)
+                            print(message)
                             user_input = input('\nEnter -c <collection ID> OR -a <alternate endpoint> from the list above:')
                         else:
-                            sys.exit(1)
+                            message = 'Incorrect/Missing collection ID or alternate endpoint.'
+                            if self.exit:
+                                exit_client(signal=signal.SIGTERM,
+                                            message=message)
+                            else:
+                                raise Exception(message)
                 except (AttributeError, ValueError, TypeError) as e:
+                    message = 'Error: Input must start with either a -c or -a and be an integer or string value, respectively.'
                     if not hide_input:
-                        print(
-                            'Error: Input must start with either a -c or -a and be an integer or string value, respectively.')
+                        print(message)
                         user_input = input('\nEnter -c <collection ID> OR -a <alternate endpoint>:')
                     else:
-                        sys.exit(1)
+                        message = 'Incorrect/Missing collection ID or alternate endpoint.'
+                        if self.exit:
+                            exit_client(signal=signal.SIGTERM,
+                                            message=message)
+                        else:
+                            raise Exception(message)
         else:
-            exit_client(signal=signal.SIGINT,
-                        message='The user {} does not have permission to submit to any collections'
-                                ' or alternate upload locations.'.format(self.config.username))
+            message = 'The user {} does not have permission to submit to any collections or alternate upload locations.'.format(self.config.username)
+            if self.exit:
+                exit_client(signal=signal.SIGTERM,
+                        message=message)
+            else:
+                raise Exception(message)
 
-    def file_search(self, directories, source_bucket, source_prefix, access_key, secret_key, retry_allowed=False):
-        print('\nSearching for associated files...')
+    def recollect_file_search_info(self):
+        retry = input('Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
+                      '<bucket name> to locate your associated files:')
+        response = retry.split(' ')
+        self.directory_list = response
+        if response[0] == '-s3':
+            self.source_bucket = response[1]
+            self.source_prefix = input('Enter any prefix for your S3 object, or hit "Enter": ')
+            if self.source_prefix == "":
+                self.source_prefix = None
+            if self.aws_access_key == "":
+                self.aws_access_key = input('Enter the access_key for your AWS account: ')
+            if self.aws_secret_key == "":
+                self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
 
-        s3 = False
+
+    def check_read_permissions(self, file):
+        try:
+            open(file)
+            return True
+        except IOError:
+            return False
+        except PermissionError:
+            return False
+
+    def file_search(self, directories=None, source_bucket=None, source_prefix=None, access_key=None, secret_key=None, retry_allowed=False):
+        def raise_error(error, l = []):
+            m = '\n'.join([error] + list(set(l)))
+            raise Exception(m)
+
         self.directory_list = directories
         self.source_bucket = source_bucket
-
-        if self.source_bucket:
-            s3 = True
         self.source_prefix = source_prefix
         self.aws_access_key = access_key
         self.aws_secret_key = secret_key
 
         if not self.directory_list and not self.source_bucket:
-            retry = input('Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
-                          '<bucket name> to locate your associated files:')
-            response = retry.split(' ')
-            self.directory_list = response
-            if response[0] == '-s3':
-                s3 = True
-                self.source_bucket = response[1]
-                self.source_prefix = input('Enter any prefix for your S3 object, or hit "Enter": ')
-                if self.source_prefix == "":
-                    self.source_prefix = None
-                if self.aws_access_key == "":
-                    self.aws_access_key = input('Enter the access_key for your AWS account: ')
-                if self.aws_secret_key == "":
-                    self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
-
-                self.config.source_bucket = self.source_bucket
-                self.config.source_prefix = self.source_prefix
-                self.config.aws_access_key = self.aws_access_key
-                self.config.aws_secret_key = self.aws_secret_key
-                self.directory_list = None
+            if retry_allowed:
+                self.recollect_file_search_info()
+            else:
+                error ='Missing directory and/or an S3 bucket.'
+                raise_error(error)
 
         if not self.no_match:
             for a in self.associated_files:
@@ -185,13 +201,15 @@ class SubmissionPackage:
                 for d in self.directory_list:
                     file_name = os.path.join(d, f)
                     if os.path.isfile(file_name):
+                        if not self.check_read_permissions(file_name):
+                            self.no_read_access.add(file_name)
                         self.full_file_path[file] = (file_name, os.path.getsize(file_name))
                         self.no_match.remove(file)
                         break
 
         # files in s3
-        if s3:
-            no_access_buckets = set()
+        no_access_buckets = []
+        if self.source_bucket:
             if self.aws_access_key is "":
                 self.aws_access_key = input('Enter the access_key for your AWS account: ')
             if self.aws_secret_key is "":
@@ -212,58 +230,73 @@ class SubmissionPackage:
                     # If it was a 404 error, then the bucket does not exist.
                     error_code = int(e.response['Error']['Code'])
                     if error_code == 404:
-                        #print('This path is incorrect:', file_name, 'Please try again.')
                         pass
                     if error_code == 403:
-                        no_access_buckets.add(self.source_bucket)
-                        #print('You do not have access to this bucket:', self.source_bucket)
+                        no_access_buckets.append(self.source_bucket)
                         pass
 
-
-            if no_access_buckets:
-                print('\nNote: your user does NOT have access to the following buckets. Please review the bucket and/or your '
-                      'AWS credentials and try again.')
-                for b in no_access_buckets:
-                    print(b)
-
-        for file in self.no_match:
-            print('Associated file not found in specified directory:', file)
-
         if self.no_match:
-            print('\nYou must make sure all associated files listed in your validation file'
-                ' are located in the specified directory or AWS bucket. Please try again.')
+            if no_access_buckets:
+                message = 'Your user does NOT have access to the following buckets. Please review the bucket ' \
+                          'and/or your AWS credentials and try again.'
+                if retry_allowed:
+                    print('\n', message)
+                    for b in no_access_buckets:
+                        print(b)
+                else:
+                    error = "".join(['Bucket Access:', message])
+                    raise_error(error, no_access_buckets)
+            message = 'You must make sure all associated files listed in your validation file' \
+                      ' are located in the specified directory or AWS bucket. Associated file not found in specified directory:\n'
             if retry_allowed:
-                retry = input(
-                    'Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
-                    '<bucket name> to locate your associated files:')  # prefix and profile can be blank (None)
-                response = retry.split(' ')
-                self.directory_list = response
-                if response[0] == '-s3':
-                    self.source_bucket = response[1]
-                    self.source_prefix = input('Enter any prefix for your S3 object, or hit "Enter": ')
-                    if self.source_prefix == "":
-                        self.source_prefix = None
-                    self.aws_access_key = input('Enter the access_key for your AWS account: ')
-                    self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
-                    self.directory_list = None
-
-
-                self.config.source_bucket = self.source_bucket
-                self.config.source_prefix = self.source_prefix
-                self.config.aws_access_key = self.aws_access_key
-                self.config.aws_secret_key = self.aws_secret_key
+                print('\n', message)
+                for file in self.no_match:
+                    print(file)
+                self.recollect_file_search_info()
                 self.file_search(self.directory_list, self.source_bucket, self.source_prefix, self.aws_access_key,self.aws_secret_key,
                                  retry_allowed=True)
             else:
-                print("\nYou did not enter all the correct directories or AWS buckets. Try again.")
-                sys.exit(1)
+                error = "".join(['Missing Files:', message])
+                raise_error(error, self.no_match)
+
+        while self.no_read_access:
+            message = 'You must make sure you have read-access to all the of the associated files listed in your validation file. ' \
+                      'Please update your permissions for the following associated files:\n'
+            if retry_allowed:
+                print(message)
+                for file in self.no_read_access:
+                    print(file)
+                self.recollect_file_search_info()
+                [self.no_read_access.remove(i) for i in [file for file in self.no_read_access if self.check_read_permissions(file)]]
+            else:
+                error = "".join(['Read Permission Error:', message])
+                raise_error(error, self.no_match)
+
+        self.config.directory_list = self.directory_list
+        self.config.source_bucket = self.source_bucket
+        self.config.source_prefix = self.source_prefix
+        self.config.aws_access_key = self.aws_access_key
+        self.config.aws_secret_key = self.aws_secret_key
 
 
     def build_package(self):
+        def raise_error(value):
+            raise Exception("Missing {}. Please try again.".format(value))
+
+
+        if self.dataset_name is None:
+            raise_error('dataset name')
+
+        if self.dataset_description is None:
+            raise_error('dataset description')
+
+        if self.collection_id is None and self.endpoint_title is None:
+            raise_error('collection ID or alternate endpoint')
+
         self.package_info = {
             "package_info": {
-                "dataset_description": self.dataset_name,
-                "dataset_name": self.dataset_description,
+                "dataset_description": self.dataset_description,
+                "dataset_name": self.dataset_name,
                 "collection_id": self.collection_id,
                 "endpoint_title": self.endpoint_title
             },
@@ -276,38 +309,45 @@ class SubmissionPackage:
         if response:
             try:
                 self.package_id = response['submission_package_uuid']
-                #for r in response['validation_results']:
-                #    self.validation_results.append(r['id'])
-                self.validation_results = response['validation_results']
+                for r in response['validation_results']:
+                    self.validation_results.append(r['id'])
                 self.submission_package_uuid = str(response['submission_package_uuid'])
                 self.create_date = str(response['created_date'])
                 self.expiration_date = str(response['expiration_date'])
             except KeyError:
-                if response['status'] == 'error':
-                    exit_client(signal.SIGINT, message=response['errors'][0]['message'])
-
+                message = 'There was an error creating your package.'
+                if response['status'] == Status.ERROR:
+                    message = response['errors'][0]['message']
+                if self.exit:
+                    exit_client(signal.SIGTERM, message=message)
                 else:
-                    exit_client(signal=signal.SIGINT,
-                            message='There was an error creating your package.')
+                    raise Exception(message)
+
             polling = 0
-            while response['package_info']['status'] == 'processing':
+            while response['package_info']['status'] == Status.PROCESSING:
                 response, session = api_request(self, "GET", "/".join([self.api, self.package_id]), session=session)
                 polling += 1
                 self.package_id = response['submission_package_uuid']
-            if response['package_info']['status'] == 'complete':
+            if response['package_info']['status'] == Status.COMPLETE:
                 for f in [f for f in response['files']
                           if f['type'] in ('Submission Memento', 'Submission Data Package')]:
                     for key, value in f['_links'].items():
                         for k, v in value.items():
                             self.download_links.append((v, "/".join(f['path'].split('/')[4:])))
             else:
-                if response['package_info']['status'] == 'SystemError':
-                    exit_client(signal.SIGINT, message=response['errors']['system'][0]['message'])
-                exit_client(signal=signal.SIGINT,
-                            message='There was an error in building your package.')
+                message = 'There was an error in building your package.'
+                if response['package_info']['status'] == Status.SYSERROR:
+                    message=response['errors']['system'][0]['message']
+                if self.exit:
+                    exit_client(signal.SIGTERM, message=message)
+                else:
+                    raise Exception(message)
         else:
-            exit_client(signal=signal.SIGINT,
-                        message='There was an error with your package request.')
+            message='There was an error with your package request.'
+            if self.exit:
+                exit_client(signal.SIGTERM, message=message)
+            else:
+                raise Exception(message)
 
     def download_package(self, hide_progress=True):
         folder = self.download_links[0][1]
@@ -347,3 +387,11 @@ class SubmissionPackage:
             if package_download.total > package_download.n:
                 package_download.update(package_download.total - package_download.n)
             package_download.close()
+
+
+class Status:
+    UPLOADING = 'Uploading'
+    SYSERROR = 'SystemError'
+    COMPLETE = 'complete'
+    ERROR = 'error'
+    PROCESSING = 'processing'

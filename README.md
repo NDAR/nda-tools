@@ -1,4 +1,5 @@
-#nda-tools
+# nda-tools
+
 In order to submit data to the National Institute of Mental Health Data Archives (NDA), users must
 validate their data to ensure it complies with the required format. This is done using the NDA
 validation tool. Additionally, users can package and download data from NDA as well. If associated data is downloaded 
@@ -9,7 +10,7 @@ the  [Validation](https://nda.nih.gov/api/validation/docs/swagger-ui.html),
 [Data Submission](http://nda.nih.gov/api/submission/docs/swagger-ui.html#!) web services.
 
 
-##Getting Started
+## Getting Started
 
 ### Installing Python
 You will need a python distribution to use the client. Run the following from a terminal/command-prompt to determine if python is installed:
@@ -48,17 +49,17 @@ Simply enter the following command into your terminal or command prompt to insta
 Thi will automatically install the nda-tools package, including the command line scripts and required packages. 
 
 
-###Credentials
+### Credentials
 While not needed for just validation, if you would like to create a package and submit your data to the NDA, you must 
 have an active account with us. This can be requested from the [NDA website](https://nda.nih.gov/user/create_account.html).
 You can read more about what is needed for contributing data into NDA [here](https://nda.nih.gov/contribute.html). 
 
-#####You are now ready to run the client.
+##### You are now ready to run the client.
 
 Please note that if you encounter SSL errors when running the client, you may need to re-run pip installation of requests, with
 `pip install requests[secure]` which will install some additional packages with more support for SSL connections.
 
-##Using the Client
+## Using the Client
 To view options available for the validation tool python client, enter the following command:
 
 `vtcmd -h`
@@ -67,7 +68,7 @@ or to view options available for the download python client, enter:
 
 `downloadcmd -h`
 
-###Configuring the Client
+### Configuring the Client
 - If your command-line inputs have special characters (i.e., passwords) or spaces (i.e, in directory/filenames), you may need to enclose them in quotations.
   - If you are using windows, use double-quotes: ""
   - If you are using Mac OSX or Linux, use single-quotes: ''
@@ -87,7 +88,7 @@ Typically there will be no need to change entries in the 'Endpoints' section, ho
   ```  
 
 
-###Files for Validation
+### Files for Validation
 It is important that you know the full path to the csv files that you will be validating. Furthermore, if your data
 also includes manifests and/or associated files (ie. genomics files, imaging files), you must also know the full path to these files,
 which should be entered as an optional command-line argument. Otherwise, the client will prompt you to enter a list of 
@@ -97,7 +98,7 @@ credentials if your associated files are located in AWS.
 **Please note:** When listing the directory for associated files, include the folder **up to but not including**
 the file name listed in the csv file.
 
-#####Example:
+##### Example:
 If the associated file name is Users/[youruser]/Documents/MultipleDataTypes/data/1G_file.fastq and is listed in your csv file as:
 
 >data/1G_file.fastq
@@ -161,13 +162,13 @@ vtcmd <submissionID> -r
 You can optionally include your username, password, AWS credentials, and directory list at this point as well, or enter it if/when prompted
 by the client.
 
-##Downloading Data
+## Downloading Data
 
 To download data, you should use the downloadcmd command. This provides several options to download your NDA packaged data 
 or a subset of the data. All files are downloaded automatically to the ~/AWS_downloads folder, but you can change this by
 indicating a new directory in the command line to save files. 
 
-####All Package Data
+#### All Package Data
 All packaged data can be downloaded by passing the package ID:
 
 `downloadcmd -<oackageID> -dp`
@@ -175,7 +176,7 @@ All packaged data can be downloaded by passing the package ID:
 Note: it will NOT download associated files *unless you created your NDA package with associated files*. Steps to download associated 
 files are below.
 
-####Downloading .txt Files
+#### Downloading .txt Files
 The downloadcmd command has two options for downloading data inside .txt files. If you have downloaded your NDA package, you will find
 meta-data .txt files, many of which represent data measures. Genomics, imaging, and other associated data will be listed in these .txt files
 as s3 links. If you would like to download all the s3 links in your .txt file, you can indicate so by passing the -ds flag.
@@ -188,7 +189,7 @@ be a subset of the data you want, or a list of everything.
 `downloadcmd -path/to/all/s3/txt/file/alls3.txt -t`
 
 
-####Restart Download
+#### Restart Download
 
 Often times, your download may be interrupted. To restart a download process, enter the same command you did for the original
 run, but include the -r flag and the directory where all the files were being downloaded:
@@ -197,7 +198,7 @@ run, but include the -r flag and the directory where all the files were being do
  
 
 
-##Further Assistance
+## Further Assistance
 If you have any problems with this validation tool python client, or would like to provide feedback/comments,
 please email us at NDAHelp@mail.nih.gov.
 # nda-tools
