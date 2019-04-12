@@ -10,9 +10,10 @@ from NDATools.Configuration import *
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description='This application allows you to enter a list of aws S3 paths and will download the files to your local drive '
-                    'in your home folder. Alternatively, you may enter a packageID,an NDA data structure file or a text file with s3 links, '
-                    'and the client will download all associated files from S3 listed.',
+        description='This application allows you to enter a list of aws S3 paths and will download the files to your '
+                    'drive in your home folder. Alternatively, you may enter a packageID, an NDA data structure file or'
+                    ' a text file with s3 links, and the client will download all files from the S3 links listed. '
+                    'Please note, the maximum transfer limit of data is 5TB at one time.',
         usage='%(prog)s <S3_path_list>')
 
     parser.add_argument('paths', metavar='<S3_path_list>', type=str, nargs='+', action='store',
@@ -35,7 +36,6 @@ def parse_args():
 
     parser.add_argument('-r', '--resume', metavar='<arg>', type=str, nargs=1, action='store',
                         help='Flags to restart a download process. If you already have some files downloaded, you must enter the directory where they are saved.')
-
 
     parser.add_argument('-d', '--directory', metavar='<arg>', type=str, nargs=1, action='store',
                         help='Enter an alternate full directory path where you would like your files to be saved.')
