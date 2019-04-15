@@ -103,8 +103,10 @@ class Submission:
                 raise Exception("{}\n{}".format('StatusError', message))
 
     def create_file_id_list(self, response):
+
         file_ids = []
-        file_ids.extend(file['id'] for file in response if file['status'] != 'Complete')
+        #file_ids.extend(file['id'] for file in response if file['status'] != 'Complete')
+        file_ids.extend({'submissionFileId': file['id'], 'destination_uri': file['file_remote_path']} for file in response if file['status'] != 'Complete')
 
         return file_ids
 
@@ -115,18 +117,21 @@ class Submission:
 
 
         for ids in batched_ids:
+            print('BATCH SIZE:', len(ids))
             credentials_list, session = api_request(self, "POST", "/".join(
                 [self.api, self.submission_id, 'files/batchMultipartUploadCredentials']), data=json.dumps(ids))
             all_credentials = all_credentials + credentials_list['credentials']
             time.sleep(2)
 
-
         return all_credentials
 
-    def generate_data_for_request(self, status):
+    def generate_data_for_request(self, status, id_list=None):
         batch_status_update = []
 
-        for cred in self.credentials_list:
+        if self.credentials_list:
+            id_list = self.credentials_list
+
+        for cred in id_list:
             file = cred['destination_uri'].split('/')
             file = '/'.join(file[4:])
             size = self.full_file_path[file][1]
@@ -163,38 +168,61 @@ class Submission:
 
     def check_submitted_files(self):
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id, 'files']))
-        file_ids = self.create_file_id_list(response)
-        self.credentials_list = self.get_multipart_credentials(file_ids)
 
+        file_ids = self.create_file_id_list(response) # or edit this function
 
-        data = self.generate_data_for_request(Status.COMPLETE)
+        data = self.generate_data_for_request(Status.COMPLETE, file_ids) # edit this function...
         url = "/".join([self.api, self.submission_id, 'files/batchUpdate'])
         auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
         headers = {'content-type': 'application/json'}
 
-
         batched_data = [data[i:i + self.batch_size] for i in
-                                   range(0, len(data),
-                                         self.batch_size)]
+                        range(0, len(data),
+                              self.batch_size)]
         unsubmitted_ids = []
 
         for batch in batched_data:
+            #print('LEN:', len(batch))
             session = requests.session()
             r = session.send(requests.Request('PUT', url, headers, auth=auth, data=json.dumps(batch)).prepare(),
                              timeout=300, stream=False)
             response = json.loads(r.text)
             errors = response['errors']
-
             for e in errors:
                 unsubmitted_ids.append(e['submissionFileId'])
 
-        # update self.credentials_list and full_file_path list
-        new_cred = []
-        for cred in self.credentials_list:
-            if cred['fileId'] in unsubmitted_ids:
-                new_cred.append(cred)
+        all_ids = [int(ids['submissionFileId']) for ids in file_ids]
 
-        self.credentials_list = new_cred
+        #print(type(all_ids[1]))
+        #print(type(unsubmitted_ids[1]))
+
+        #print(len(all_ids), len(unsubmitted_ids))
+
+        new_ids = set(all_ids) & set(unsubmitted_ids)
+
+        """
+          10000
+          10000
+          10000
+          6264
+          """
+
+        #print('TOTAL:', len(new_ids))
+
+        self.credentials_list = self.get_multipart_credentials(list(new_ids))
+
+        # test count here!!
+
+
+        # self.credentials_list = self.get_multipart_credentials(file_ids)
+
+        # update self.credentials_list and full_file_path list
+        #new_cred = []
+        #for cred in self.credentials_list:
+        #    if cred['fileId'] in unsubmitted_ids:
+        #        new_cred.append(cred)
+
+        #self.credentials_list = new_cred
         self.update_full_file_paths()
 
     def update_full_file_paths(self):
