@@ -104,11 +104,8 @@ class Submission:
 
     def create_file_info_list(self, response):
 
-        file_info = []
-        file_info.extend({'submissionFileId': file['id'], 'destination_uri': file['file_remote_path']} for file in
-                        response if file['status'] != 'Complete')
-
-        return file_info
+        return [{'submissionFileId': file['id'], 'destination_uri': file['file_remote_path']} for file in response if
+                file['status'] != Status.COMPLETE]
 
 
     def get_multipart_credentials(self, file_ids):
@@ -123,7 +120,7 @@ class Submission:
 
         return all_credentials
 
-    def generate_data_for_request(self, status, id_list=None):
+    def generate_data_for_request(self, status, id_list=[]):
         batch_status_update = []
 
         if self.credentials_list:
