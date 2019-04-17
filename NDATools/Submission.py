@@ -102,17 +102,15 @@ class Submission:
             else:
                 raise Exception("{}\n{}".format('StatusError', message))
 
-    def create_file_id_list(self, response):
-        file_ids = []
-        file_ids.extend(file['id'] for file in response if file['status'] != 'Complete')
+    def create_file_info_list(self, response):
 
-        return file_ids
+        return [{'submissionFileId': file['id'], 'destination_uri': file['file_remote_path']} for file in response if
+                file['status'] != Status.COMPLETE]
 
 
     def get_multipart_credentials(self, file_ids):
         all_credentials = []
         batched_ids = [file_ids[i:i + self.batch_size] for i in range(0, len(file_ids), self.batch_size)]
-
 
         for ids in batched_ids:
             credentials_list, session = api_request(self, "POST", "/".join(
@@ -120,13 +118,15 @@ class Submission:
             all_credentials = all_credentials + credentials_list['credentials']
             time.sleep(2)
 
-
         return all_credentials
 
-    def generate_data_for_request(self, status):
+    def generate_data_for_request(self, status, id_list=[]):
         batch_status_update = []
 
-        for cred in self.credentials_list:
+        if self.credentials_list:
+            id_list = self.credentials_list
+
+        for cred in id_list:
             file = cred['destination_uri'].split('/')
             file = '/'.join(file[4:])
             size = self.full_file_path[file][1]
@@ -163,19 +163,17 @@ class Submission:
 
     def check_submitted_files(self):
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id, 'files']))
-        file_ids = self.create_file_id_list(response)
-        self.credentials_list = self.get_multipart_credentials(file_ids)
 
+        file_info = self.create_file_info_list(response)
 
-        data = self.generate_data_for_request(Status.COMPLETE)
+        data = self.generate_data_for_request(Status.COMPLETE, file_info)
         url = "/".join([self.api, self.submission_id, 'files/batchUpdate'])
         auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
         headers = {'content-type': 'application/json'}
 
-
         batched_data = [data[i:i + self.batch_size] for i in
-                                   range(0, len(data),
-                                         self.batch_size)]
+                        range(0, len(data),
+                              self.batch_size)]
         unsubmitted_ids = []
 
         for batch in batched_data:
@@ -184,17 +182,14 @@ class Submission:
                              timeout=300, stream=False)
             response = json.loads(r.text)
             errors = response['errors']
-
             for e in errors:
                 unsubmitted_ids.append(e['submissionFileId'])
 
-        # update self.credentials_list and full_file_path list
-        new_cred = []
-        for cred in self.credentials_list:
-            if cred['fileId'] in unsubmitted_ids:
-                new_cred.append(cred)
+        file_ids = [int(ids['submissionFileId']) for ids in file_info]
+        new_ids = set(file_ids) & set(unsubmitted_ids)
 
-        self.credentials_list = new_cred
+        self.credentials_list = self.get_multipart_credentials(list(new_ids))
+
         self.update_full_file_paths()
 
     def update_full_file_paths(self):
@@ -356,8 +351,6 @@ class Submission:
             data = json.dumps(d)
             api_request(self, "PUT", url, data=data)
 
-
-
     def complete_partial_uploads(self):
 
         bucket = (self.credentials_list[0]['destination_uri']).split('/')[2] # 'NDAR_Central_{}'.format((int(self.submission_id) % 4) + 1)
@@ -375,7 +368,6 @@ class Submission:
         for upload in multipart_uploads.incomplete_mpu:
             self.all_mpus.append(upload)
 
-
     def submission_upload(self, hide_progress):
         with self.upload_queue.mutex:
             self.upload_queue.queue.clear()
@@ -389,7 +381,8 @@ class Submission:
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id, 'files']))
         if response:
             if not self.resume:
-                file_ids = self.create_file_id_list(response)
+                file_id_info = self.create_file_info_list(response)
+                file_ids = [int(ids['submissionFileId']) for ids in file_id_info]
                 self.credentials_list = self.get_multipart_credentials(file_ids)
                 self.batch_update_status(status=Status.PROCESSING) #update the file size before submission, so service can compare.
 
@@ -516,6 +509,7 @@ class Submission:
             self.credentials_list.append(credentials)
 
             return credentials
+
         def add_back_to_queue(self, bucket, prefix):
             # If expired token:
             #  1. Add to upload_queue so it is picked up by another thread again
