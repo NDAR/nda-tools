@@ -171,7 +171,7 @@ indicating a new directory in the command line to save files.
 #### All Package Data
 All packaged data can be downloaded by passing the package ID:
 
-`downloadcmd -<oackageID> -dp`
+`downloadcmd -<packageID> -dp`
 
 Note: it will NOT download associated files *unless you created your NDA package with associated files*. Steps to download associated 
 files are below.
