@@ -168,6 +168,8 @@ To download data, you should use the downloadcmd command. This provides several 
 or a subset of the data. All files are downloaded automatically to the ~/AWS_downloads folder, but you can change this by
 indicating a new directory in the command line to save files. 
 
+Please note, the maximum transfer limit of data is 5TB at one time. 
+
 #### All Package Data
 All packaged data can be downloaded by passing the package ID:
 
