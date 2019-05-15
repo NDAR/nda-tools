@@ -173,7 +173,7 @@ Please note, the maximum transfer limit of data is 5TB at one time.
 #### All Package Data
 All packaged data can be downloaded by passing the package ID:
 
-`downloadcmd -<oackageID> -dp`
+`downloadcmd -<packageID> -dp`
 
 Note: it will NOT download associated files *unless you created your NDA package with associated files*. Steps to download associated 
 files are below.

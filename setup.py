@@ -1,4 +1,10 @@
+#!/usr/bin/env python
+
 from setuptools import find_packages, setup
+
+
+with open("README.md", "r") as fh:
+    long_description = fh.read()
 
 
 setup(
@@ -6,6 +12,8 @@ setup(
         description="NIMH Data Archive Python Client",
         install_requires=['boto3', 'botocore', 'tqdm','requests'],
         version='0.1.19',
+        long_description=long_description,
+        long_description_content_type="text/markdown",
         author='NDA',
         author_email='NDAHelp@mail.nih.gov',
         url="https://github.com/NDAR/nda-tools/tree/master/NDATools",
