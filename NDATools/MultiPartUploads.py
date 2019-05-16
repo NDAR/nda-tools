@@ -1,11 +1,7 @@
 import boto3
 import botocore
 import hashlib
-
 from NDATools.Utils import *
-
-
-
 
 class MultiPartsUpload:
     def __init__(self, bucket, prefix, config, access_key, secret_key, session_token):

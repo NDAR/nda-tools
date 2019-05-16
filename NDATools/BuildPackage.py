@@ -6,18 +6,14 @@ from tqdm import tqdm
 import boto3
 import botocore
 import signal
-
 if sys.version_info[0] < 3:
     input = raw_input
-
 from NDATools.Configuration import *
 from NDATools.Utils import *
-
 
 class SubmissionPackage:
     def __init__(self, uuid, associated_files, config, username=None, password=None, collection=None, title=None,
                  description=None, alternate_location=None, allow_exit=False):
-
         self.config = config
         self.aws_access_key = self.config.aws_access_key
         self.aws_secret_key = self.config.aws_secret_key

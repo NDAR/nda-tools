@@ -12,8 +12,19 @@ import json
 import signal
 import os
 import logging
-log_file = os.path.join(os.path.expanduser('~'), "NDAValidationResults/debug_log_{}.txt").format(time.strftime("%Y%m%dT%H%M%S"))
-logging.basicConfig(filename=log_file, level=logging.DEBUG, format="%(asctime)s:%(levelname)s:%(message)s")
+
+from NDATools.Configuration import ClientConfiguration
+
+config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'))
+if config.validation_results:
+    validation_results_dir = os.path.join(os.path.expanduser('~'), config.validation_results)
+else:
+    validation_results_dir = os.path.join(os.path.expanduser('~'), "NDAValidationResults")
+if not os.path.exists(validation_results_dir):
+    os.mkdir(validation_results_dir)
+log_file = os.path.join(validation_results_dir, "debug_log_{}.txt").format(time.strftime("%Y%m%dT%H%M%S"))
+print('Opening log: {}'.format(log_file))
+logging.basicConfig(filename=log_file, level=logging.INFO, format="%(asctime)s:%(levelname)s:%(message)s")
 
 if sys.version_info[0] < 3:
     import ConfigParser as configparser
@@ -127,4 +138,3 @@ def exit_client(signal, frame=None, message=None):
         print('\n\nExit signal received, shutting down...')
     print('Please contact NDAHelp@mail.nih.gov if you need assistance.')
     sys.exit(1)
-

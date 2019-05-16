@@ -6,6 +6,9 @@ if sys.version_info[0] < 3:
 import argparse
 from NDATools.Download import Download
 from NDATools.Configuration import *
+import NDATools
+
+import logging
 
 
 def parse_args():
@@ -52,6 +55,8 @@ def parse_args():
 
 
 def configure(username, password):
+
+    NDATools.Utils.logging.getLogger().setLevel(logging.INFO)
     if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
         config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'), username, password)
     else:
@@ -61,6 +66,8 @@ def configure(username, password):
     return config
 
 def main():
+    if NDATools.pypi_version != NDATools.__version__:
+        sys.exit(1)
     args = parse_args()
     config = configure(args.username, args.password)
 

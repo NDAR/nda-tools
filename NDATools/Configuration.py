@@ -10,7 +10,6 @@ else:
     import configparser
     import _thread as thread
 import os
-
 from pkg_resources import resource_filename
 
 class ClientConfiguration:
@@ -95,3 +94,4 @@ class ClientConfiguration:
 
         if not self.aws_secret_key:
             self.aws_secret_key = getpass.getpass('Enter your aws_secret_key. If none, hit "Enter":')
+

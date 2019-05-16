@@ -690,7 +690,7 @@ class Submission:
                             self.progress_queue.put(u.completed_bytes)
                         seq = 1
 
-                        with open(full_path, 'rb+') as f:
+                        with open(full_path, 'rb') as f:
                             while True:
                                 buffer_start = u.chunk_size * (seq - 1)
                                 f.seek(buffer_start)

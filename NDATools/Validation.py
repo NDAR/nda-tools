@@ -11,7 +11,6 @@ else:
     import queue
 from NDATools.Configuration import *
 from NDATools.Utils import *
-
 import threading
 import signal
 

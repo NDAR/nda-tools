@@ -78,6 +78,7 @@ class Download(Protocol):
         self.directory = directory
         self.download_queue = Queue()
         self.path_list = set()
+        self.local_file_names = {}
         self.access_key = None
         self.secret_key = None
         self.session = None
@@ -116,14 +117,18 @@ class Download(Protocol):
         for element in packageFiles:
             associated = element.findall(".//isAssociated")
             path = element.findall(".//path")
+            alias = element.findall(".//alias")
             for a in associated:
                 if a.text == 'false':
                     for p in path:
                         file = 's3:/' + p.text
                         self.path_list.add(file)
+                    for al in alias:
+                        alias_path = al.text
+
+                    self.local_file_names[file] = alias_path
 
         self.verbose_print('Downloading package files for package {}.'.format(self.package))
-
 
 
     def searchForDataStructure(self, resume, dir):
@@ -150,14 +155,22 @@ class Download(Protocol):
                     if e.response.status_code == 404:
                         continue
 
-    def useDataStructure(self):
+    def useDataStructure(self, data_structure):
         try:
             with open(self.dataStructure, 'r', encoding='utf-8') as tsv_file:
                 tsv = csv.reader(tsv_file, delimiter="\t")
+                if data_structure:
+                    ds = next(tsv)[1].split("_")[0]
                 for row in tsv:
                     for element in row:
                         if element.startswith('s3://'):
                             self.path_list.add(element)
+                            if data_structure:
+                                e= element.split('/')
+                                path = "".join(e[4:])
+                                path = "/".join([ds, path])
+                                self.local_file_names[element] = path
+
         except IOError as e:
             self.verbose_print(
                 '{} not found. Please enter the correct path to your file and try again.'.format(self.dataStructure))
@@ -167,15 +180,16 @@ class Download(Protocol):
                 '{} not found. Please enter the correct path to your file and try again.'.format(self.dataStructure))
             raise FileNotFoundError
 
+
     def get_links(self, links, files, filters=None):
 
         if links == 'datastructure':
             self.dataStructure = files[0]
-            self.useDataStructure()
+            self.useDataStructure(data_structure=True)
 
         elif links == 'text':
             self.dataStructure = files[0]
-            self.useDataStructure()
+            self.useDataStructure(data_structure=False)
 
         elif links == 'package':
             self.package = files[0]
@@ -203,10 +217,18 @@ class Download(Protocol):
         self.filename = filename[3:]
         key = '/'.join(self.filename)
         bucket = filename[2]
-        self.newdir = filename[3:-1]
+
+        if self.local_file_names:
+            dir = (self.local_file_names[path]).split('/')
+            self.newdir = dir[:-1]
+            alias = self.local_file_names[path]
+        else:
+            self.newdir = filename[3:-1]
+            alias = key
+
         self.newdir = '/'.join(self.newdir)
         self.newdir = os.path.join(self.directory, self.newdir)
-        local_filename = os.path.join(self.directory, key)
+        local_filename = os.path.join(self.directory, alias)
 
         downloaded = False
 
@@ -215,7 +237,6 @@ class Download(Protocol):
             prev_local_filename = os.path.join(prev_directory, key)
             if os.path.isfile(prev_local_filename):
                 downloaded = True
-
 
         if not downloaded:
             try:
@@ -263,4 +284,3 @@ class Download(Protocol):
         # Add the jobs in bulk to the thread pool
         pool.map(download, self.path_list)
         pool.wait_completion()
-
