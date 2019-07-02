@@ -1,11 +1,12 @@
+import NDATools
 from NDATools.Configuration import *
+from NDATools.Utils import *
 from NDATools.Validation import Validation
 from NDATools.BuildPackage import SubmissionPackage
 from NDATools.Submission import Submission
 import argparse
 import os
-
-
+import pkg_resources
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -258,6 +259,9 @@ def submit_package(package_id, full_file_path, associated_files, threads, batch,
                #do we want to include this??
 
 def main():
+    # confirm most up to date version of nda-tools is installed
+    if NDATools.pypi_version != NDATools.__version__:
+        sys.exit(1)
     args = parse_args()
     config = configure(args)
     if args.resume:
