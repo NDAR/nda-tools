@@ -3,7 +3,7 @@ import requests
 import json
 import sys
 
-__version__ = '0.1.18'
+__version__ = '0.1.19'
 pypi_version = None
 version_checked = False
 
@@ -13,7 +13,7 @@ def check_version():
     except ImportError:
         from pip._vendor.packaging.version import parse
 
-    url_pattern = 'https://test.pypi.org/pypi/{package}/json'
+    url_pattern = 'https://pypi.org/pypi/{package}/json'
     package = 'nda-tools'
     """Return version of package on pypi.python.org using json."""
     req = requests.get(url_pattern.format(package=package))
