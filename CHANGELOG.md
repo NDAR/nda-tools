@@ -1,8 +1,11 @@
 
 # CHANGELOG
 
+## 0.1.20 - 2019-0-12
+* [`nda-tools`] Python2 compatibility fixes and some PEP-8 style changes; fixes [GitHub Issue 9](https://github.com/NDAR/nda-tools/issues/9)
+
 ## 0.1.19 - 2019-07-02
-* [`vtcmd`] Fixed issue with writing debug log files to directory before it is created
+* [`vtcmd`] Fixed issue with writing debug log files to directory before it is created; fixes [GitHub Issue 12](https://github.com/NDAR/nda-tools/issues/12)
 * [`vtcmd`] Removed write mode when opening associated files for upload to S3
 * [`vtcmd`] Update to only fetch multi-part credentials once during resume option in check_submitted_files()
 * [`downloadcmd`] Add message regarding transfer limit to download(5TB)
