@@ -90,9 +90,9 @@ class Download(Protocol):
     def get_protocol(cls):
         return cls.XML
 
-    def verbose_print(self, *args, **kwargs):
+    def verbose_print(self, *args):
         if self.verbose:
-            print(*args, **kwargs)
+            print(args)
 
     def useDataManager(self):
         """ Download package files (not associated files) """
@@ -175,10 +175,6 @@ class Download(Protocol):
             self.verbose_print(
                 '{} not found. Please enter the correct path to your file and try again.'.format(self.dataStructure))
             raise e
-        except FileNotFoundError:
-            self.verbose_print(
-                '{} not found. Please enter the correct path to your file and try again.'.format(self.dataStructure))
-            raise FileNotFoundError
 
 
     def get_links(self, links, files, filters=None):

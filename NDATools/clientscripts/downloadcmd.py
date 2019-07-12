@@ -53,7 +53,6 @@ def parse_args():
     return args
 
 
-
 def configure(username, password):
 
     NDATools.Utils.logging.getLogger().setLevel(logging.INFO)
@@ -109,12 +108,12 @@ def main():
     s3Download.start_workers(resume, prev_directory, args.workerThreads)
 
     # download associated files from package
-    #if args.package:
+    # if args.package:
     #    s3Download.searchForDataStructure(resume, prev_directory)
-
 
     if verbose:
         print('Finished downloading all files.')
+
 
 if __name__ == "__main__":
     main()

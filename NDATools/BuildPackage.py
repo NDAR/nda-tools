@@ -11,6 +11,7 @@ if sys.version_info[0] < 3:
 from NDATools.Configuration import *
 from NDATools.Utils import *
 
+
 class SubmissionPackage:
     def __init__(self, uuid, associated_files, config, username=None, password=None, collection=None, title=None,
                  description=None, alternate_location=None, allow_exit=False):
@@ -159,9 +160,9 @@ class SubmissionPackage:
         try:
             open(file)
             return True
-        except IOError:
-            return False
-        except PermissionError:
+        except (OSError, IOError) as err:
+            if err.errno == 13:
+                print('Permission Denied: {}'.format(file))
             return False
 
     def file_search(self, directories=None, source_bucket=None, source_prefix=None, access_key=None, secret_key=None, retry_allowed=False):

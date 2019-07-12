@@ -9,6 +9,7 @@ import logging
 import os
 import pkg_resources
 
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description='This application allows you to validate files and submit data into NDA. '

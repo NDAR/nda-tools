@@ -300,7 +300,6 @@ class Validation:
                 manifests.append(Validation.ValidationManifest(_manifest, hide))
             self.manifests = manifests
 
-
     class ValidationTask(threading.Thread, Protocol):
         def __init__(self, file_queue, result_queue, api, scope, responses, validation_progress, exit):
             threading.Thread.__init__(self)
@@ -337,15 +336,6 @@ class Validation:
                         error = " ".join(['FileNotFound:', message])
                         raise Exception(error)
 
-                except FileNotFoundError:
-                    message = 'This file does not exist in current directory: {}'.format(file_name)
-                    if self.progress_bar:
-                        self.progress_bar.close()
-                    if self.exit:
-                        exit_client(signal=signal.SIGTERM, message=message)
-                    else:
-                        error = " ".join(['FileNotFound:', message])
-                        raise Exception(error)
                 data = file.read()
 
                 response, session = api_request(self, "POST", self.api_scope, data)
