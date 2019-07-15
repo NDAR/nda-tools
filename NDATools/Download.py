@@ -92,7 +92,7 @@ class Download(Protocol):
 
     def verbose_print(self, *args):
         if self.verbose:
-            print(args)
+            print(' '.join(list(args)))
 
     def useDataManager(self):
         """ Download package files (not associated files) """
@@ -249,7 +249,7 @@ class Download(Protocol):
 
             try:
                 s3transfer.download_file(bucket, key, local_filename)
-                self.verbose_print('downloaded: ', path)
+                self.verbose_print('downloaded: {}'.format(path))
 
             except botocore.exceptions.ClientError as e:
                 # If a client error is thrown, then check that it was a 404 error.

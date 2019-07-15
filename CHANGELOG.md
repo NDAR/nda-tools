@@ -1,8 +1,9 @@
 
 # CHANGELOG
 
-## 0.1.20 - 2019-0-12
+## 0.1.20 - 2019-07-15
 * [`nda-tools`] Python2 compatibility fixes and some PEP-8 style changes; fixes [GitHub Issue 9](https://github.com/NDAR/nda-tools/issues/9)
+* [`nda-tools`] Addressed issue where configuration file cannot be located on fresh installations.
 
 ## 0.1.19 - 2019-07-02
 * [`vtcmd`] Fixed issue with writing debug log files to directory before it is created; fixes [GitHub Issue 12](https://github.com/NDAR/nda-tools/issues/12)
