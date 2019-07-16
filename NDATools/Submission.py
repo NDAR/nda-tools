@@ -223,9 +223,9 @@ class Submission:
         try:
             open(file)
             return True
-        except IOError:
-            return False
-        except PermissionError:
+        except (OSError, IOError) as err:
+            if err.errno == 13:
+                print('Permission Denied: {}'.format(file))
             return False
 
     def found_all_files(self, directories=None, source_bucket=None, source_prefix=None, access_key=None, secret_key=None, retry_allowed=False):

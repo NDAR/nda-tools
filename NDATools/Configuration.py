@@ -12,6 +12,7 @@ else:
 import os
 from pkg_resources import resource_filename
 
+
 class ClientConfiguration:
     def __init__(self, settings_file, username=None, password=None, access_key=None, secret_key=None):
         self.config = configparser.ConfigParser()

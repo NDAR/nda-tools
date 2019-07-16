@@ -15,11 +15,11 @@ import logging
 
 from NDATools.Configuration import ClientConfiguration
 
-config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'))
-if config.validation_results:
-    validation_results_dir = os.path.join(os.path.expanduser('~'), config.validation_results)
+if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
+    config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'))
 else:
-    validation_results_dir = os.path.join(os.path.expanduser('~'), "NDAValidationResults")
+    config = ClientConfiguration('clientscripts/config/settings.cfg')
+validation_results_dir = os.path.join(os.path.expanduser('~'), config.validation_results)
 if not os.path.exists(validation_results_dir):
     os.mkdir(validation_results_dir)
 log_file = os.path.join(validation_results_dir, "debug_log_{}.txt").format(time.strftime("%Y%m%dT%H%M%S"))
