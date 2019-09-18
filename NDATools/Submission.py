@@ -1,5 +1,7 @@
 from __future__ import with_statement
 from __future__ import absolute_import
+
+import re
 import sys
 import signal
 import multiprocessing
@@ -127,8 +129,16 @@ class Submission:
             id_list = self.credentials_list
 
         for cred in id_list:
+            # todo: prefix w/ associated file directory if not full path
             file = cred['destination_uri'].split('/')
+            print(file)
             file = '/'.join(file[4:])
+            print(file)
+            # print('C:/' + self.directory_list[0] + '/' + file)
+            # print(os.path.isfile('C:/' + self.directory_list[0] + '/' + file))
+            print(self.full_file_path)
+            print(file)
+
             size = self.full_file_path[file][1]
             update = {
                 "id": str(cred['submissionFileId']),
@@ -484,7 +494,12 @@ class Submission:
 
         def upload_config(self):
 
-            local_path = self.upload['file_user_path']
+            # Remove leading / or drive:/
+            if re.search(r'^/.+$', self.upload['file_user_path']):
+                local_path = self.upload['file_user_path'].split('/', 1)[1]
+            elif re.search(r'^\D:/.+$', self.upload['file_user_path']):
+                local_path = self.upload['file_user_path'].split(':/', 1)[1]
+            # local_path = self.upload['file_user_path']
             remote_path = self.upload['file_remote_path']
             file_id = self.upload['id']
             for cred in self.credentials_list:
@@ -542,8 +557,10 @@ class Submission:
                     self.upload_tries += 1
                 else:
                     upload = self.upload_queue.get()
+                    print(upload)
 
                 self.upload = upload[0]
+                print(upload[0])
                 self.expired = upload[1]
                 if self.upload == "STOP":
                     if self.upload_queue.qsize() == 0:

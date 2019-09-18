@@ -1,5 +1,7 @@
 from __future__ import with_statement
 from __future__ import absolute_import
+
+import re
 import sys
 import requests.packages.urllib3.util
 from tqdm import tqdm
@@ -188,19 +190,31 @@ class SubmissionPackage:
                 for file in a:
                     self.no_match.append(file)
 
+        print(self.no_match)
         # local files
         if self.directory_list:
             for file in self.no_match[:]:
-                if file.startswith('/'):
-                    f = file[1:]
-                else:
-                    f = file
+                # if file.startswith('/'):
+                #     f = file[1:]
+                # else:
+                #     f = file
+                if re.search(r'^/.+$', file):
+                    # Remove leading / or drive:/
+                    file_key = file.split('/',1)[1]
+                elif re.search(r'^\D:/.+$', file):
+                    file_key = file.split(':/', 1)[1]
+                print(file_key)
                 for d in self.directory_list:
-                    file_name = os.path.join(d, f)
+                    if os.path.isfile(file):
+                        file_name = file
+                    else:
+                        file_name = os.path.join(d, file)
+                    print(file_name)
                     if os.path.isfile(file_name):
                         if not self.check_read_permissions(file_name):
                             self.no_read_access.add(file_name)
-                        self.full_file_path[file] = (file_name, os.path.getsize(file_name))
+                        print(file)
+                        self.full_file_path[file_key] = (file_name, os.path.getsize(file_name))
                         self.no_match.remove(file)
                         break
 
