@@ -553,10 +553,8 @@ class Submission:
                     self.upload_tries += 1
                 else:
                     upload = self.upload_queue.get()
-                    print(upload)
 
                 self.upload = upload[0]
-                print(upload[0])
                 self.expired = upload[1]
                 if self.upload == "STOP":
                     if self.upload_queue.qsize() == 0:
