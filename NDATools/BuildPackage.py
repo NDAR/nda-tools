@@ -157,7 +157,6 @@ class SubmissionPackage:
             if self.aws_secret_key == "":
                 self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
 
-
     def check_read_permissions(self, file):
         try:
             open(file)
@@ -190,30 +189,24 @@ class SubmissionPackage:
                 for file in a:
                     self.no_match.append(file)
 
-        print(self.no_match)
         # local files
         if self.directory_list:
             for file in self.no_match[:]:
-                # if file.startswith('/'):
-                #     f = file[1:]
-                # else:
-                #     f = file
+                # Handle full paths, else relative paths
                 if re.search(r'^/.+$', file):
-                    # Remove leading / or drive:/
                     file_key = file.split('/',1)[1]
                 elif re.search(r'^\D:/.+$', file):
                     file_key = file.split(':/', 1)[1]
-                print(file_key)
+                else:
+                    file_key = file
                 for d in self.directory_list:
                     if os.path.isfile(file):
                         file_name = file
                     else:
                         file_name = os.path.join(d, file)
-                    print(file_name)
                     if os.path.isfile(file_name):
                         if not self.check_read_permissions(file_name):
                             self.no_read_access.add(file_name)
-                        print(file)
                         self.full_file_path[file_key] = (file_name, os.path.getsize(file_name))
                         self.no_match.remove(file)
                         break
@@ -289,11 +282,9 @@ class SubmissionPackage:
         self.config.aws_access_key = self.aws_access_key
         self.config.aws_secret_key = self.aws_secret_key
 
-
     def build_package(self):
         def raise_error(value):
             raise Exception("Missing {}. Please try again.".format(value))
-
 
         if self.dataset_name is None:
             raise_error('dataset name')

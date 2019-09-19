@@ -52,7 +52,6 @@ class ClientConfiguration:
         if secret_key:
             self.aws_secret_key = secret_key
 
-
     def make_config(self):
         file_path = os.path.join(os.path.expanduser('~'), '.NDATools')
         if not os.path.exists(file_path):
@@ -78,10 +77,8 @@ class ClientConfiguration:
         copy_config.set("User", "access_key", self.aws_access_key)
         copy_config.set("User", "secret_key", self.aws_secret_key)
 
-
         with open(config_path, 'w') as configfile:
             copy_config.write(configfile)
-
 
     def read_user_credentials(self):
         if not self.username:

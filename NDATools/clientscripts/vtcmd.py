@@ -95,7 +95,6 @@ def parse_args():
     return args
 
 
-
 def configure(args):
     # create a new config file in user's home directory if one does not exist
 
@@ -135,9 +134,11 @@ def configure(args):
 
     return config
 
+
 class Status:
     UPLOADING = 'Uploading'
     SYSERROR = 'SystemError'
+
 
 def resume_submission(submission_id, batch, config=None):
     submission = Submission(id=submission_id, full_file_path=None, config=config, resume=True, batch_size=batch)
@@ -258,8 +259,9 @@ def submit_package(package_id, full_file_path, associated_files, threads, batch,
         submission.submission_upload(hide_progress=config.hideProgress)
     if submission.status != Status.UPLOADING:
         print('\nYou have successfully completed uploading files for submission {} with status: {}'.format
-              (submission.submission_id, submission.status)) 
+              (submission.submission_id, submission.status))
                #do we want to include this??
+
 
 def main():
     # confirm most up to date version of nda-tools is installed
@@ -288,6 +290,7 @@ def main():
                 full_file_path = package_results[1]
                 submit_package(package_id=package_id, full_file_path=full_file_path, associated_files=associated_files,
                                threads=args.workerThreads, batch=args.batch, config=config)
+
 
 if __name__ == "__main__":
     main()

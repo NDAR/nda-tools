@@ -129,16 +129,8 @@ class Submission:
             id_list = self.credentials_list
 
         for cred in id_list:
-            # todo: prefix w/ associated file directory if not full path
             file = cred['destination_uri'].split('/')
-            print(file)
             file = '/'.join(file[4:])
-            print(file)
-            # print('C:/' + self.directory_list[0] + '/' + file)
-            # print(os.path.isfile('C:/' + self.directory_list[0] + '/' + file))
-            print(self.full_file_path)
-            print(file)
-
             size = self.full_file_path[file][1]
             update = {
                 "id": str(cred['submissionFileId']),
@@ -169,7 +161,6 @@ class Submission:
                             message=message)
             else:
                 raise Exception("{}\n{}".format('SubmissionError', message))
-
 
     def check_submitted_files(self):
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id, 'files']))
@@ -228,7 +219,6 @@ class Submission:
             if self.aws_secret_key == "":
                 self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
 
-
     def check_read_permissions(self, file):
         try:
             open(file)
@@ -263,16 +253,22 @@ class Submission:
         # local files
         if self.directory_list:
             for file in self.no_match[:]:
-                if file.startswith('/'):
-                    f = file[1:]
+                # Handle full paths, else relative paths
+                if re.search(r'^/.+$', file):
+                    file_key = file.split('/',1)[1]
+                elif re.search(r'^\D:/.+$', file):
+                    file_key = file.split(':/', 1)[1]
                 else:
-                    f = file
+                    file_key = file
                 for d in self.directory_list:
-                    file_name = os.path.join(d, f)
+                    if os.path.isfile(file):
+                        file_name = file
+                    else:
+                        file_name = os.path.join(d, file)
                     if os.path.isfile(file_name):
                         if not self.check_read_permissions(file_name):
                             self.no_read_access.add(file_name)
-                        self.full_file_path[file] = (file_name, os.path.getsize(file_name))
+                        self.full_file_path[file_key] = (file_name, os.path.getsize(file_name))
                         self.no_match.remove(file)
                         break
 
@@ -351,7 +347,6 @@ class Submission:
             return len(self.directory_list) > 0
         except TypeError:
             return len(self.source_bucket) > 0
-
 
     def batch_update_status(self, status=Status.COMPLETE):
         list_data = self.generate_data_for_request(status)
@@ -494,12 +489,13 @@ class Submission:
 
         def upload_config(self):
 
-            # Remove leading / or drive:/
+            # Remove leading / or drive:/. Handle full paths, else relative paths
             if re.search(r'^/.+$', self.upload['file_user_path']):
                 local_path = self.upload['file_user_path'].split('/', 1)[1]
             elif re.search(r'^\D:/.+$', self.upload['file_user_path']):
                 local_path = self.upload['file_user_path'].split(':/', 1)[1]
-            # local_path = self.upload['file_user_path']
+            else:
+                local_path = self.upload['file_user_path']
             remote_path = self.upload['file_remote_path']
             file_id = self.upload['id']
             for cred in self.credentials_list:
