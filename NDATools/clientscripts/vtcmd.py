@@ -101,8 +101,9 @@ def configure(args):
     # create a new config file in user's home directory if one does not exist
 
     NDATools.Utils.logging.getLogger().setLevel(logging.DEBUG)
-    if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
-        config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'), args.username,
+    config_file = os.path.join(os.path.expanduser('~'), '.NDATools', 'settings.cfg')
+    if os.path.isfile(config_file):
+        config = ClientConfiguration(config_file, args.username,
                                      args.password, args.accessKey, args.secretKey)
     else:
         config = ClientConfiguration('clientscripts/config/settings.cfg', args.username, args.password, args.accessKey,
