@@ -325,7 +325,7 @@ class Validation:
                     self.shutdown_flag.set()
                     break
                 try:
-                    file = open(file_name, 'rb')
+                    file = open(file_name, 'r')
                 except IOError:
                     message = 'This file does not exist in current directory: {}'.format(file_name)
                     if self.progress_bar:

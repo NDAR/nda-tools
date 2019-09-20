@@ -1,8 +1,13 @@
 from __future__ import with_statement
 from __future__ import absolute_import
+
+import re
+import sys
+import requests.packages.urllib3.util
+from tqdm import tqdm
 import boto3
 import botocore
-import sys
+import signal
 if sys.version_info[0] < 3:
     input = raw_input
 import requests.packages.urllib3.util
@@ -157,7 +162,6 @@ class SubmissionPackage:
             if self.source_prefix == "":
                 self.source_prefix = None
 
-
     def check_read_permissions(self, file):
         try:
             open(file)
@@ -192,22 +196,30 @@ class SubmissionPackage:
         # local files
         if self.directory_list:
             for file in self.no_match[:]:
-                if file.startswith('/'):
-                    f = file[1:]
+                # Handle full paths, else relative paths
+                if re.search(r'^/.+$', file):
+                    file_key = file.split('/',1)[1]
+                elif re.search(r'^\D:/.+$', file):
+                    file_key = file.split(':/', 1)[1]
                 else:
-                    f = file
+                    file_key = file
                 for d in self.directory_list:
-                    file_name = os.path.join(d, f)
                     if self.config.skip_local_file_check:
-                        self.full_file_path[file] = (file_name, os.path.getsize(file_name))
+                        file_name = os.path.join(d, file)
+                        self.full_file_path[file_key] = (file_name, os.path.getsize(file_name))
                         self.no_match.remove(file)
                         break
-                    elif os.path.isfile(file_name):
-                        if not self.check_read_permissions(file_name):
-                            self.no_read_access.add(file_name)
-                        self.full_file_path[file] = (file_name, os.path.getsize(file_name))
-                        self.no_match.remove(file)
-                        break
+                    else:
+                        if os.path.isfile(file_name):
+                            file_name = file
+                        else:
+                            file_name = os.path.join(d, file)
+                        if os.path.isfile(file_name):
+                            if not self.check_read_permissions(file_name):
+                                self.no_read_access.add(file_name)
+                            self.full_file_path[file_key] = (file_name, os.path.getsize(file_name))
+                            self.no_match.remove(file)
+                            break
 
         # files in s3
         no_access_buckets = []
@@ -280,7 +292,6 @@ class SubmissionPackage:
     def build_package(self):
         def raise_error(value):
             raise Exception("Missing {}. Please try again.".format(value))
-
 
         if self.dataset_name is None:
             raise_error('dataset name')

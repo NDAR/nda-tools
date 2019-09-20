@@ -266,6 +266,7 @@ def submit_package(package_id, full_file_path, associated_files, threads, batch,
               (submission.submission_id, submission.status))
                #do we want to include this??
 
+
 def main():
     # confirm most up to date version of nda-tools is installed
     if NDATools.pypi_version != NDATools.__version__:
