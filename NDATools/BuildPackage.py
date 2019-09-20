@@ -210,7 +210,7 @@ class SubmissionPackage:
                         self.no_match.remove(file)
                         break
                     else:
-                        if os.path.isfile(file_name):
+                        if os.path.isfile(file):
                             file_name = file
                         else:
                             file_name = os.path.join(d, file)
