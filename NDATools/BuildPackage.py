@@ -212,14 +212,15 @@ class SubmissionPackage:
                     else:
                         if os.path.isfile(file):
                             file_name = file
-                        else:
+                        elif os.path.isfile(os.path.join(d, file)):
                             file_name = os.path.join(d, file)
-                        if os.path.isfile(file_name):
-                            if not self.check_read_permissions(file_name):
-                                self.no_read_access.add(file_name)
-                            self.full_file_path[file_key] = (file_name, os.path.getsize(file_name))
-                            self.no_match.remove(file)
-                            break
+                        else:
+                            continue
+                        if not self.check_read_permissions(file_name):
+                            self.no_read_access.add(file_name)
+                        self.full_file_path[file_key] = (file_name, os.path.getsize(file_name))
+                        self.no_match.remove(file)
+                        break
 
         # files in s3
         no_access_buckets = []
