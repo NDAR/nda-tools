@@ -167,7 +167,8 @@ class SubmissionPackage:
                 print('Permission Denied: {}'.format(file))
             return False
 
-    def file_search(self, directories=None, source_bucket=None, source_prefix=None, retry_allowed=False):
+    def file_search(self, directories=None, source_bucket=None, source_prefix=None,
+                    retry_allowed=False):
         def raise_error(error, l = []):
             m = '\n'.join([error] + list(set(l)))
             raise Exception(m)
@@ -197,7 +198,11 @@ class SubmissionPackage:
                     f = file
                 for d in self.directory_list:
                     file_name = os.path.join(d, f)
-                    if os.path.isfile(file_name):
+                    if self.config.skip_local_file_check:
+                        self.full_file_path[file] = (file_name, os.path.getsize(file_name))
+                        self.no_match.remove(file)
+                        break
+                    elif os.path.isfile(file_name):
                         if not self.check_read_permissions(file_name):
                             self.no_read_access.add(file_name)
                         self.full_file_path[file] = (file_name, os.path.getsize(file_name))
@@ -249,7 +254,8 @@ class SubmissionPackage:
                 for file in self.no_match:
                     print(file)
                 self.recollect_file_search_info()
-                self.file_search(self.directory_list, self.source_bucket, self.source_prefix, retry_allowed=True)
+                self.file_search(self.directory_list, self.source_bucket, self.source_prefix, self.aws_access_key,self.aws_secret_key,
+                                 retry_allowed=True)
             else:
                 error = "".join(['Missing Files:', message])
                 raise_error(error, self.no_match)

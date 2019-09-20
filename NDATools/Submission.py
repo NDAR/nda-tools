@@ -251,7 +251,11 @@ class Submission:
                     f = file
                 for d in self.directory_list:
                     file_name = os.path.join(d, f)
-                    if os.path.isfile(file_name):
+                    if self.config.skip_local_file_check:
+                        self.full_file_path[file] = (file_name, os.path.getsize(file_name))
+                        self.no_match.remove(file)
+                        break
+                    elif os.path.isfile(file_name):
                         if not self.check_read_permissions(file_name):
                             self.no_read_access.add(file_name)
                         self.full_file_path[file] = (file_name, os.path.getsize(file_name))

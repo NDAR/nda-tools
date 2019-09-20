@@ -42,6 +42,7 @@ class ClientConfiguration:
         self.description = None
         self.JSON = False
         self.hideProgress = False
+        self.skip_local_file_check = False
         self.username = self.config.get("User", "username")
         self.password = self.config.get("User", "password")
         if username:
@@ -52,7 +53,6 @@ class ClientConfiguration:
             self.aws_access_key = access_key
         if secret_key:
             self.aws_secret_key = secret_key
-
 
     def make_config(self):
         file_path = os.path.join(os.path.expanduser('~'), '.NDATools')
@@ -79,10 +79,8 @@ class ClientConfiguration:
         copy_config.set("User", "access_key", self.aws_access_key)
         copy_config.set("User", "secret_key", self.aws_secret_key)
 
-
         with open(config_path, 'w') as configfile:
             copy_config.write(configfile)
-
 
     def read_user_credentials(self):
         if not self.username:
@@ -96,4 +94,3 @@ class ClientConfiguration:
 
         if not self.aws_secret_key:
             self.aws_secret_key = getpass.getpass('Enter your aws_secret_key. If none, hit "Enter":')
-

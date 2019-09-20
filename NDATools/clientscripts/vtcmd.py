@@ -87,13 +87,14 @@ def parse_args():
     parser.add_argument('-bc', '--batch', metavar='<arg>', type=int, action='store',
                         help='Batch size')
 
-    parser.add_argument('--hideProgress', action='store_true', help='Hides upload/proccessing progress')
+    parser.add_argument('--hideProgress', action='store_true', help='Hides upload/processing progress')
 
+    parser.add_argument('--skipLocalAssocFileCheck', action='store_true', help='Not recommended UNLESS you have already'
+                        ' verified all paths for associated data files are correct')
 
     args = parser.parse_args()
 
     return args
-
 
 
 def configure(args):
@@ -130,14 +131,18 @@ def configure(args):
     if args.validationAPI:
         config.validation_api = args.validationAPI[0]
     if args.JSON:
-            config.JSON = True
+        config.JSON = True
     config.hideProgress = args.hideProgress
+    if args.skipLocalAssocFileCheck:
+        config.skip_local_file_check = True
 
     return config
+
 
 class Status:
     UPLOADING = 'Uploading'
     SYSERROR = 'SystemError'
+
 
 def resume_submission(submission_id, batch, config=None):
     submission = Submission(id=submission_id, full_file_path=None, config=config, resume=True, batch_size=batch)
@@ -146,7 +151,10 @@ def resume_submission(submission_id, batch, config=None):
         directories = config.directory_list
         source_bucket = config.source_bucket
         source_prefix = config.source_prefix
-        if submission.incomplete_files and submission.found_all_files(directories, source_bucket, source_prefix, retry_allowed=True):
+
+        if submission.incomplete_files and submission.found_all_files(directories, source_bucket, source_prefix,
+                                                                       retry_allowed=True):
+            # if not config.skip_local_file_check:
             submission.check_submitted_files()
             submission.complete_partial_uploads()
             submission.submission_upload(hide_progress=config.hideProgress)
@@ -159,9 +167,11 @@ def resume_submission(submission_id, batch, config=None):
 
 
 def validate_files(file_list, warnings, build_package, threads, config=None):
+
     validation = Validation(file_list, config=config, hide_progress=config.hideProgress, thread_num=threads, allow_exit=True)
     print('\nValidating files...')
     validation.validate()
+
     for (response, file) in validation.responses:
         if response['status'] == Status.SYSERROR:
             print('\nSystemError while validating: {}'.format(file))
@@ -253,7 +263,7 @@ def submit_package(package_id, full_file_path, associated_files, threads, batch,
         submission.submission_upload(hide_progress=config.hideProgress)
     if submission.status != Status.UPLOADING:
         print('\nYou have successfully completed uploading files for submission {} with status: {}'.format
-              (submission.submission_id, submission.status)) 
+              (submission.submission_id, submission.status))
                #do we want to include this??
 
 def main():
@@ -262,6 +272,7 @@ def main():
         sys.exit(1)
     args = parse_args()
     config = configure(args)
+
     if args.resume:
         submission_id = args.files[0]
         resume_submission(submission_id, batch=args.batch, config=config)
@@ -283,6 +294,7 @@ def main():
                 full_file_path = package_results[1]
                 submit_package(package_id=package_id, full_file_path=full_file_path, associated_files=associated_files,
                                threads=args.workerThreads, batch=args.batch, config=config)
+
 
 if __name__ == "__main__":
     main()
