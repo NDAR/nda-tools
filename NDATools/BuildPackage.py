@@ -1,14 +1,15 @@
 from __future__ import with_statement
 from __future__ import absolute_import
-import sys
-import requests.packages.urllib3.util
-from tqdm import tqdm
 import boto3
 import botocore
-import signal
+import sys
 if sys.version_info[0] < 3:
     input = raw_input
+import requests.packages.urllib3.util
+import signal
+from tqdm import tqdm
 from NDATools.Configuration import *
+from NDATools.DataManager import *
 from NDATools.Utils import *
 
 
@@ -16,15 +17,11 @@ class SubmissionPackage:
     def __init__(self, uuid, associated_files, config, username=None, password=None, collection=None, title=None,
                  description=None, alternate_location=None, allow_exit=False):
         self.config = config
-        self.aws_access_key = self.config.aws_access_key
-        self.aws_secret_key = self.config.aws_secret_key
         self.api = self.config.submission_package_api
         self.validationtool_api = self.config.validationtool_api
         self.uuid = uuid
         self.associated_files = associated_files
         self.full_file_path = {}
-        self.username = self.config.username
-        self.password = self.config.password
         self.no_match = []
         if username:
             self.config.username = username
@@ -36,6 +33,15 @@ class SubmissionPackage:
             self.config.description = description
         self.username = self.config.username
         self.password = self.config.password
+        if self.config.aws_secret_key == "" and self.config.aws_access_key == "":
+            self.iam_user_credentials = None
+            self.data_manager_credentials = DataManager(self.config).credentials
+        else:
+            self.iam_user_credentials = {'aws_access_key_id': self.config.aws_access_key,
+                                         'aws_secret_access_key': self.config.aws_secret_key}
+            if self.config.aws_session_token != "":
+                self.iam_user_credentials.update({'aws_session_token':self.config.aws_session_token})
+            self.data_manager_credentials = None
         self.dataset_name = self.config.title
         self.dataset_description = self.config.description
         self.package_info = {}
@@ -150,10 +156,6 @@ class SubmissionPackage:
             self.source_prefix = input('Enter any prefix for your S3 object, or hit "Enter": ')
             if self.source_prefix == "":
                 self.source_prefix = None
-            if self.aws_access_key == "":
-                self.aws_access_key = input('Enter the access_key for your AWS account: ')
-            if self.aws_secret_key == "":
-                self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
 
 
     def check_read_permissions(self, file):
@@ -165,7 +167,7 @@ class SubmissionPackage:
                 print('Permission Denied: {}'.format(file))
             return False
 
-    def file_search(self, directories=None, source_bucket=None, source_prefix=None, access_key=None, secret_key=None, retry_allowed=False):
+    def file_search(self, directories=None, source_bucket=None, source_prefix=None, retry_allowed=False):
         def raise_error(error, l = []):
             m = '\n'.join([error] + list(set(l)))
             raise Exception(m)
@@ -173,8 +175,6 @@ class SubmissionPackage:
         self.directory_list = directories
         self.source_bucket = source_bucket
         self.source_prefix = source_prefix
-        self.aws_access_key = access_key
-        self.aws_secret_key = secret_key
 
         if not self.directory_list and not self.source_bucket:
             if retry_allowed:
@@ -207,11 +207,10 @@ class SubmissionPackage:
         # files in s3
         no_access_buckets = []
         if self.source_bucket:
-            if self.aws_access_key is "":
-                self.aws_access_key = input('Enter the access_key for your AWS account: ')
-            if self.aws_secret_key is "":
-                self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
-            s3 = boto3.session.Session(aws_access_key_id=self.aws_access_key, aws_secret_access_key=self.aws_secret_key)
+            if self.iam_user_credentials:
+                s3 = boto3.session.Session(**self.iam_user_credentials)
+            else:
+                s3 = boto3.session.Session(**self.data_manager_credentials)
             s3_client = s3.client('s3')
             for file in self.no_match[:]:
                 key = file
@@ -250,8 +249,7 @@ class SubmissionPackage:
                 for file in self.no_match:
                     print(file)
                 self.recollect_file_search_info()
-                self.file_search(self.directory_list, self.source_bucket, self.source_prefix, self.aws_access_key,self.aws_secret_key,
-                                 retry_allowed=True)
+                self.file_search(self.directory_list, self.source_bucket, self.source_prefix, retry_allowed=True)
             else:
                 error = "".join(['Missing Files:', message])
                 raise_error(error, self.no_match)
@@ -272,9 +270,6 @@ class SubmissionPackage:
         self.config.directory_list = self.directory_list
         self.config.source_bucket = self.source_bucket
         self.config.source_prefix = self.source_prefix
-        self.config.aws_access_key = self.aws_access_key
-        self.config.aws_secret_key = self.aws_secret_key
-
 
     def build_package(self):
         def raise_error(value):

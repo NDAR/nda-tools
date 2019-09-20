@@ -146,10 +146,7 @@ def resume_submission(submission_id, batch, config=None):
         directories = config.directory_list
         source_bucket = config.source_bucket
         source_prefix = config.source_prefix
-        access_key = config.aws_access_key
-        secret_key = config.aws_secret_key
-        if submission.incomplete_files and submission.found_all_files(directories, source_bucket, source_prefix,
-                                                                      access_key, secret_key, retry_allowed=True):
+        if submission.incomplete_files and submission.found_all_files(directories, source_bucket, source_prefix, retry_allowed=True):
             submission.check_submitted_files()
             submission.complete_partial_uploads()
             submission.submission_upload(hide_progress=config.hideProgress)
@@ -225,11 +222,9 @@ def build_package(uuid, associated_files, config):
     directories = config.directory_list
     source_bucket = config.source_bucket
     source_prefix = config.source_prefix
-    access_key = config.aws_access_key
-    secret_key = config.aws_secret_key
     if associated_files:
         print('\nSearching for associated files...')
-        package.file_search(directories, source_bucket, source_prefix, access_key, secret_key, retry_allowed=True)
+        package.file_search(directories, source_bucket, source_prefix, retry_allowed=True)
     print('Building Package')
     package.build_package()
     print('\n\nPackage Information:')

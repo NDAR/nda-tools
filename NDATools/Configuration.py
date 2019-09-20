@@ -35,6 +35,7 @@ class ClientConfiguration:
         self.manifest_path = None
         self.aws_access_key = self.config.get("User", "access_key")
         self.aws_secret_key = self.config.get("User", "secret_key")
+        self.aws_session_token = self.config.get("User", "session_token")
         self.source_bucket = None
         self.source_prefix = None
         self.title = None
