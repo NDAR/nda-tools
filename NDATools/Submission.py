@@ -215,14 +215,6 @@ class Submission:
             if self.source_prefix == "":
                 self.source_prefix = None
 
-    def check_read_permissions(self, file):
-        try:
-            open(file)
-            return True
-        except (OSError, IOError) as err:
-            if err.errno == 13:
-                print('Permission Denied: {}'.format(file))
-            return False
 
     def found_all_files(self, directories=None, source_bucket=None, source_prefix=None, retry_allowed=False):
         def raise_error(error, l = []):
@@ -306,7 +298,8 @@ class Submission:
                 for file in self.no_read_access:
                     print(file)
                 self.recollect_file_search_info()
-                [self.no_read_access.remove(i) for i in [file for file in self.no_read_access if self.check_read_permissions(file)]]
+                [self.no_read_access.remove(i) for i in
+                    [file for file in self.no_read_access if check_read_permissions(file)]]
             else:
                 error = "".join(['Read Permission Error:', message])
                 raise_error(error, self.no_match)
@@ -467,12 +460,7 @@ class Submission:
             self.expired = False
 
         def upload_config(self):
-            # Remove leading / or drive:/. Handle full paths, else relative paths
-            local_path = str.replace(str.replace(self.upload['file_user_path'], '\\', '/'), '//', '/')
-            if re.search(r'^/.+$', self.upload['file_user_path']):
-                local_path = self.upload['file_user_path'].split('/', 1)[1]
-            elif re.search(r'^\D:/.+$', local_path):
-                local_path = local_path.split(':/', 1)[1]
+            local_path = sanitize_file_path(self.upload['file_user_path'])
             remote_path = self.upload['file_remote_path']
             file_id = self.upload['id']
             for cred in self.credentials_list:

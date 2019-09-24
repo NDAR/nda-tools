@@ -13,7 +13,6 @@ if sys.version_info[0] < 3:
 import requests.packages.urllib3.util
 import signal
 from tqdm import tqdm
-from pathlib import Path
 from NDATools.Configuration import *
 from NDATools.DataManager import *
 from NDATools.Utils import *
@@ -246,7 +245,8 @@ class SubmissionPackage:
                 for file in self.no_read_access:
                     print(file)
                 self.recollect_file_search_info()
-                [self.no_read_access.remove(i) for i in [file for file in self.no_read_access if self.check_read_permissions(file)]]
+                [self.no_read_access.remove(i) for i in
+                    [file for file in self.no_read_access if check_read_permissions(file)]]
             else:
                 error = "".join(['Read Permission Error:', message])
                 raise_error(error, self.no_match)

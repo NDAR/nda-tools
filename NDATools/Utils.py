@@ -143,14 +143,17 @@ def exit_client(signal, frame=None, message=None):
 
 
 def parse_local_files(directory_list, no_match, full_file_path, no_read_access):
-    """Checks local filesystem for associated files. Sanitizes filepaths with /"""
+    """
+    Iterates through associated files generate a dictionary of full filepaths and file sizes.
+
+    :param directory_list: List of directories
+    :param no_match: Stores list of invalid paths
+    :param full_file_path: Dictionary of tuples that store full filepath and file size
+    :param no_read_access: List of files that user does not have access to
+    :return: Modifies references to no_match, full_file_path, no_read_access
+    """
     for file in no_match[:]:
-        # Handle full paths, else relative paths
-        file_key = str.replace(str.replace(file, '\\', '/'), '//', '/')
-        if re.search(r'^/.+$', file):
-            file_key = file.split('/', 1)[1]
-        elif re.search(r'^\D:/.+$', file_key):
-            file_key = file_key.split(':/', 1)[1]
+        file_key = sanitize_file_path(file)
         for d in directory_list:
             if config.skip_local_file_check:
                 file_name = os.path.join(d, file)
@@ -169,6 +172,24 @@ def parse_local_files(directory_list, no_match, full_file_path, no_read_access):
                 full_file_path[file_key] = (file_name, os.path.getsize(file_name))
                 no_match.remove(file)
                 break
+
+
+def sanitize_file_path(file):
+    """
+    Replaces backslashes with forward slashes and removes leading / or drive:/.
+
+    :param file: Relative or absolute filepath
+    :return: Relative or absolute filepath with leading / or drive:/ removed
+    """
+    # Sanitize all backslashes (\) with forward slashes (/)
+    file_key = str.replace(str.replace(file, '\\', '/'), '//', '/')
+    # If Mac/Linux full path
+    if re.search(r'^/.+$', file):
+        file_key = file.split('/', 1)[1]
+    # If Windows full path
+    elif re.search(r'^\D:/.+$', file_key):
+        file_key = file_key.split(':/', 1)[1]
+    return file_key
 
 
 def check_read_permissions(file):
