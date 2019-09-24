@@ -237,7 +237,7 @@ class Submission:
             if retry_allowed:
                 self.recollect_file_search_info()
             else:
-                error ='Missing directory and/or an S3 bucket.'
+                error = 'Missing directory and/or an S3 bucket.'
                 raise_error(error)
 
         if not self.no_match:
@@ -246,32 +246,7 @@ class Submission:
 
         # local files
         if self.directory_list:
-            for file in self.no_match[:]:
-                # Handle full paths, else relative paths
-                if re.search(r'^/.+$', file):
-                    file_key = file.split('/', 1)[1]
-                elif re.search(r'^\D:/.+$', file):
-                    file_key = file.split(':/', 1)[1]
-                else:
-                    file_key = file
-                for d in self.directory_list:
-                    if self.config.skip_local_file_check:
-                        file_name = os.path.join(d, file)
-                        self.full_file_path[file_key] = (file_name, os.path.getsize(file_name))
-                        self.no_match.remove(file)
-                        break
-                    else:
-                        if os.path.isfile(file):
-                            file_name = file
-                        elif os.path.isfile(os.path.join(d, file)):
-                            file_name = os.path.join(d, file)
-                        else:
-                            continue
-                        if not self.check_read_permissions(file_name):
-                            self.no_read_access.add(file_name)
-                        self.full_file_path[file_key] = (file_name, os.path.getsize(file_name))
-                        self.no_match.remove(file)
-                        break
+            parse_local_files(self.directory_list, self.no_match, self.full_file_path, self.no_read_access)
 
         # files in s3
         no_access_buckets = []
@@ -492,14 +467,12 @@ class Submission:
             self.expired = False
 
         def upload_config(self):
-
             # Remove leading / or drive:/. Handle full paths, else relative paths
+            local_path = str.replace(str.replace(self.upload['file_user_path'], '\\', '/'), '//', '/')
             if re.search(r'^/.+$', self.upload['file_user_path']):
                 local_path = self.upload['file_user_path'].split('/', 1)[1]
-            elif re.search(r'^\D:/.+$', self.upload['file_user_path']):
-                local_path = self.upload['file_user_path'].split(':/', 1)[1]
-            else:
-                local_path = self.upload['file_user_path']
+            elif re.search(r'^\D:/.+$', local_path):
+                local_path = local_path.split(':/', 1)[1]
             remote_path = self.upload['file_remote_path']
             file_id = self.upload['id']
             for cred in self.credentials_list:

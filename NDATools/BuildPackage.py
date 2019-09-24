@@ -13,6 +13,7 @@ if sys.version_info[0] < 3:
 import requests.packages.urllib3.util
 import signal
 from tqdm import tqdm
+from pathlib import Path
 from NDATools.Configuration import *
 from NDATools.DataManager import *
 from NDATools.Utils import *
@@ -162,17 +163,7 @@ class SubmissionPackage:
             if self.source_prefix == "":
                 self.source_prefix = None
 
-    def check_read_permissions(self, file):
-        try:
-            open(file)
-            return True
-        except (OSError, IOError) as err:
-            if err.errno == 13:
-                print('Permission Denied: {}'.format(file))
-            return False
-
-    def file_search(self, directories=None, source_bucket=None, source_prefix=None,
-                    retry_allowed=False):
+    def file_search(self, directories=None, source_bucket=None, source_prefix=None, retry_allowed=False):
         def raise_error(error, l = []):
             m = '\n'.join([error] + list(set(l)))
             raise Exception(m)
@@ -195,32 +186,7 @@ class SubmissionPackage:
 
         # local files
         if self.directory_list:
-            for file in self.no_match[:]:
-                # Handle full paths, else relative paths
-                if re.search(r'^/.+$', file):
-                    file_key = file.split('/',1)[1]
-                elif re.search(r'^\D:/.+$', file):
-                    file_key = file.split(':/', 1)[1]
-                else:
-                    file_key = file
-                for d in self.directory_list:
-                    if self.config.skip_local_file_check:
-                        file_name = os.path.join(d, file)
-                        self.full_file_path[file_key] = (file_name, os.path.getsize(file_name))
-                        self.no_match.remove(file)
-                        break
-                    else:
-                        if os.path.isfile(file):
-                            file_name = file
-                        elif os.path.isfile(os.path.join(d, file)):
-                            file_name = os.path.join(d, file)
-                        else:
-                            continue
-                        if not self.check_read_permissions(file_name):
-                            self.no_read_access.add(file_name)
-                        self.full_file_path[file_key] = (file_name, os.path.getsize(file_name))
-                        self.no_match.remove(file)
-                        break
+            parse_local_files(self.directory_list, self.no_match, self.full_file_path, self.no_read_access)
 
         # files in s3
         no_access_buckets = []
@@ -267,8 +233,7 @@ class SubmissionPackage:
                 for file in self.no_match:
                     print(file)
                 self.recollect_file_search_info()
-                self.file_search(self.directory_list, self.source_bucket, self.source_prefix, self.aws_access_key,self.aws_secret_key,
-                                 retry_allowed=True)
+                self.file_search(self.directory_list, self.source_bucket, self.source_prefix, retry_allowed=True)
             else:
                 error = "".join(['Missing Files:', message])
                 raise_error(error, self.no_match)

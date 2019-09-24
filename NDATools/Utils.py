@@ -1,5 +1,6 @@
 from __future__ import with_statement
 from __future__ import absolute_import
+import re
 import signal
 import sys
 import getpass
@@ -126,6 +127,7 @@ def api_request(api, verb, endpoint, data=None, session=None):
 
     return response, session
 
+
 def exit_client(signal, frame=None, message=None):
     for t in threading.enumerate():
         try:
@@ -138,3 +140,42 @@ def exit_client(signal, frame=None, message=None):
         print('\n\nExit signal received, shutting down...')
     print('Please contact NDAHelp@mail.nih.gov if you need assistance.')
     sys.exit(1)
+
+
+def parse_local_files(directory_list, no_match, full_file_path, no_read_access):
+    """Checks local filesystem for associated files. Sanitizes filepaths with /"""
+    for file in no_match[:]:
+        # Handle full paths, else relative paths
+        file_key = str.replace(str.replace(file, '\\', '/'), '//', '/')
+        if re.search(r'^/.+$', file):
+            file_key = file.split('/', 1)[1]
+        elif re.search(r'^\D:/.+$', file_key):
+            file_key = file_key.split(':/', 1)[1]
+        for d in directory_list:
+            if config.skip_local_file_check:
+                file_name = os.path.join(d, file)
+                full_file_path[file_key] = (file_name, os.path.getsize(file_name))
+                no_match.remove(file)
+                break
+            else:
+                if os.path.isfile(file):
+                    file_name = file
+                elif os.path.isfile(os.path.join(d, file)):
+                    file_name = os.path.join(d, file)
+                else:
+                    continue
+                if not check_read_permissions(file_name):
+                    no_read_access.add(file_name)
+                full_file_path[file_key] = (file_name, os.path.getsize(file_name))
+                no_match.remove(file)
+                break
+
+
+def check_read_permissions(file):
+    try:
+        open(file)
+        return True
+    except (OSError, IOError) as err:
+        if err.errno == 13:
+            print('Permission Denied: {}'.format(file))
+    return False
