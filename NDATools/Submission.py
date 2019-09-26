@@ -8,6 +8,9 @@ from boto3.exceptions import S3UploadFailedError
 from boto3.s3.transfer import S3Transfer, TransferConfig
 from botocore.client import Config
 from botocore.exceptions import ClientError
+
+from NDATools.Credentials import Credentials
+
 if sys.version_info[0] < 3:
     import Queue as queue
     input = raw_input
@@ -40,15 +43,7 @@ class Submission:
             self.config.password = password
         self.username = self.config.username
         self.password = self.config.password
-        if self.config.aws_secret_key == "" and self.config.aws_access_key == "":
-            self.iam_user_credentials = None
-            self.data_manager_credentials = DataManager(self.config).credentials
-        else:
-            self.iam_user_credentials = {'aws_access_key_id': self.config.aws_access_key,
-                                         'aws_secret_access_key': self.config.aws_secret_key}
-            if self.config.aws_session_token != "":
-                self.iam_user_credentials.update({'aws_session_token':self.config.aws_session_token})
-            self.data_manager_credentials = None
+        self.credentials = Credentials(config)
         self.full_file_path = full_file_path
         self.total_upload_size = 0
         self.upload_queue = queue.Queue()
@@ -243,10 +238,7 @@ class Submission:
         # files in s3
         no_access_buckets = []
         if self.source_bucket:
-            if self.iam_user_credentials:
-                s3 = boto3.session.Session(**self.iam_user_credentials)
-            else:
-                s3 = boto3.session.Session(**self.data_manager_credentials)
+            s3 = boto3.session.Session(**self.credentials)
             s3_client = s3.client('s3')
             for file in self.no_match[:]:
                 key = file
@@ -441,15 +433,7 @@ class Submission:
             self.password = self.config.password
             self.source_bucket = self.config.source_bucket
             self.source_prefix = self.config.source_prefix
-            if self.config.aws_secret_key == "" and self.config.aws_access_key == "":
-                self.iam_user_credentials = None
-                self.data_manager_credentials = DataManager(self.config).credentials
-            else:
-                self.iam_user_credentials = {'aws_access_key_id': self.config.aws_access_key,
-                                             'aws_secret_access_key': self.config.aws_secret_key}
-                if self.config.aws_session_token != "":
-                    self.iam_user_credentials.update({'aws_session_token':self.config.aws_session_token})
-                self.data_manager_credentials = None
+            self.credentials = Credentials(self.config)
             self.full_file_path = full_file_path
             self.credentials_list = credentials_list
             self.submission_id = submission_id
@@ -586,10 +570,7 @@ class Submission:
                     """
 
                     tqdm.monitor_interval = 0
-                    if self.iam_user_credentials:
-                        source_session = boto3.Session(**self.iam_user_credentials)
-                    else:
-                        source_session = boto3.Session(**self.data_manager_credentials)
+                    source_session = boto3.Session(**self.credentials)
                     s3_config = Config(connect_timeout=240, read_timeout=240)
                     self.source_s3 = source_session.resource('s3', config=s3_config)
 
