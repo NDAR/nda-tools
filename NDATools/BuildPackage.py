@@ -9,7 +9,7 @@ import boto3
 import botocore
 import signal
 
-from NDATools.Credentials import Credentials
+from NDATools.Authorization import Authorization
 
 if sys.version_info[0] < 3:
     input = raw_input
@@ -41,7 +41,7 @@ class SubmissionPackage:
             self.config.description = description
         self.username = self.config.username
         self.password = self.config.password
-        self.credentials = Credentials(config)
+        self.credentials = Authorization(config)
         self.dataset_name = self.config.title
         self.dataset_description = self.config.description
         self.package_info = {}

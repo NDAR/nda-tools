@@ -17,7 +17,6 @@ import datetime
 from boto3.s3.transfer import S3Transfer
 import multiprocessing
 
-from NDATools.Configuration import *
 from NDATools.TokenGenerator import *
 from NDATools.Utils import *
 
@@ -109,7 +108,6 @@ class Download(Protocol):
                    '</S:Body>\n' +
                    '</S:Envelope>')
 
-
         response, session = api_request(self, "POST", self.url, data=payload)
 
         root = ET.fromstring(response.text)
@@ -129,7 +127,6 @@ class Download(Protocol):
                     self.local_file_names[file] = alias_path
 
         self.verbose_print('Downloading package files for package {}.'.format(self.package))
-
 
     def searchForDataStructure(self, resume, dir):
         """ Download associated files listed in data structures """
@@ -175,7 +172,6 @@ class Download(Protocol):
             self.verbose_print(
                 '{} not found. Please enter the correct path to your file and try again.'.format(self.dataStructure))
             raise e
-
 
     def get_links(self, links, files, filters=None):
 
@@ -244,8 +240,9 @@ class Download(Protocol):
             self.check_time()
 
             session = boto3.session.Session(self.access_key, self.secret_key, self.session)
-            s3client = session.client('s3')
-            s3transfer = S3Transfer(s3client)
+            # s3client = session.client('s3')
+            # s3transfer = S3Transfer(s3client)
+            s3transfer = S3Transfer(session.client('s3'))
 
             try:
                 s3transfer.download_file(bucket, key, local_filename)
@@ -264,7 +261,6 @@ class Download(Protocol):
                     message = '\nThis is a private bucket. Please contact NDAR for help: {}'.format(path)
                     self.verbose_print(message)
                     raise Exception(e)
-
 
     def start_workers(self, resume, prev_directory, thread_num=None):
         def download(path):

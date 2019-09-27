@@ -9,7 +9,7 @@ from boto3.s3.transfer import S3Transfer, TransferConfig
 from botocore.client import Config
 from botocore.exceptions import ClientError
 
-from NDATools.Credentials import Credentials
+from NDATools.Authorization import Authorization
 
 if sys.version_info[0] < 3:
     import Queue as queue
@@ -43,7 +43,7 @@ class Submission:
             self.config.password = password
         self.username = self.config.username
         self.password = self.config.password
-        self.credentials = Credentials(config)
+        self.credentials = Authorization(config)
         self.full_file_path = full_file_path
         self.total_upload_size = 0
         self.upload_queue = queue.Queue()
@@ -433,7 +433,7 @@ class Submission:
             self.password = self.config.password
             self.source_bucket = self.config.source_bucket
             self.source_prefix = self.config.source_prefix
-            self.credentials = Credentials(self.config)
+            self.credentials = Authorization(self.config)
             self.full_file_path = full_file_path
             self.credentials_list = credentials_list
             self.submission_id = submission_id
@@ -638,7 +638,7 @@ class Submission:
                                 # if self.data_manager_credentials:
                                 #     self.data_manager_credentials = DataManager(self.username,
                                 #                                                 self.password).credentials
-                                self.credentials = Credentials(self.config)
+                                self.credentials = Authorization(self.config)
                             else:
                                 raise error
                     self.progress_queue.put(None)
@@ -708,7 +708,7 @@ class Submission:
                                     # if self.data_manager_credentials:
                                     #     self.data_manager_credentials = DataManager(self.username,
                                     #                                                 self.password).credentials
-                                    self.credentials = Credentials(self.config)
+                                    self.credentials = Authorization(self.config)
                                 else:
                                     raise error
 
