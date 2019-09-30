@@ -9,7 +9,7 @@ from boto3.s3.transfer import S3Transfer, TransferConfig
 from botocore.client import Config
 from botocore.exceptions import ClientError
 
-from NDATools.Authorization import Authorization
+from NDATools.S3Authentication import S3Authentication
 
 if sys.version_info[0] < 3:
     import Queue as queue
@@ -43,7 +43,7 @@ class Submission:
             self.config.password = password
         self.username = self.config.username
         self.password = self.config.password
-        self.credentials = Authorization(config)
+        self.credentials = S3Authentication(config)
         self.full_file_path = full_file_path
         self.total_upload_size = 0
         self.upload_queue = queue.Queue()
@@ -238,8 +238,7 @@ class Submission:
         # files in s3
         no_access_buckets = []
         if self.source_bucket:
-            s3 = boto3.session.Session(**self.credentials.credentials)
-            s3_client = s3.client('s3')
+            s3_client = self.credentials.get_s3_client()
             for file in self.no_match[:]:
                 key = file
                 if self.source_prefix:
@@ -433,7 +432,7 @@ class Submission:
             self.password = self.config.password
             self.source_bucket = self.config.source_bucket
             self.source_prefix = self.config.source_prefix
-            self.credentials = Authorization(self.config)
+            self.credentials = S3Authentication(self.config)
             self.full_file_path = full_file_path
             self.credentials_list = credentials_list
             self.submission_id = submission_id
@@ -638,7 +637,7 @@ class Submission:
                                 # if self.data_manager_credentials:
                                 #     self.data_manager_credentials = DataManager(self.username,
                                 #                                                 self.password).credentials
-                                self.credentials = Authorization(self.config)
+                                self.credentials = S3Authentication(self.config)
                             else:
                                 raise error
                     self.progress_queue.put(None)
@@ -708,7 +707,7 @@ class Submission:
                                     # if self.data_manager_credentials:
                                     #     self.data_manager_credentials = DataManager(self.username,
                                     #                                                 self.password).credentials
-                                    self.credentials = Authorization(self.config)
+                                    self.credentials = S3Authentication(self.config)
                                 else:
                                     raise error
 

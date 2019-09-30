@@ -1,7 +1,8 @@
 from NDATools.DataManager import DataManager
+import boto3
 
 
-class Authorization:
+class S3Authentication:
 
     def __init__(self, config):
         self.config = config
@@ -20,7 +21,5 @@ class Authorization:
                 'aws_secret_access_key': self.aws_secret_key,
                 'aws_session_token': self.aws_session_token}
 
-    # def get_session:
-        # Check if token is expired, if so, get new token
-
-    # consider adding s3 sesssion s3client in here
+    def get_s3_client(self):
+        return boto3.session.Session(**self.credentials).client('s3')

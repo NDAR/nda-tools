@@ -240,8 +240,6 @@ class Download(Protocol):
             self.check_time()
 
             session = boto3.session.Session(self.access_key, self.secret_key, self.session)
-            # s3client = session.client('s3')
-            # s3transfer = S3Transfer(s3client)
             s3transfer = S3Transfer(session.client('s3'))
 
             try:
