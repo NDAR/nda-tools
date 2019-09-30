@@ -12,6 +12,7 @@ class Authorization:
             self.aws_secret_key = config.aws_secret_key
             if config.aws_session_token != "":
                 self.aws_session_token = config.aws_session_token
+        self.credentials = self.get_credentials
 
     @property
     def get_credentials(self):

@@ -238,7 +238,7 @@ class Submission:
         # files in s3
         no_access_buckets = []
         if self.source_bucket:
-            s3 = boto3.session.Session(**self.credentials.get_credentials)
+            s3 = boto3.session.Session(**self.credentials.credentials)
             s3_client = s3.client('s3')
             for file in self.no_match[:]:
                 key = file
@@ -570,7 +570,7 @@ class Submission:
                     """
 
                     tqdm.monitor_interval = 0
-                    source_session = boto3.Session(**self.credentials.get_credentials)
+                    source_session = boto3.Session(**self.credentials.credentials)
                     s3_config = Config(connect_timeout=240, read_timeout=240)
                     self.source_s3 = source_session.resource('s3', config=s3_config)
 
