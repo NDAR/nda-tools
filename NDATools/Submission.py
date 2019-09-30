@@ -424,7 +424,7 @@ class Submission:
             else:
                 print('There was an error transferring some files, trying again')
                 if self.found_all_files and self.upload_tries < 5:
-                    self.submission_upload()
+                    self.submission_upload(hide_progress)
         if self.status != Status.UPLOADING and hide_progress:
             return
 
