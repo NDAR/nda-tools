@@ -94,13 +94,10 @@ class ClientConfiguration:
         if not self.username:
             self.username = input('Enter your NIMH Data Archives username:')
         if not self.password:
-            # self.password = getpass.getpass('Enter your NIMH Data Archives password:')
-            self.password = input('Enter your NIMH Data Archives password:')
+            self.password = getpass.getpass('Enter your NIMH Data Archives password:')
 
         if not self.aws_access_key:
-            # self.aws_access_key = getpass.getpass('Enter your aws_access_key. If none, hit "Enter:"')
-            self.aws_access_key = input('Enter your aws_access_key. If none, hit "Enter:"')
+            self.aws_access_key = getpass.getpass('Enter your aws_access_key. If none, hit "Enter:"')
 
         if not self.aws_secret_key:
-            # self.aws_secret_key = getpass.getpass('Enter your aws_secret_key. If none, hit "Enter":')
-            self.aws_secret_key = input('Enter your aws_secret_key. If none, hit "Enter":')
+            self.aws_secret_key = getpass.getpass('Enter your aws_secret_key. If none, hit "Enter":')
