@@ -569,10 +569,9 @@ class Submission:
                     """
 
                     tqdm.monitor_interval = 0
-                    source_session = boto3.Session(**self.credentials.credentials)
 
                     s3_config = Config(connect_timeout=240, read_timeout=240)
-                    self.source_s3 = source_session.resource('s3', config=s3_config) # todo: externalize to s3auth class
+                    self.source_s3 = self.credentials.get_s3_resource(s3_config)
 
                     source_key = key.split('/')[1:]
                     source_key = '/'.join(source_key)
@@ -610,12 +609,10 @@ class Submission:
                     else:
 
                         # set chunk size dynamically to based on file size
-                        print('debug file_size = {}'.format(file_size)) # todo: delete me
                         if file_size > 9999:
                             multipart_chunk_size = (file_size // 9999)
                         else:
                             multipart_chunk_size = file_size
-                        print('debug chunksize = {}'.format(multipart_chunk_size)) # todo: delete me
                         transfer_config = TransferConfig(multipart_threshold=100 * 1024 * 1024,
                                                          multipart_chunksize=multipart_chunk_size)
 

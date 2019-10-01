@@ -31,3 +31,6 @@ class S3Authentication:
                                      aws_secret_access_key=aws_secret_key,
                                      aws_session_token=aws_session_token,
                                      region_name='us-east-1').client('s3')
+
+    def get_s3_resource(self, s3_config):
+        return boto3.Session(**self.credentials).resource('s3', config=s3_config)
