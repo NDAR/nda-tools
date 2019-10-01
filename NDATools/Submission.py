@@ -634,7 +634,10 @@ class Submission:
                                                      region_name='us-east-1')
 
                         # set chunk size dynamically to based on file size
-                        multipart_chunk_size = (file_size // 9999)
+                        if file_size > 9999:
+                            multipart_chunk_size = (file_size // 9999)
+                        else:
+                            multipart_chunk_size = file_size
                         transfer_config = TransferConfig(multipart_threshold=100 * 1024 * 1024,
                                                          multipart_chunksize=multipart_chunk_size)
                         self.dest = dest_session.client('s3')
