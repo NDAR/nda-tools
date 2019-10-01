@@ -2,6 +2,8 @@ from __future__ import with_statement
 from __future__ import absolute_import
 import sys
 
+from NDATools.S3Authentication import S3Authentication
+
 IS_PY2 = sys.version_info < (3, 0)
 
 if IS_PY2:
@@ -239,8 +241,9 @@ class Download(Protocol):
             # check tokens
             self.check_time()
 
-            session = boto3.session.Session(self.access_key, self.secret_key, self.session)
-            s3transfer = S3Transfer(session.client('s3'))
+            s3transfer = S3Transfer(S3Authentication.get_s3_client_with_config(self.access_key,
+                                                                               self.secret_key,
+                                                                               self.session))
 
             try:
                 s3transfer.download_file(bucket, key, local_filename)
