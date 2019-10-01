@@ -31,12 +31,15 @@ class ClientConfiguration:
         self.submission_packages = self.config.get("Files", "submission_packages")
         self.aws_access_key = self.config.get("User", "access_key")
         self.aws_secret_key = self.config.get("User", "secret_key")
+        self.aws_session_token = ""
         if not self.config.has_option("User", "session_token"):
             fixed_config = configparser.RawConfigParser()
             fixed_config.read(config_location)
             fixed_config.set("User", "session_token", "")
             with open(config_location, 'w') as configfile:
                 fixed_config.write(configfile)
+        else:
+            self.aws_session_token = self.config.get("User", "session_token")
         self.username = self.config.get("User", "username")
         self.password = self.config.get("User", "password")
 
