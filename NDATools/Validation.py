@@ -353,6 +353,7 @@ class Validation:
                 # Stop thread after adding validation response
                 self.file_queue.task_done()
 
+
 class Status:
     UPLOADING = 'Uploading'
     SYSERROR = 'SystemError'
