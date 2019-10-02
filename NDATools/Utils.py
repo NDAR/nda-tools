@@ -142,7 +142,7 @@ def exit_client(signal, frame=None, message=None):
     sys.exit(1)
 
 
-def parse_local_files(directory_list, no_match, full_file_path, no_read_access):
+def parse_local_files(directory_list, no_match, full_file_path, no_read_access, skip_local_file_check):
     """
     Iterates through associated files generate a dictionary of full filepaths and file sizes.
 
@@ -155,7 +155,7 @@ def parse_local_files(directory_list, no_match, full_file_path, no_read_access):
     for file in no_match[:]:
         file_key = sanitize_file_path(file)
         for d in directory_list:
-            if config.skip_local_file_check:
+            if skip_local_file_check:
                 file_name = os.path.join(d, file)
                 full_file_path[file_key] = (file_name, os.path.getsize(file_name))
                 no_match.remove(file)

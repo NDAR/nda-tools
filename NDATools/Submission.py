@@ -238,7 +238,8 @@ class Submission:
 
         # local files
         if self.directory_list:
-            parse_local_files(self.directory_list, self.no_match, self.full_file_path, self.no_read_access)
+            parse_local_files(self.directory_list, self.no_match, self.full_file_path, self.no_read_access,
+                              self.config.skip_local_file_check)
 
         # files in s3
         no_access_buckets = []
