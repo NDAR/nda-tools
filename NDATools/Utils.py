@@ -152,13 +152,25 @@ def parse_local_files(directory_list, no_match, full_file_path, no_read_access, 
     :param no_read_access: List of files that user does not have access to
     :return: Modifies references to no_match, full_file_path, no_read_access
     """
+    files_to_match = len(no_match)
+    logging.debug('Starting local directory search for {} files'.format(str(files_to_match)))
+    progress_counter = int(files_to_match*0.05)
     for file in no_match[:]:
+        if progress_counter == 0:
+            logging.debug('Found {} files out of {}'.format(str(files_to_match - len(no_match)), str(files_to_match)))
+            progress_counter = int(files_to_match*0.05)
         file_key = sanitize_file_path(file)
         for d in directory_list:
             if skip_local_file_check:
                 file_name = os.path.join(d, file)
-                full_file_path[file_key] = (file_name, os.path.getsize(file_name))
-                no_match.remove(file)
+                try:
+                    full_file_path[file_key] = (file_name, os.path.getsize(file_name))
+                    no_match.remove(file)
+                    progress_counter -= 1
+                except (OSError, IOError) as err:
+                    if err.errno == 13:
+                        print('Permission Denied: {}'.format(file_name))
+                    continue
                 break
             else:
                 if os.path.isfile(file):
@@ -172,7 +184,7 @@ def parse_local_files(directory_list, no_match, full_file_path, no_read_access, 
                 full_file_path[file_key] = (file_name, os.path.getsize(file_name))
                 no_match.remove(file)
                 break
-
+    logging.debug('Local directory search complete, found {} files out of {}'.format(str(files_to_match - len(no_match)), str(files_to_match)))
 
 def sanitize_file_path(file):
     """
