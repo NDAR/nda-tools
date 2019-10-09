@@ -3,7 +3,7 @@ import requests
 import json
 import sys
 
-__version__ = '0.1.37'
+__version__ = '0.1.38'
 pypi_version = None
 version_checked = False
 
