@@ -233,7 +233,8 @@ class Submission:
 
         # local files
         if self.directory_list:
-            parse_local_files(self.directory_list, self.no_match, self.full_file_path, self.no_read_access)
+            parse_local_files(self.directory_list, self.no_match, self.full_file_path, self.no_read_access,
+                              self.config.skip_local_file_check)
 
         # files in s3
         no_access_buckets = []
@@ -415,7 +416,7 @@ class Submission:
             else:
                 print('There was an error transferring some files, trying again')
                 if self.found_all_files and self.upload_tries < 5:
-                    self.submission_upload()
+                    self.submission_upload(hide_progress)
         if self.status != Status.UPLOADING and hide_progress:
             return
 
