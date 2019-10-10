@@ -47,7 +47,10 @@ class Constants:
 
 class UploadMultiParts:
     def __init__(self, upload_obj, full_file_path, bucket, prefix, config, credentials, file_size):
-        self.chunk_size = (file_size // 9999) # dynamically set chunk size based on file size and aws limit on number of parts
+        if (file_size > 9999):
+            self.chunk_size = (file_size // 9999) # dynamically set chunk size based on file size and aws limit on number of parts
+        else:
+            self.chunk_size = file_size
         self.upload_obj = upload_obj
         self.full_file_path = full_file_path
         self.upload_id = self.upload_obj['UploadId']

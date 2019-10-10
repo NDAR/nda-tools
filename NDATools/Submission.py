@@ -238,7 +238,8 @@ class Submission:
 
         # local files
         if self.directory_list:
-            parse_local_files(self.directory_list, self.no_match, self.full_file_path, self.no_read_access)
+            parse_local_files(self.directory_list, self.no_match, self.full_file_path, self.no_read_access,
+                              self.config.skip_local_file_check)
 
         # files in s3
         no_access_buckets = []
@@ -424,7 +425,7 @@ class Submission:
             else:
                 print('There was an error transferring some files, trying again')
                 if self.found_all_files and self.upload_tries < 5:
-                    self.submission_upload()
+                    self.submission_upload(hide_progress)
         if self.status != Status.UPLOADING and hide_progress:
             return
 
@@ -634,7 +635,10 @@ class Submission:
                                                      region_name='us-east-1')
 
                         # set chunk size dynamically to based on file size
-                        multipart_chunk_size = (file_size // 9999)
+                        if file_size > 9999:
+                            multipart_chunk_size = (file_size // 9999)
+                        else:
+                            multipart_chunk_size = file_size
                         transfer_config = TransferConfig(multipart_threshold=100 * 1024 * 1024,
                                                          multipart_chunksize=multipart_chunk_size)
                         self.dest = dest_session.client('s3')
