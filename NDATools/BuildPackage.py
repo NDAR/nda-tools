@@ -8,6 +8,9 @@ from tqdm import tqdm
 import boto3
 import botocore
 import signal
+
+from NDATools.S3Authentication import S3Authentication
+
 if sys.version_info[0] < 3:
     input = raw_input
 import requests.packages.urllib3.util
@@ -38,15 +41,7 @@ class SubmissionPackage:
             self.config.description = description
         self.username = self.config.username
         self.password = self.config.password
-        if self.config.aws_secret_key == "" and self.config.aws_access_key == "":
-            self.iam_user_credentials = None
-            self.data_manager_credentials = DataManager(self.config).credentials
-        else:
-            self.iam_user_credentials = {'aws_access_key_id': self.config.aws_access_key,
-                                         'aws_secret_access_key': self.config.aws_secret_key}
-            if self.config.aws_session_token != "":
-                self.iam_user_credentials.update({'aws_session_token':self.config.aws_session_token})
-            self.data_manager_credentials = None
+        self.credentials = S3Authentication(config)
         self.dataset_name = self.config.title
         self.dataset_description = self.config.description
         self.package_info = {}
@@ -191,11 +186,7 @@ class SubmissionPackage:
         # files in s3
         no_access_buckets = []
         if self.source_bucket:
-            if self.iam_user_credentials:
-                s3 = boto3.session.Session(**self.iam_user_credentials)
-            else:
-                s3 = boto3.session.Session(**self.data_manager_credentials)
-            s3_client = s3.client('s3')
+            s3_client = self.credentials.get_s3_client()
             for file in self.no_match[:]:
                 key = file
                 if self.source_prefix:
