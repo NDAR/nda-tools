@@ -8,7 +8,10 @@ class S3Authentication:
         self.config = config
         self.aws_session_token = None
         if config.aws_secret_key == "" and config.aws_access_key == "":
-            self.aws_access_key, self.aws_secret_key, self.aws_session_token = DataManager(config).credentials
+            data_manager_credentials = DataManager(config).get_data_manager_credentials
+            self.aws_access_key = data_manager_credentials.get('aws_access_key_id')
+            self.aws_secret_key =  data_manager_credentials.get('aws_secret_access_key')
+            self.aws_session_token = data_manager_credentials.get('aws_session_token')
         else:
             self.aws_access_key = config.aws_access_key
             self.aws_secret_key = config.aws_secret_key
