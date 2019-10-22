@@ -8,6 +8,9 @@ from boto3.exceptions import S3UploadFailedError
 from boto3.s3.transfer import S3Transfer, TransferConfig
 from botocore.client import Config
 from botocore.exceptions import ClientError
+
+from NDATools.S3Authentication import S3Authentication
+
 if sys.version_info[0] < 3:
     import Queue as queue
     input = raw_input
@@ -40,15 +43,7 @@ class Submission:
             self.config.password = password
         self.username = self.config.username
         self.password = self.config.password
-        if self.config.aws_secret_key == "" and self.config.aws_access_key == "":
-            self.iam_user_credentials = None
-            self.data_manager_credentials = DataManager(self.config).credentials
-        else:
-            self.iam_user_credentials = {'aws_access_key_id': self.config.aws_access_key,
-                                         'aws_secret_access_key': self.config.aws_secret_key}
-            if self.config.aws_session_token != "":
-                self.iam_user_credentials.update({'aws_session_token':self.config.aws_session_token})
-            self.data_manager_credentials = None
+        self.credentials = S3Authentication(config)
         self.full_file_path = full_file_path
         self.total_upload_size = 0
         self.upload_queue = queue.Queue()
@@ -238,16 +233,13 @@ class Submission:
 
         # local files
         if self.directory_list:
-            parse_local_files(self.directory_list, self.no_match, self.full_file_path, self.no_read_access)
+            parse_local_files(self.directory_list, self.no_match, self.full_file_path, self.no_read_access,
+                              self.config.skip_local_file_check)
 
         # files in s3
         no_access_buckets = []
         if self.source_bucket:
-            if self.iam_user_credentials:
-                s3 = boto3.session.Session(**self.iam_user_credentials)
-            else:
-                s3 = boto3.session.Session(**self.data_manager_credentials)
-            s3_client = s3.client('s3')
+            s3_client = self.credentials.get_s3_client()
             for file in self.no_match[:]:
                 key = file
                 if self.source_prefix:
@@ -424,7 +416,7 @@ class Submission:
             else:
                 print('There was an error transferring some files, trying again')
                 if self.found_all_files and self.upload_tries < 5:
-                    self.submission_upload()
+                    self.submission_upload(hide_progress)
         if self.status != Status.UPLOADING and hide_progress:
             return
 
@@ -441,15 +433,7 @@ class Submission:
             self.password = self.config.password
             self.source_bucket = self.config.source_bucket
             self.source_prefix = self.config.source_prefix
-            if self.config.aws_secret_key == "" and self.config.aws_access_key == "":
-                self.iam_user_credentials = None
-                self.data_manager_credentials = DataManager(self.config).credentials
-            else:
-                self.iam_user_credentials = {'aws_access_key_id': self.config.aws_access_key,
-                                             'aws_secret_access_key': self.config.aws_secret_key}
-                if self.config.aws_session_token != "":
-                    self.iam_user_credentials.update({'aws_session_token':self.config.aws_session_token})
-                self.data_manager_credentials = None
+            self.credentials = S3Authentication(self.config)
             self.full_file_path = full_file_path
             self.credentials_list = credentials_list
             self.submission_id = submission_id
@@ -586,12 +570,9 @@ class Submission:
                     """
 
                     tqdm.monitor_interval = 0
-                    if self.iam_user_credentials:
-                        source_session = boto3.Session(**self.iam_user_credentials)
-                    else:
-                        source_session = boto3.Session(**self.data_manager_credentials)
+
                     s3_config = Config(connect_timeout=240, read_timeout=240)
-                    self.source_s3 = source_session.resource('s3', config=s3_config)
+                    self.source_s3 = self.credentials.get_s3_resource(s3_config)
 
                     source_key = key.split('/')[1:]
                     source_key = '/'.join(source_key)
@@ -628,16 +609,17 @@ class Submission:
 
                     else:
 
-                        dest_session = boto3.Session(aws_access_key_id=credentials['access_key'],
-                                                     aws_secret_access_key=credentials['secret_key'],
-                                                     aws_session_token=credentials['session_token'],
-                                                     region_name='us-east-1')
-
                         # set chunk size dynamically to based on file size
-                        multipart_chunk_size = (file_size // 9999)
+                        if file_size > 9999:
+                            multipart_chunk_size = (file_size // 9999)
+                        else:
+                            multipart_chunk_size = file_size
                         transfer_config = TransferConfig(multipart_threshold=100 * 1024 * 1024,
                                                          multipart_chunksize=multipart_chunk_size)
-                        self.dest = dest_session.client('s3')
+
+                        self.dest = S3Authentication.get_s3_client_with_config(credentials['access_key'],
+                                                                               credentials['secret_key'],
+                                                                               credentials['session_token'])
                         self.dest_bucket = bucket
                         self.dest_key = key
                         self.temp_key = self.dest_key + '.temp'
@@ -654,9 +636,7 @@ class Submission:
                             e = str(error)
                             if "ExpiredToken" in e:
                                 self.add_back_to_queue(bucket, prefix)
-                                if self.data_manager_credentials:
-                                    self.data_manager_credentials = DataManager(self.username,
-                                                                                self.password).credentials
+                                self.credentials = S3Authentication(self.config)
                             else:
                                 raise error
                     self.progress_queue.put(None)
@@ -667,7 +647,8 @@ class Submission:
                     """
 
                     if mpu_exist:
-                        u = UploadMultiParts(mpu_to_complete, self.full_file_path, bucket, prefix, self.config, credentials)
+                        u = UploadMultiParts(mpu_to_complete, self.full_file_path, bucket, prefix, self.config,
+                                             credentials)
                         u.get_parts_information()
                         if not self.expired:
                             self.progress_queue.put(u.completed_bytes)
@@ -702,13 +683,9 @@ class Submission:
                         self.progress_queue.put(None)
                     else:
                         if credentials:
-                            session = boto3.session.Session(
-                                aws_access_key_id=credentials['access_key'],
-                                aws_secret_access_key=credentials['secret_key'],
-                                aws_session_token=credentials['session_token'],
-                                region_name='us-east-1'
-                            )
-                            s3 = session.client('s3')
+                            s3 = S3Authentication.get_s3_client_with_config(credentials['access_key'],
+                                                                            credentials['secret_key'],
+                                                                            credentials['session_token'])
                             config = TransferConfig(
                                 multipart_threshold=100 * 1024 * 1024,
                                 max_concurrency=2,
@@ -723,9 +700,7 @@ class Submission:
                                 e = str(error)
                                 if "ExpiredToken" in e:
                                     self.add_back_to_queue(bucket, prefix)
-                                    if self.data_manager_credentials:
-                                        self.data_manager_credentials = DataManager(self.username,
-                                                                                    self.password).credentials
+                                    self.credentials = S3Authentication(self.config)
                                 else:
                                     raise error
 
