@@ -186,6 +186,7 @@ def parse_local_files(directory_list, no_match, full_file_path, no_read_access, 
                 break
     logging.debug('Local directory search complete, found {} files out of {}'.format(str(files_to_match - len(no_match)), str(files_to_match)))
 
+
 def sanitize_file_path(file):
     """
     Replaces backslashes with forward slashes and removes leading / or drive:/.

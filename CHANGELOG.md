@@ -1,11 +1,13 @@
 
 # CHANGELOG
 
-## 0.1.21 - TBD
-* [`vtcmd`] removed use of aws_access_key and aws_secret_key since these are no longer needed
-* [`vtcmd`] Added --skipValidation flag to skip checking that local associated files exist on filesystem
-* [`nda-tools`] Fixed bugs preventing use of full file paths on all operating systems
-* [`nda-tools`] replaced use of aws_access_key and aws_secret_key with iam_user_credentials and data_manager_credentials, which defaults to use of FederationUser Token to submit from S3 objects if no credentials are supplied in settings.cfg
+## 0.1.21 - 2019-10-30
+* [`vtcmd`] Removed use of aws_access_key and aws_secret_key since these are no longer needed.
+* [`vtcmd`] Added --skipValidation flag to skip checking that local associated files exist on filesystem.
+* [`vtcmd`] New sections and options are automatically added to user settings.cfg.
+* [`nda-tools`] Fixed bugs preventing use of full file paths on all operating systems.
+* [`nda-tools`] Replaced use of aws_access_key and aws_secret_key with iam_user_credentials and data_manager_credentials, which defaults to use of FederationUser Token to submit from S3 objects if no credentials are supplied in settings.cfg.
+* [`nda-tools`] Added unit tests for Utils.py for parse relative/full filepaths and automatically sanitizing paths based on path patterns.
 
 ## 0.1.20 - 2019-07-15
 * [`nda-tools`] Python2 compatibility fixes and some PEP-8 style changes; fixes [GitHub Issue 9](https://github.com/NDAR/nda-tools/issues/9)
