@@ -2,7 +2,6 @@
 # CHANGELOG
 
 ## 0.1.21 - 2019-10-30
-* [`vtcmd`] Removed use of aws_access_key and aws_secret_key since these are no longer needed.
 * [`vtcmd`] Added --skipValidation flag to skip checking that local associated files exist on filesystem.
 * [`vtcmd`] New sections and options are automatically added to user settings.cfg.
 * [`nda-tools`] Fixed bugs preventing use of full file paths on all operating systems.
