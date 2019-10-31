@@ -1,7 +1,10 @@
 import boto3
 import botocore
 import hashlib
+
+from NDATools.S3Authentication import S3Authentication
 from NDATools.Utils import *
+
 
 class MultiPartsUpload:
     def __init__(self, bucket, prefix, config, access_key, secret_key, session_token):
@@ -11,11 +14,7 @@ class MultiPartsUpload:
         self.access_key = access_key
         self.secret_key = secret_key
         self.session_token = session_token
-        session = boto3.Session(aws_access_key_id=self.access_key,
-                                aws_secret_access_key=self.secret_key,
-                                aws_session_token=self.session_token,
-                                region_name='us-east-1')
-        self.client = session.client(service_name='s3')
+        self.client = S3Authentication.get_s3_client_with_config(self.access_key, self.secret_key, self.session_token)
         self.incomplete_mpu = []
         self.mpu_to_abort = {}
 
@@ -46,8 +45,11 @@ class Constants:
 
 
 class UploadMultiParts:
-    def __init__(self, upload_obj, full_file_path, bucket, prefix, config, credentials):
-        self.chunk_size = 8388608 #default
+    def __init__(self, upload_obj, full_file_path, bucket, prefix, config, credentials, file_size):
+        if (file_size > 9999):
+            self.chunk_size = (file_size // 9999) # dynamically set chunk size based on file size and aws limit on number of parts
+        else:
+            self.chunk_size = file_size
         self.upload_obj = upload_obj
         self.full_file_path = full_file_path
         self.upload_id = self.upload_obj['UploadId']
@@ -60,20 +62,15 @@ class UploadMultiParts:
         self.access_key = credentials['access_key']
         self.secret_key = credentials['secret_key']
         self.session_token = credentials['session_token']
-        session = boto3.Session(aws_access_key_id=self.access_key,
-                                aws_secret_access_key=self.secret_key,
-                                aws_session_token=self.session_token,
-                                region_name='us-east-1')
-        self.client = session.client(service_name='s3')
+        self.client = S3Authentication.get_s3_client_with_config(self.access_key, self.secret_key, self.session_token)
         self.completed_bytes = 0
         self.completed_parts = 0
         self.parts = []
         self.parts_completed = []
 
-
     def get_parts_information(self):
         self.upload_obj = self.client.list_parts(Bucket=self.bucket, Key=self.key,
-                                             UploadId=self.upload_id)
+                                                 UploadId=self.upload_id)
 
         if Constants.PARTS in self.upload_obj:
             chunk_size = self.upload_obj[Constants.PARTS][0][Constants.SIZE] # size of first part should be size of all subsequent parts
@@ -88,7 +85,6 @@ class UploadMultiParts:
 
         self.completed_bytes = self.chunk_size * len(self.parts)
 
-
     def check_md5(self, part, data):
 
         ETag = (part[Constants.ETAG]).split('"')[1]
@@ -102,7 +98,6 @@ class UploadMultiParts:
         part = self.client.upload_part(Body=data, Bucket=self.bucket, Key=self.key, UploadId=self.upload_id, PartNumber=i)
         self.parts.append({Constants.PART_NUM: i, Constants.ETAG: part[Constants.ETAG]})
         self.completed_bytes += len(data)
-
 
     def complete(self):
         self.client.complete_multipart_upload(

@@ -1,23 +1,24 @@
 from __future__ import with_statement
 from __future__ import absolute_import
+
+import re
 import sys
-import signal
 import multiprocessing
-import boto3
 from boto3.exceptions import S3UploadFailedError
 from boto3.s3.transfer import S3Transfer, TransferConfig
-from tqdm import tqdm
 from botocore.client import Config
 from botocore.exceptions import ClientError
 
-import requests
+from NDATools.S3Authentication import S3Authentication
+
 if sys.version_info[0] < 3:
     import Queue as queue
     input = raw_input
 else:
     import queue
+from tqdm import tqdm
 from NDATools.Configuration import *
-from NDATools.Utils import *
+from NDATools.DataManager import *
 from NDATools.MultiPartUploads import *
 from NDATools.TokenGenerator import *
 
@@ -42,8 +43,7 @@ class Submission:
             self.config.password = password
         self.username = self.config.username
         self.password = self.config.password
-        self.aws_access_key = self.config.aws_access_key
-        self.aws_secret_key = self.config.aws_secret_key
+        self.credentials = S3Authentication(config)
         self.full_file_path = full_file_path
         self.total_upload_size = 0
         self.upload_queue = queue.Queue()
@@ -74,7 +74,6 @@ class Submission:
         self.exit = allow_exit
         self.all_mpus = []
 
-
     def submit(self):
         response, session = api_request(self, "POST", "/".join([self.api, self.package_id]))
         if response:
@@ -87,7 +86,6 @@ class Submission:
                         message=message)
             else:
                 raise Exception("{}\n{}".format('SubmissionError', message))
-
 
     def check_status(self):
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id]))
@@ -106,7 +104,6 @@ class Submission:
 
         return [{'submissionFileId': file['id'], 'destination_uri': file['file_remote_path']} for file in response if
                 file['status'] != Status.COMPLETE]
-
 
     def get_multipart_credentials(self, file_ids):
         all_credentials = []
@@ -160,7 +157,6 @@ class Submission:
             else:
                 raise Exception("{}\n{}".format('SubmissionError', message))
 
-
     def check_submitted_files(self):
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id, 'files']))
 
@@ -213,22 +209,9 @@ class Submission:
             self.source_prefix = input('Enter any prefix for your S3 object, or hit "Enter": ')
             if self.source_prefix == "":
                 self.source_prefix = None
-            if self.aws_access_key == "":
-                self.aws_access_key = input('Enter the access_key for your AWS account: ')
-            if self.aws_secret_key == "":
-                self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
 
 
-    def check_read_permissions(self, file):
-        try:
-            open(file)
-            return True
-        except (OSError, IOError) as err:
-            if err.errno == 13:
-                print('Permission Denied: {}'.format(file))
-            return False
-
-    def found_all_files(self, directories=None, source_bucket=None, source_prefix=None, access_key=None, secret_key=None, retry_allowed=False):
+    def found_all_files(self, directories=None, source_bucket=None, source_prefix=None, retry_allowed=False):
         def raise_error(error, l = []):
             m = '\n'.join([error] + list(set(l)))
             raise Exception(m)
@@ -236,14 +219,12 @@ class Submission:
         self.directory_list = directories
         self.source_bucket = source_bucket
         self.source_prefix = source_prefix
-        self.aws_access_key = access_key
-        self.aws_secret_key = secret_key
 
         if not self.directory_list and not self.source_bucket:
             if retry_allowed:
                 self.recollect_file_search_info()
             else:
-                error ='Missing directory and/or an S3 bucket.'
+                error = 'Missing directory and/or an S3 bucket.'
                 raise_error(error)
 
         if not self.no_match:
@@ -252,29 +233,13 @@ class Submission:
 
         # local files
         if self.directory_list:
-            for file in self.no_match[:]:
-                if file.startswith('/'):
-                    f = file[1:]
-                else:
-                    f = file
-                for d in self.directory_list:
-                    file_name = os.path.join(d, f)
-                    if os.path.isfile(file_name):
-                        if not self.check_read_permissions(file_name):
-                            self.no_read_access.add(file_name)
-                        self.full_file_path[file] = (file_name, os.path.getsize(file_name))
-                        self.no_match.remove(file)
-                        break
+            parse_local_files(self.directory_list, self.no_match, self.full_file_path, self.no_read_access,
+                              self.config.skip_local_file_check)
 
         # files in s3
         no_access_buckets = []
         if self.source_bucket:
-            if self.aws_access_key is "":
-                self.aws_access_key = input('Enter the access_key for your AWS account: ')
-            if self.aws_secret_key is "":
-                self.aws_secret_key = input('Enter the secret_key for your AWS account: ')
-            s3 = boto3.session.Session(aws_access_key_id=self.aws_access_key, aws_secret_access_key=self.aws_secret_key)
-            s3_client = s3.client('s3')
+            s3_client = self.credentials.get_s3_client()
             for file in self.no_match[:]:
                 key = file
                 if self.source_prefix:
@@ -312,8 +277,7 @@ class Submission:
                 for file in self.no_match:
                     print(file)
                 self.recollect_file_search_info()
-                self.found_all_files(self.directory_list, self.source_bucket, self.source_prefix, self.aws_access_key,
-                                     self.aws_secret_key, retry_allowed=True)
+                self.found_all_files(self.directory_list, self.source_bucket, self.source_prefix, retry_allowed=True)
             else:
                 error = "".join(['Missing Files:', message])
                 raise_error(error, self.no_match)
@@ -326,7 +290,8 @@ class Submission:
                 for file in self.no_read_access:
                     print(file)
                 self.recollect_file_search_info()
-                [self.no_read_access.remove(i) for i in [file for file in self.no_read_access if self.check_read_permissions(file)]]
+                [self.no_read_access.remove(i) for i in
+                    [file for file in self.no_read_access if check_read_permissions(file)]]
             else:
                 error = "".join(['Read Permission Error:', message])
                 raise_error(error, self.no_match)
@@ -334,14 +299,11 @@ class Submission:
         self.config.directory_list = self.directory_list
         self.config.source_bucket = self.source_bucket
         self.config.source_prefix = self.source_prefix
-        self.config.aws_access_key = self.aws_access_key
-        self.config.aws_secret_key = self.aws_secret_key
 
         try:
             return len(self.directory_list) > 0
         except TypeError:
             return len(self.source_bucket) > 0
-
 
     def batch_update_status(self, status=Status.COMPLETE):
         list_data = self.generate_data_for_request(status)
@@ -353,7 +315,7 @@ class Submission:
 
     def complete_partial_uploads(self):
 
-        bucket = (self.credentials_list[0]['destination_uri']).split('/')[2] # 'NDAR_Central_{}'.format((int(self.submission_id) % 4) + 1)
+        bucket = (self.credentials_list[0]['destination_uri']).split('/')[2]
         prefix = 'submission_{}'.format(self.submission_id)
 
         # use self.credentials list to pass in a set of temporary tokens, which should allow listMultiPartUpload
@@ -384,7 +346,7 @@ class Submission:
                 file_id_info = self.create_file_info_list(response)
                 file_ids = [int(ids['submissionFileId']) for ids in file_id_info]
                 self.credentials_list = self.get_multipart_credentials(file_ids)
-                self.batch_update_status(status=Status.PROCESSING) #update the file size before submission, so service can compare.
+                self.batch_update_status(status=Status.PROCESSING)
 
             if not hide_progress:
                 self.total_progress = tqdm(total=self.total_upload_size,
@@ -454,7 +416,7 @@ class Submission:
             else:
                 print('There was an error transferring some files, trying again')
                 if self.found_all_files and self.upload_tries < 5:
-                    self.submission_upload()
+                    self.submission_upload(hide_progress)
         if self.status != Status.UPLOADING and hide_progress:
             return
 
@@ -471,8 +433,7 @@ class Submission:
             self.password = self.config.password
             self.source_bucket = self.config.source_bucket
             self.source_prefix = self.config.source_prefix
-            self.aws_access_key = self.config.aws_access_key
-            self.aws_secret_key = self.config.aws_secret_key
+            self.credentials = S3Authentication(self.config)
             self.full_file_path = full_file_path
             self.credentials_list = credentials_list
             self.submission_id = submission_id
@@ -483,8 +444,7 @@ class Submission:
             self.expired = False
 
         def upload_config(self):
-
-            local_path = self.upload['file_user_path']
+            local_path = sanitize_file_path(self.upload['file_user_path'])
             remote_path = self.upload['file_remote_path']
             file_id = self.upload['id']
             for cred in self.credentials_list:
@@ -569,8 +529,11 @@ class Submission:
                 If the source file is local, use the credentials supplied by the submission API to upload from local 
                 file to remote S3 location.
 
-                If the source file is from S3, use a specific AWS Profile to retrieve the source file, and uses
-                credentials supplied by the submission API to upload to remote S3 location.
+                If the source file is from S3:
+                a) check settings.cfg for permanent user credentials (aws_access_key, aws_secret_key)
+                b) if permanent credentials are provided, use them to retrieve the source file,
+                c) if not provided use a FederationUser token from DataManager API to retreive the source file,
+                d) use credentials supplied by the submission API to upload to remote S3 location.
                 
                 If the file was uploaded using multi-part, it will first complete the multi part uploads.
                 """
@@ -590,12 +553,13 @@ class Submission:
                     values, which specify where the object should be copied from (i.e., 100206 subject directory can be
                     located in s3://hcp-openaccess-temp, with a prefix of HCP_1200).
 
-                    Creates source and destination clients for S3 tranfer. Use permanent credentials for accessing both 
-                    buckets and accounts. This will require permission from NDA to write to NDA buckets. 
+                    Creates source and destination clients for S3 tranfer. If supplied in settings.cfg uses permanent 
+                    credentials for accessing source buckets. If permanent credentials are not supplied in
+                    settings.cfg, uses a tempoary FederationUser Token from DataManager API to access source bucket. 
 
                     The transfer uses a file streaming method by streaming the body of the file into memory and uploads 
                     the stream in chunks using AWS S3Transfer. This Transfer client will automatically use multi part 
-                    uploads when necessary. To maximize efficiency, only files greater than 8e6 bytes are uploaded using 
+                    uploads when necessary. To maximize efficiency, only files greater than 1e8 bytes are uploaded using 
                     the multi part upload. Smaller files are uploaded in one part.  
 
                     After each successful transfer, the script will change the status of the file to complete in NDA's 
@@ -607,20 +571,16 @@ class Submission:
 
                     tqdm.monitor_interval = 0
 
-                    source_session = boto3.Session(aws_access_key_id=self.aws_access_key,
-                                               aws_secret_access_key=self.aws_secret_key)
-
-                    config = Config(connect_timeout=240, read_timeout=240)
-                    self.source_s3 = source_session.resource('s3', config=config)
+                    s3_config = Config(connect_timeout=240, read_timeout=240)
+                    self.source_s3 = self.credentials.get_s3_resource(s3_config)
 
                     source_key = key.split('/')[1:]
                     source_key = '/'.join(source_key)
                     self.source_key = '/'.join([self.source_prefix, source_key])
-                    self.fileobj = self.source_s3.Object(self.source_bucket, self.source_key).get()['Body'] # file stream
-                    # self.bytes = self.source_s3.Object(self.source_bucket, self.source_key).get()['ContentLength']
+                    self.fileobj = self.source_s3.Object(self.source_bucket, self.source_key).get()['Body']
 
                     if mpu_exist:
-                        u = UploadMultiParts(mpu_to_complete, self.full_file_path, bucket, prefix, self.config, credentials)
+                        u = UploadMultiParts(mpu_to_complete, self.full_file_path, bucket, prefix, self.config, credentials, file_size)
                         u.get_parts_information()
                         if not self.expired:
                             self.progress_queue.put(u.completed_bytes)
@@ -649,31 +609,34 @@ class Submission:
 
                     else:
 
-                        dest_session = boto3.Session(aws_access_key_id=credentials['access_key'],
-                                                     aws_secret_access_key=credentials['secret_key'],
-                                                     aws_session_token=credentials['session_token'],
-                                                     region_name='us-east-1')
+                        # set chunk size dynamically to based on file size
+                        if file_size > 9999:
+                            multipart_chunk_size = (file_size // 9999)
+                        else:
+                            multipart_chunk_size = file_size
+                        transfer_config = TransferConfig(multipart_threshold=100 * 1024 * 1024,
+                                                         multipart_chunksize=multipart_chunk_size)
 
-                        #GB = 1024 ** 3
-                        config = TransferConfig(multipart_threshold=8 * 1024 * 1024)
-                        self.dest = dest_session.client('s3')
+                        self.dest = S3Authentication.get_s3_client_with_config(credentials['access_key'],
+                                                                               credentials['secret_key'],
+                                                                               credentials['session_token'])
                         self.dest_bucket = bucket
                         self.dest_key = key
                         self.temp_key = self.dest_key + '.temp'
 
                         try:
                             self.dest.upload_fileobj(
-                            self.fileobj,
-                            self.dest_bucket,
-                            self.dest_key,
-                            Callback=self.UpdateProgress(self.progress_queue),
-                            Config=config # ,
-                            # ExtraArgs={"Metadata": {"ContentLength": self.bytes}}
+                                self.fileobj,
+                                self.dest_bucket,
+                                self.dest_key,
+                                Callback=self.UpdateProgress(self.progress_queue),
+                                Config=transfer_config
                             )
                         except boto3.exceptions.S3UploadFailedError as error:
                             e = str(error)
                             if "ExpiredToken" in e:
                                 self.add_back_to_queue(bucket, prefix)
+                                self.credentials = S3Authentication(self.config)
                             else:
                                 raise error
                     self.progress_queue.put(None)
@@ -684,7 +647,8 @@ class Submission:
                     """
 
                     if mpu_exist:
-                        u = UploadMultiParts(mpu_to_complete, self.full_file_path, bucket, prefix, self.config, credentials)
+                        u = UploadMultiParts(mpu_to_complete, self.full_file_path, bucket, prefix, self.config,
+                                             credentials)
                         u.get_parts_information()
                         if not self.expired:
                             self.progress_queue.put(u.completed_bytes)
@@ -719,15 +683,11 @@ class Submission:
                         self.progress_queue.put(None)
                     else:
                         if credentials:
-                            session = boto3.session.Session(
-                                aws_access_key_id=credentials['access_key'],
-                                aws_secret_access_key=credentials['secret_key'],
-                                aws_session_token=credentials['session_token'],
-                                region_name='us-east-1'
-                            )
-                            s3 = session.client('s3')
+                            s3 = S3Authentication.get_s3_client_with_config(credentials['access_key'],
+                                                                            credentials['secret_key'],
+                                                                            credentials['session_token'])
                             config = TransferConfig(
-                                multipart_threshold=8 * 1024 * 1024,
+                                multipart_threshold=100 * 1024 * 1024,
                                 max_concurrency=2,
                                 num_download_attempts=10)
 
@@ -740,6 +700,7 @@ class Submission:
                                 e = str(error)
                                 if "ExpiredToken" in e:
                                     self.add_back_to_queue(bucket, prefix)
+                                    self.credentials = S3Authentication(self.config)
                                 else:
                                     raise error
 

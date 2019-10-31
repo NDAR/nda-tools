@@ -325,7 +325,7 @@ class Validation:
                     self.shutdown_flag.set()
                     break
                 try:
-                    file = open(file_name, 'rb')
+                    file = open(file_name, 'r')
                 except IOError:
                     message = 'This file does not exist in current directory: {}'.format(file_name)
                     if self.progress_bar:
@@ -352,6 +352,7 @@ class Validation:
                         self.progress_bar.update(n=1)
                 # Stop thread after adding validation response
                 self.file_queue.task_done()
+
 
 class Status:
     UPLOADING = 'Uploading'

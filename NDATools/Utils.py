@@ -1,5 +1,6 @@
 from __future__ import with_statement
 from __future__ import absolute_import
+import re
 import signal
 import sys
 import getpass
@@ -126,6 +127,7 @@ def api_request(api, verb, endpoint, data=None, session=None):
 
     return response, session
 
+
 def exit_client(signal, frame=None, message=None):
     for t in threading.enumerate():
         try:
@@ -138,3 +140,76 @@ def exit_client(signal, frame=None, message=None):
         print('\n\nExit signal received, shutting down...')
     print('Please contact NDAHelp@mail.nih.gov if you need assistance.')
     sys.exit(1)
+
+
+def parse_local_files(directory_list, no_match, full_file_path, no_read_access, skip_local_file_check):
+    """
+    Iterates through associated files generate a dictionary of full filepaths and file sizes.
+
+    :param directory_list: List of directories
+    :param no_match: Stores list of invalid paths
+    :param full_file_path: Dictionary of tuples that store full filepath and file size
+    :param no_read_access: List of files that user does not have access to
+    :return: Modifies references to no_match, full_file_path, no_read_access
+    """
+    files_to_match = len(no_match)
+    logging.debug('Starting local directory search for {} files'.format(str(files_to_match)))
+    progress_counter = int(files_to_match*0.05)
+    for file in no_match[:]:
+        if progress_counter == 0:
+            logging.debug('Found {} files out of {}'.format(str(files_to_match - len(no_match)), str(files_to_match)))
+            progress_counter = int(files_to_match*0.05)
+        file_key = sanitize_file_path(file)
+        for d in directory_list:
+            if skip_local_file_check:
+                file_name = os.path.join(d, file)
+                try:
+                    full_file_path[file_key] = (file_name, os.path.getsize(file_name))
+                    no_match.remove(file)
+                    progress_counter -= 1
+                except (OSError, IOError) as err:
+                    if err.errno == 13:
+                        print('Permission Denied: {}'.format(file_name))
+                    continue
+                break
+            else:
+                if os.path.isfile(file):
+                    file_name = file
+                elif os.path.isfile(os.path.join(d, file)):
+                    file_name = os.path.join(d, file)
+                else:
+                    continue
+                if not check_read_permissions(file_name):
+                    no_read_access.add(file_name)
+                full_file_path[file_key] = (file_name, os.path.getsize(file_name))
+                no_match.remove(file)
+                break
+    logging.debug('Local directory search complete, found {} files out of {}'.format(str(files_to_match - len(no_match)), str(files_to_match)))
+
+
+def sanitize_file_path(file):
+    """
+    Replaces backslashes with forward slashes and removes leading / or drive:/.
+
+    :param file: Relative or absolute filepath
+    :return: Relative or absolute filepath with leading / or drive:/ removed
+    """
+    # Sanitize all backslashes (\) with forward slashes (/)
+    file_key = file.replace('\\', '/').replace('//', '/')
+    # If Mac/Linux full path
+    if re.search(r'^/.+$', file):
+        file_key = file.split('/', 1)[1]
+    # If Windows full path
+    elif re.search(r'^\D:/.+$', file_key):
+        file_key = file_key.split(':/', 1)[1]
+    return file_key
+
+
+def check_read_permissions(file):
+    try:
+        open(file)
+        return True
+    except (OSError, IOError) as err:
+        if err.errno == 13:
+            print('Permission Denied: {}'.format(file))
+    return False
