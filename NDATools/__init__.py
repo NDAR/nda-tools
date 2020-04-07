@@ -3,7 +3,7 @@ import requests
 import json
 import sys
 
-__version__ = '0.1.21'
+__version__ = '0.1.55.dev1'
 pypi_version = None
 version_checked = False
 
@@ -13,6 +13,9 @@ def check_version():
     except ImportError:
         from pip._vendor.packaging.version import parse
     # use https://test.pypi.org/pypi/{package}/json on test/release branches, use https://pypi.org on master
+    print('Running NDATools Version {}'.format(NDATools.__version__))
+    if parse(NDATools.__version__).is_devrelease:
+        return
     url_pattern = 'https://pypi.org/pypi/{package}/json'
     package = 'nda-tools'
     """Return version of package on pypi.python.org using json."""

@@ -65,8 +65,6 @@ def configure(username, password):
     return config
 
 def main():
-    if NDATools.pypi_version != NDATools.__version__:
-        sys.exit(1)
     args = parse_args()
     config = configure(args.username, args.password)
 

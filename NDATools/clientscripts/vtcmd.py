@@ -268,9 +268,6 @@ def submit_package(package_id, full_file_path, associated_files, threads, batch,
 
 
 def main():
-    # confirm most up to date version of nda-tools is installed
-    if NDATools.pypi_version != NDATools.__version__:
-        sys.exit(1)
     args = parse_args()
     config = configure(args)
 

@@ -648,7 +648,7 @@ class Submission:
 
                     if mpu_exist:
                         u = UploadMultiParts(mpu_to_complete, self.full_file_path, bucket, prefix, self.config,
-                                             credentials)
+                                             credentials, file_size)
                         u.get_parts_information()
                         if not self.expired:
                             self.progress_queue.put(u.completed_bytes)
