@@ -13,13 +13,15 @@ import logging
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description='This application allows you to enter a list of aws S3 paths and will download the files to your '
-                    'drive in your home folder. Alternatively, you may enter a packageID, an NDA data structure file or'
-                    ' a text file with s3 links, and the client will download all files from the S3 links listed. '
+        description='This application allows you to download from NDA. '
+                    'Depending on use of -dp, -t, or -ds flags, expected <items> would differ. '
+                    'You could specify a list of aws S3 paths and will download the files to your '
+                    'drive in your home folder. Alternatively, you may enter a packageID, an NDA data structure file or '
+                    'a text file with s3 links, and the client will download all files from the S3 links listed. '
                     'Please note, the maximum transfer limit of data is 5TB at one time.',
-        usage='%(prog)s <S3_path_list>')
+        usage='%(prog)s <items>')
 
-    parser.add_argument('paths', metavar='<S3_path_list>', type=str, nargs='+', action='store',
+    parser.add_argument('items', metavar='<items>', type=str, nargs='+', action='store',
                         help='Will download all S3 files to your local drive')
 
     parser.add_argument('-dp', '--package', action='store_true',
@@ -99,7 +101,7 @@ def main():
         verbose = True
 
     s3Download = Download(dir, config, verbose=verbose)
-    s3Download.get_links(links, args.paths, filters=None)
+    s3Download.get_links(links, args.items, filters=None)
     if len(s3Download.path_list) == 0:
         return
     s3Download.get_tokens()
