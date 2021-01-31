@@ -228,7 +228,8 @@ class Download(Protocol):
 
         # check previous downloads
         if resume:
-            prev_local_filename = os.path.join(prev_directory, key)
+            f_name = filename[-1]
+            prev_local_filename = os.path.join(prev_directory, f_name)
             if os.path.isfile(prev_local_filename):
                 downloaded = True
 
