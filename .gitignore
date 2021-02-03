@@ -10,3 +10,4 @@
 /*.egg
 
 /tests/test_files/
+.DS_Store

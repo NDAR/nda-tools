@@ -79,6 +79,7 @@ class Download(Protocol):
         self.directory = directory
         self.download_queue = Queue()
         self.path_list = set()
+        self.path_list_len = None
         self.local_file_names = {}
         self.access_key = None
         self.secret_key = None
@@ -123,6 +124,7 @@ class Download(Protocol):
                     for p in path:
                         file = 's3:/' + p.text
                         self.path_list.add(file)
+                    self.path_list_len = len(self.path_list)
                     for al in alias:
                         alias_path = al.text
 
@@ -206,7 +208,7 @@ class Download(Protocol):
         self.secret_key = self.token.secret_key
         self.session = self.token.session
 
-    def download_path(self, path, resume, prev_directory):
+    def download_path(self, index, path, resume, prev_directory):
         filename = path.split('/')
         self.filename = filename[3:]
         key = '/'.join(self.filename)
@@ -248,7 +250,7 @@ class Download(Protocol):
 
             try:
                 s3transfer.download_file(bucket, key, local_filename)
-                self.verbose_print('downloaded: {}'.format(path))
+                self.verbose_print('{}/{} downloaded: {}'.format(index, self.path_list_len, path))
 
             except botocore.exceptions.ClientError as e:
                 # If a client error is thrown, then check that it was a 404 error.
@@ -265,8 +267,10 @@ class Download(Protocol):
                     raise Exception(e)
 
     def start_workers(self, resume, prev_directory, thread_num=None):
-        def download(path):
-            self.download_path(path, resume, prev_directory)
+        def download(args):
+            i = args[0]
+            path = args[1]
+            self.download_path(i, path, resume, prev_directory)
 
         # Instantiate a thread pool with i worker threads
         self.thread_num = max([1, multiprocessing.cpu_count() - 1])
@@ -276,5 +280,5 @@ class Download(Protocol):
         pool = ThreadPool(self.thread_num)
 
         # Add the jobs in bulk to the thread pool
-        pool.map(download, self.path_list)
+        pool.map(download, list(enumerate(self.path_list)))
         pool.wait_completion()
