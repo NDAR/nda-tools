@@ -231,9 +231,10 @@ class Download(Protocol):
         # check previous downloads
         if resume:
             f_name = filename[-1]
-            prev_local_filename = os.path.join(prev_directory, f_name)
+            prev_local_filename = os.path.join(prev_directory, 'fmriresults01', f_name)
             if os.path.isfile(prev_local_filename):
                 downloaded = True
+                self.verbose_print('{}/{} file exists: {}'.format(index + 1, self.path_list_len, prev_local_filename))
 
         if not downloaded:
             try:
@@ -250,7 +251,7 @@ class Download(Protocol):
 
             try:
                 s3transfer.download_file(bucket, key, local_filename)
-                self.verbose_print('{}/{} downloaded: {}'.format(index, self.path_list_len, path))
+                self.verbose_print('{}/{} downloaded: {}'.format(index + 1, self.path_list_len, path))
 
             except botocore.exceptions.ClientError as e:
                 # If a client error is thrown, then check that it was a 404 error.
