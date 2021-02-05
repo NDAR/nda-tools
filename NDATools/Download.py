@@ -231,7 +231,7 @@ class Download(Protocol):
         # check previous downloads
         if resume:
             f_name = filename[-1]
-            prev_local_filename = os.path.join(prev_directory, 'fmriresults01', f_name)
+            prev_local_filename = os.path.join(prev_directory, dir[-2], f_name)
             if os.path.isfile(prev_local_filename):
                 downloaded = True
                 self.verbose_print('{}/{} file exists: {}'.format(index + 1, self.path_list_len, prev_local_filename))
