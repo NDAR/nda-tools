@@ -1,5 +1,7 @@
 
 # CHANGELOG
+## 0.2.4 - 2021-03-22
+* [`nda-tools`] Update password hashing to authenticate with NDA webservice endpoints.
 
 ## 0.2.0 - 2020-04-07
 * [`vtcmd`] Fixed bug that prevented resuming submissions when incomplete multipart uploads were present in s3 buckets.
