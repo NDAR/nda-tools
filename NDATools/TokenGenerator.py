@@ -22,6 +22,8 @@ class NDATokenGenerator(object):
         'data': 'http://gov/nih/ndar/ws/datamanager/server/bean/jaxb'
     }
 
+    __password_encoding = 'SHA-256'
+
     def __init__(self, url):
         assert url is not None
         self.url = url
@@ -29,13 +31,27 @@ class NDATokenGenerator(object):
 
     def generate_token(self, username, password):
         logging.info('request to generate AWS token')
-        encoded_password = self.__encode_password(password)
-        request_xml = self.__construct_request_xml(username, encoded_password)
-        return self.__make_request(request_xml)
+        try:
+            encoded_password = self.__encode_password(password)
+            request_xml = self.__construct_request_xml(username, encoded_password)
+            return self.__make_request(request_xml)
+        except Exception:
+            if self.__password_encoding == 'SHA-256':
+                self.__password_encoding = 'SHA-1'
+            else:
+                raise Exception
+            encoded_password = self.__encode_password(password)
+            request_xml = self.__construct_request_xml(username, encoded_password)
+            return self.__make_request(request_xml)
 
     def __encode_password(self, password):
         logging.debug('encoding password')
-        hasher = hashlib.sha1()
+
+        if self.__password_encoding == 'SHA-256':
+            hasher = hashlib.sha256()
+        elif self.__password_encoding == "SHA-1":
+            hasher = hashlib.sha1()
+
         hasher.update(password.encode('utf-8'))
         digest_bytes = hasher.digest()
         byte_string = binascii.hexlify(digest_bytes)
@@ -79,6 +95,7 @@ class NDATokenGenerator(object):
         request = urllib_request.Request(self.url, data=request_message, headers=headers)
         logging.debug(request)
         response = urllib_request.urlopen(request)
+
         return self.__parse_response(response.read())
 
     def __parse_response(self, response):
@@ -86,6 +103,7 @@ class NDATokenGenerator(object):
         tree = etree.fromstring(response)
 
         error = tree.find('.//errorMessage')
+
         if error is not None:
             error_msg = error.text
             logging.error('response had error message: %s' % error_msg)
