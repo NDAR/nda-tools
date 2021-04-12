@@ -71,6 +71,8 @@ def main():
     # directory where files will be downloaded
     if args.directory:
         dir = args.directory[0]
+    elif args.resume:
+        dir = args.resume[0]
     else:
         dir = os.path.join(os.path.expanduser('~'), 'AWS_downloads')
 
