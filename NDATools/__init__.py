@@ -3,7 +3,7 @@ import requests
 import json
 import sys
 
-__version__ = '0.2.4'
+__version__ = '0.3.0.dev'
 pypi_version = None
 version_checked = False
 
@@ -30,9 +30,11 @@ def check_version():
                 version = max(version, ver)
     NDATools.pypi_version = str(version)
 
-    if NDATools.__version__ != NDATools.pypi_version:
+    if NDATools.__version__ <= NDATools.pypi_version:
         print("Your version of nda-tools is out of date. Please install the latest version ({}) from PyPi or GitHub and "
               "try again.".format(NDATools.pypi_version))
+    elif NDATools.__version__ >= NDATools.pypi_version:
+        print("You are running an experimental version of nda-tools. Please report any bugs you find.")
 
     NDATools.version_checked = True
 

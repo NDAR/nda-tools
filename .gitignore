@@ -1,6 +1,12 @@
 # Compiled python modules.
 *.pyc
 
+# Ignore jetbrains workspace config files
+**/.idea/
+
+# Ignore virtual environment
+**/venv/
+
 # Setuptools distribution folder.
 /dist/
 /build/
