@@ -7,6 +7,9 @@
 # Ignore virtual environment
 **/venv/
 
+# exclude credentials files
+**/*.cred
+
 # Setuptools distribution folder.
 /dist/
 /build/

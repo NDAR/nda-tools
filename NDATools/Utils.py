@@ -9,7 +9,7 @@ import threading
 import requests
 from requests.adapters import HTTPAdapter
 import requests.packages.urllib3.util
-import json
+import json as json_lib
 import signal
 import os
 import logging
@@ -47,7 +47,13 @@ class Protocol(object):
     def get_protocol(cls):
         return cls.JSON
 
-def api_request(api, verb, endpoint, data=None, session=None):
+def api_request(api, verb, endpoint, data=None, session=None, json=None):
+
+    if data and json:
+        raise Exception(ValueError)
+    elif json:
+        data = json_lib.dumps(json)
+        print('Dumped json data.')
 
     retry = requests.packages.urllib3.util.retry.Retry(
         total=20,
@@ -91,7 +97,7 @@ def api_request(api, verb, endpoint, data=None, session=None):
             return r, session
         else:
             try:
-                response = json.loads(r.text)
+                response = json_lib.loads(r.text)
             except ValueError:
                 logging.error(ValueError)
                 print('Your request returned an unexpected response, please check your endpoints.\n'
@@ -112,8 +118,13 @@ def api_request(api, verb, endpoint, data=None, session=None):
         r.raise_for_status()
 
     elif r.status_code == 400:
-        response = json.loads(r.text)
-        m = response['error'] + ': ' + response['message']
+        m = r.text
+        try:
+            response = json_lib.loads(r.text)
+            m = response['error'] + ': ' + response['message']
+        except ValueError:
+            print('Unable to parse json.')
+
         print(m)
         logging.error(m)
         r.raise_for_status()

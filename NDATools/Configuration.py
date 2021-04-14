@@ -27,6 +27,16 @@ class ClientConfiguration:
         self.submission_api = self.config.get("Endpoints", "submission")
         self.validationtool_api = self.config.get("Endpoints", "validationtool")
         self.datamanager_api = self.config.get("Endpoints", "data_manager")
+
+        if not self.config.has_option("Endpoints", "mindar"):
+            fixed_config = configparser.RawConfigParser()
+            fixed_config.read(config_location)
+            fixed_config.set("Endpoints", "mindar", "https://nda.nih.gov/mindar")
+            with open(config_location, 'w') as config_file:
+                fixed_config.write(config_file)
+        else:
+            self.mindar = self.config.get("Endpoints", "mindar")
+
         self.validation_results = self.config.get("Files", "validation_results")
         self.submission_packages = self.config.get("Files", "submission_packages")
         self.aws_access_key = self.config.get("User", "access_key")
