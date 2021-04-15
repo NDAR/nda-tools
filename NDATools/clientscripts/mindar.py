@@ -59,7 +59,6 @@ def default(args):
 def create_mindar(args):
     requires_mindar_password(args, True)
 
-    global config
     global mindar
 
     mindar.create_mindar(package_id=args.package, password=args.mindar_password, nickname=args.nickname)
