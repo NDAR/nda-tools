@@ -52,55 +52,53 @@ def provide_credentials_arguments(parser):
     parser.add_argument('--mcreds', dest='mindar_cred_file', help='miNDAR credentials file')
 
 
-def default(args):
+def default(args, config, mindar):
     print('Hello, World!')
 
 
-def create_mindar(args):
+def create_mindar(args, config, mindar):
     requires_mindar_password(args, True)
-
-    global mindar
 
     mindar.create_mindar(package_id=args.package, password=args.mindar_password, nickname=args.nickname)
 
 
-def delete_mindar(args):
+def delete_mindar(args, config, mindar):
     print('Delete, Mindar!')
 
 
-def describe_mindar(args):
+def describe_mindar(args, config, mindar):
     print('Describe, Mindar!')
 
 
-def validate_mindar(args):
+def validate_mindar(args, config, mindar):
     print('Validate, Mindar!')
 
 
-def submit_mindar(args):
+def submit_mindar(args, config, mindar):
     print('Submit, Mindar!')
 
 
-def show_mindar(args):
+def show_mindar(args, config, mindar):
     print('Show, Mindar!')
 
 
-def export_mindar(args):
+def export_mindar(args, config, mindar):
     print('Export, Mindar!')
 
 
-def import_mindar(args):
+def import_mindar(args, config, mindar):
     print('Import, Mindar!')
 
 
-def add_table(args):
+def add_table(args, config, mindar):
     print('Add, Table!')
 
 
-def drop_table(args):
+def drop_table(args, config, mindar):
     print('Drop, Table!')
 
 
-def reset_table(args):
+def reset_table(args, config, mindar):
     print('Reset, Table!')
 
 
@@ -124,8 +122,6 @@ def requires_mindar_password(args, confirm=False):
 
 
 def load_config(args):
-    global config
-
     if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
         config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'), args.username, args.password, None, None)
     else:
@@ -137,20 +133,16 @@ def load_config(args):
     if args.url:
         config.mindar = args.url
 
+    return config
+
 
 def main():
-    global mindar
-    global config
-
     args = parse_args()
 
-    load_config(args)
+    config = load_config(args)
     mindar = MindarManager(config)
-    args.func(args)  # execute selected argument function
+    args.func(args, config, mindar)  # execute selected argument function
 
-
-config = None
-mindar = None
 
 if __name__ == '__main__':
     main()
