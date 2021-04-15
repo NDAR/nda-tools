@@ -47,3 +47,9 @@ class MindarManager:
 
         for mindar in response:
             print(f"{mindar['name']},{mindar['schema']},{mindar['mindar_id']},{mindar['package_id']},{mindar['status']},{mindar['created_date']}")
+
+    def delete_mindar(self, schema):
+        print(f'Deleting mindar: {schema}')
+        response, session = api_request(self, "DELETE", self.__make_url(f'/{schema}/'))
+
+        print(response)

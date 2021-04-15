@@ -10,7 +10,7 @@ def parse_args():
     subparsers = parser.add_subparsers(dest='subparser_name')
 
     make_subcommand(subparsers, 'create', create_mindar, provide_create_mindar_arguments)  # mindar create
-    make_subcommand(subparsers, 'delete', delete_mindar)  # mindar delete
+    make_subcommand(subparsers, 'delete', delete_mindar, provide_delete_arguments)  # mindar delete
     make_subcommand(subparsers, 'validate', validate_mindar)  # mindar validate
     make_subcommand(subparsers, 'describe', describe_mindar)  # mindar describe
     make_subcommand(subparsers, 'submit', submit_mindar)  # mindar submit
@@ -43,11 +43,20 @@ def make_subcommand(subparser, command, method, provider=None):
 def provide_create_mindar_arguments(parser):
     parser.add_argument('--package', dest='package', help='Package ID to create miNDAR with')
     parser.add_argument('--nickname', dest='nickname', help='Created miNDAR nickname')
+    provide_mindar_credentials_arguments(parser)
+
+
+def provide_delete_arguments(parser):
+    parser.add_argument('schema')
+    parser.add_argument('-f', '--force', dest='force_delete', action='store_true')
 
 
 def provide_credentials_arguments(parser):
     parser.add_argument('--username', dest='username', help='NDA username')
     parser.add_argument('--password', dest='password', help='NDA password')
+
+
+def provide_mindar_credentials_arguments(parser):
     parser.add_argument('--mpassword', dest='mindar_password', help='miNDAR password')
     parser.add_argument('--mcreds', dest='mindar_cred_file', help='miNDAR credentials file')
 
@@ -63,7 +72,14 @@ def create_mindar(args, config, mindar):
 
 
 def delete_mindar(args, config, mindar):
-    print('Delete, Mindar!')
+    if not args.force_delete:
+        verify = input(f'Are you sure you want to delete mindar: {args.schema}? (Y/N) ')
+
+        if verify.lower() != 'y':
+            print('Aborting.')
+            return
+
+    mindar.delete_mindar(args.schema)
 
 
 def describe_mindar(args, config, mindar):
