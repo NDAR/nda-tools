@@ -79,7 +79,7 @@ def submit_mindar(args, config, mindar):
 
 
 def show_mindar(args, config, mindar):
-    print('Show, Mindar!')
+    mindar.show_mindars()
 
 
 def export_mindar(args, config, mindar):
