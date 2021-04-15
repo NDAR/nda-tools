@@ -37,6 +37,10 @@ class MindarManager:
     def show_mindars(self):
         response, session = api_request(self, "GET", self.__make_url())
 
+        if len(response) <= 0:
+            print('This user has no mindars, you can create one by executing \'mindar create\'.')
+            return
+
         print('Showing ' + str(len(response)) + ' mindars...')
         print()
         print('Name,Schema,Mindar Id,Package Id,Status,Created Date')
