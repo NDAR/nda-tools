@@ -26,10 +26,20 @@ class MindarManager:
 
         response, session = api_request(self, "POST", self.__make_url(), json=payload)
 
-        print('')
+        print()
         print('------ Mindar Created ------')
         print('Mindar ID: ' + str(response['mindar_id']))
         print('Package ID: ' + str(response['package_id']))
         print('Package Name: ' + str(response['name']))
         print('Mindar Schema: ' + str(response['schema']))
         print('Current Status: ' + str(response['status']))
+
+    def show_mindars(self):
+        response, session = api_request(self, "GET", self.__make_url())
+
+        print('Showing ' + str(len(response)) + ' mindars...')
+        print()
+        print('Name,Schema,Mindar Id,Package Id,Status,Created Date')
+
+        for mindar in response:
+            print(f"{mindar['name']},{mindar['schema']},{mindar['mindar_id']},{mindar['package_id']},{mindar['status']},{mindar['created_date']}")
