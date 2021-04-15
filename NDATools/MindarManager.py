@@ -18,14 +18,17 @@ class MindarManager:
         }
 
         if package_id:
-            print('Attaching package id')
             payload['package_id'] = package_id
 
         if nickname:
-            print('Attaching nickname')
             payload['nick_name'] = nickname
 
-        print('Making request')
         response, session = api_request(self, "POST", self.__make_url(), json=payload)
 
-        print(response)
+        print('')
+        print('------ Success ------')
+        print('Mindar ID: ' + str(response['mindar_id']))
+        print('Package ID: ' + str(response['package_id']))
+        print('Package Name: ' + str(response['name']))
+        print('Mindar Schema: ' + str(response['schema']))
+        print('Current Status: ' + str(response['status']))

@@ -64,8 +64,6 @@ def create_mindar(args):
 
     mindar.create_mindar(package_id=args.package, password=args.mindar_password, nickname=args.nickname)
 
-    print('Mindar password: ' + args.mindar_password)
-
 
 def delete_mindar(args):
     print('Delete, Mindar!')

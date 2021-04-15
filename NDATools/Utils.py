@@ -53,7 +53,6 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None):
         raise Exception(ValueError)
     elif json:
         data = json_lib.dumps(json)
-        print('Dumped json data.')
 
     retry = requests.packages.urllib3.util.retry.Retry(
         total=20,
