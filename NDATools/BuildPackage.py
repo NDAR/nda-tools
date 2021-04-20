@@ -17,7 +17,6 @@ import requests.packages.urllib3.util
 import signal
 from tqdm import tqdm
 from NDATools.Configuration import *
-from NDATools.DataManager import *
 from NDATools.Utils import *
 
 
@@ -134,15 +133,13 @@ class SubmissionPackage:
                     else:
                         message = 'Incorrect/Missing collection ID or alternate endpoint.'
                         if self.exit:
-                            exit_client(signal=signal.SIGTERM,
-                                            message=message)
+                            exit_client(signal=signal.SIGTERM, message=message)
                         else:
                             raise Exception(message)
         else:
             message = 'The user {} does not have permission to submit to any collections or alternate upload locations.'.format(self.config.username)
             if self.exit:
-                exit_client(signal=signal.SIGTERM,
-                        message=message)
+                exit_client(signal=signal.SIGTERM, message=message)
             else:
                 raise Exception(message)
 
@@ -330,10 +327,11 @@ class SubmissionPackage:
             r.close()
         if not hide_progress:
             package_download = tqdm(total=total_package_size,
-                                unit="bytes",
-                                unit_scale=True,
-                                desc="Submission Package Download",
-                                ascii=os.name == 'nt')
+                                    unit="bytes",
+                                    unit_scale=True,
+                                    desc="Submission Package Download",
+                                    ascii=os.name == 'nt')
+        print('dl_links: {}'.format(self.download_links))
         for url, file_name, size in self.download_links:
             new_path = os.path.join(os.path.expanduser('~'), self.config.submission_packages)
             path = os.path.join(new_path, self.package_folder)

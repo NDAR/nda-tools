@@ -19,16 +19,18 @@ def parse_args():
                     'Please note, the maximum transfer limit of data is 5TB at one time.',
         usage='%(prog)s <S3_path_list>')
 
-    parser.add_argument('paths', metavar='<S3_path_list>', type=str, nargs='+', action='store',
+    # parser.add_argument('paths', metavar='<S3_path_list>', type=str, nargs='+', action='store',
+    parser.add_argument('paths', metavar='<S3_path_list>', type=str, nargs='*', action='store',
                         help='Will download all S3 files to your local drive')
 
-    parser.add_argument('-dp', '--package', action='store_true',
-                        help='Flags to download all S3 files in package.')
+    # parser.add_argument('-dp', '--package', action='store_true', required=True,
+    parser.add_argument('-dp', '--package', metavar='<arg>', type=str, action='store',
+                        help='Flags to download all S3 files in package. Required.')
 
-    parser.add_argument('-t', '--txt', action='store_true',
+    parser.add_argument('-t', '--txt', metavar='<arg>', type=str, action='store',
                         help='Flags that a text file has been entered from where to download S3 files.')
 
-    parser.add_argument('-ds', '--datastructure', action='store_true',
+    parser.add_argument('-ds', '--datastructure', metavar='<arg>', type=str, action='store',
                         help='Flags that a  data structure text file has been entered from where to download S3 files.')
 
     parser.add_argument('-u', '--username', metavar='<arg>', type=str, action='store',
@@ -38,7 +40,8 @@ def parse_args():
                         help='NDA password')
 
     parser.add_argument('-r', '--resume', metavar='<arg>', type=str, nargs=1, action='store',
-                        help='Flags to restart a download process. If you already have some files downloaded, you must enter the directory where they are saved.')
+                        help='Flags to restart a download process. If you already have some files downloaded, you must '
+                             'enter the directory where they are saved.')
 
     parser.add_argument('-d', '--directory', metavar='<arg>', type=str, nargs=1, action='store',
                         help='Enter an alternate full directory path where you would like your files to be saved.')
@@ -64,6 +67,7 @@ def configure(username, password):
         config.make_config()
     return config
 
+
 def main():
     args = parse_args()
     config = configure(args.username, args.password)
@@ -77,17 +81,24 @@ def main():
         dir = os.path.join(os.path.expanduser('~'), 'AWS_downloads')
 
     # determine which method to use to collect s3 file locations
-    if args.package:
-        links = 'package'
+    # if args.package:  # todo: change how this is done. package is always provided
+    #     links = 'package'
         # this option only downloads data structure files from the package.
         # after data structure files have been downloaded, it will begin downloading associated files listed in each
         # structure
-    elif args.txt:
+    paths = None
+
+    if args.txt:
         links = 'text'
+        paths = args.txt
     elif args.datastructure:
         links = 'datastructure'
-    else:
+        paths = args.datastructure
+    elif args.paths:
         links = 'paths'
+        paths = args.paths
+    else:  # only package provided
+        links = 'package'
 
     # if some files were already downloaded, resume option will only download new files
     resume = False
@@ -101,10 +112,16 @@ def main():
         verbose = True
 
     s3Download = Download(dir, config, verbose=verbose)
-    s3Download.get_links(links, args.paths, filters=None)
-    if len(s3Download.path_list) == 0:
+    print('links = {}'.format(links))
+    print('arg.paths = {}'.format(args.paths))
+    print('args.package = {}'.format(args.package))
+    print('args.datastructure = {}'.format(args.datastructure))
+    print('args.txt = {}'.format(args.txt))
+    print('paths = {}'.format(paths))
+    s3Download.get_links(links, paths, args.package, filters=None)
+
+    if len(s3Download.s3_links) == 0:
         return
-    s3Download.get_tokens()
     s3Download.start_workers(resume, prev_directory, args.workerThreads)
 
     # download associated files from package
