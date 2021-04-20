@@ -31,6 +31,6 @@ class MindarManager:
         return response
 
     def delete_mindar(self, schema):
-        response, session = api_request(self, "DELETE", self.__make_url(f'/{schema}/'), retry=False)
+        response, session = api_request(self, "DELETE", self.__make_url(f'/{schema}/'))
 
         return response

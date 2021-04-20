@@ -47,7 +47,7 @@ class Protocol(object):
     def get_protocol(cls):
         return cls.JSON
 
-def api_request(api, verb, endpoint, data=None, session=None, json=None, retry=True):
+def api_request(api, verb, endpoint, data=None, session=None, json=None):
 
     if data and json:
         raise Exception(ValueError)
@@ -55,9 +55,9 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None, retry=T
         data = json_lib.dumps(json)
 
     retry_request = requests.packages.urllib3.util.retry.Retry(
-        total=20,
-        read=20,
-        connect=20,
+        total=3,
+        read=3,
+        connect=3,
         backoff_factor=3,
         status_forcelist=(400, 403, 404, 500, 502, 504)
     )
@@ -75,11 +75,7 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None, retry=T
 
     if not session:
         session = requests.session()
-
-        if retry:
-            session.mount(endpoint, HTTPAdapter(max_retries=retry_request))
-        else:
-            session.mount(endpoint, HTTPAdapter())
+        session.mount(endpoint, HTTPAdapter(max_retries=retry_request))
     r = None
     response = None
     try:
