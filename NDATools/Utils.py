@@ -75,7 +75,7 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None):
 
     if not session:
         session = requests.session()
-        session.mount(endpoint, HTTPAdapter(max_retries=retry))
+        session.mount(endpoint, HTTPAdapter())
     r = None
     response = None
     try:
