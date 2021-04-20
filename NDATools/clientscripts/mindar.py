@@ -68,7 +68,20 @@ def default(args, config, mindar):
 def create_mindar(args, config, mindar):
     requires_mindar_password(args, True)
 
-    mindar.create_mindar(package_id=args.package, password=args.mindar_password, nickname=args.nickname)
+    if args.package:
+        print(f'Creating a mindar for package {args.package}')
+    else:
+        print('Creating an empty mindar...')
+
+    response = mindar.create_mindar(package_id=args.package, password=args.mindar_password, nickname=args.nickname)
+
+    print()
+    print('------ Mindar Created ------')
+    print(f"Mindar ID: {response['mindar_id']}")
+    print(f"Package ID: {response['package_id']}")
+    print(f"Package Name: {response['name']}")
+    print(f"Mindar Schema: {response['schema']}")
+    print(f"Current Status: {response['status']}")
 
 
 def delete_mindar(args, config, mindar):
@@ -79,7 +92,11 @@ def delete_mindar(args, config, mindar):
             print('Aborting.')
             return
 
-    mindar.delete_mindar(args.schema)
+    print(f'Deleting mindar: {args.schema}')
+
+    response = mindar.delete_mindar(args.schema)
+
+    print(response['message'])
 
 
 def describe_mindar(args, config, mindar):
@@ -95,7 +112,19 @@ def submit_mindar(args, config, mindar):
 
 
 def show_mindar(args, config, mindar):
-    mindar.show_mindars()
+    response = mindar.show_mindars()
+
+    if len(response) <= 0:
+        print('This user has no mindars, you can create one by executing \'mindar create\'.')
+        return
+
+    print('Showing ' + str(len(response)) + ' mindars...')
+    print()
+    print('Name,Schema,Mindar Id,Package Id,Status,Created Date')
+
+    for mindar in response:
+        print(f"{mindar['name']},{mindar['schema']},{mindar['mindar_id']},"
+              f"{mindar['package_id']},{mindar['status']},{mindar['created_date']}")
 
 
 def export_mindar(args, config, mindar):

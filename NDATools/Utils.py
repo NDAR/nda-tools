@@ -54,12 +54,9 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None):
     elif json:
         data = json_lib.dumps(json)
 
-    retry = requests.packages.urllib3.util.retry.Retry(
-        total=20,
-        read=20,
-        connect=20,
-        backoff_factor=3,
-        status_forcelist=(400, 403, 404, 500, 502, 504)
+    retry_request = requests.packages.urllib3.util.retry.Retry(
+        total=1,
+        status_forcelist=(504)
     )
 
     headers = {'accept': 'application/json'}
@@ -75,7 +72,7 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None):
 
     if not session:
         session = requests.session()
-        session.mount(endpoint, HTTPAdapter(max_retries=retry))
+        session.mount(endpoint, HTTPAdapter(max_retries=retry_request))
     r = None
     response = None
     try:
