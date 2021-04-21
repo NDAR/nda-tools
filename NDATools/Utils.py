@@ -56,7 +56,7 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None):
 
     retry_request = requests.packages.urllib3.util.retry.Retry(
         total=1,
-        status_forcelist=(504)
+        status_forcelist=[504]
     )
 
     headers = {'accept': 'application/json'}
@@ -118,7 +118,7 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None):
         try:
             response = json_lib.loads(r.text)
             m = response['error'] + ': ' + response['message']
-        except ValueError:
+        except (ValueError, KeyError):
             print('Unable to parse json.')
 
         print(m)

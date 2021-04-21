@@ -113,12 +113,13 @@ def submit_mindar(args, config, mindar):
 
 def show_mindar(args, config, mindar):
     response = mindar.show_mindars()
+    num_mindar = len(response)
 
-    if len(response) <= 0:
+    if num_mindar <= 0:
         print('This user has no mindars, you can create one by executing \'mindar create\'.')
         return
 
-    print('Showing ' + str(len(response)) + ' mindars...')
+    print(f'Showing {num_mindar} mindars...')
     print()
     print('Name,Schema,Mindar Id,Package Id,Status,Created Date')
 
