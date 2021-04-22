@@ -118,7 +118,12 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None):
         try:
             response = json_lib.loads(r.text)
             m = response['error'] + ': ' + response['message']
-        except (ValueError, KeyError):
+        except KeyError:
+            try:
+                m = f"Error - {response['code']}: {response['message']}"
+            except KeyError:
+                print('Unrecognizable error format.')
+        except ValueError:
             print('Unable to parse json.')
 
         print(m)
