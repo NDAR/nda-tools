@@ -73,18 +73,23 @@ def create_mindar(args, config, mindar):
     else:
         print('Creating an empty mindar...')
 
+    print('Executing request, this might take some time...')
     response = mindar.create_mindar(package_id=args.package, password=args.mindar_password, nickname=args.nickname)
 
     print()
-    print('------ Mindar Created ------')
-    print("Current Status: {}".format(response['status']))
-    print("Package ID: {}".format(response['package_id']))
-    print("Package Name: {}".format(response['name']))
+    print('------ Mindar Creation Initiated ------')
+    print(f"Mindar ID: {response['mindar_id']}")
+    print(f"Package ID: {response['package_id']}")
+    print(f"Package Name: {response['name']}")
+    print(f"Mindar Schema: {response['schema']}")
+    print(f"Current Status: {response['status']}")
+    print("--- Connection Info")
+    print(f"Host: {response['host']}")
+    print(f"Port: {response['port']}")
+    print(f"Service Name: {response['service']}")
+    print(f"Username: {response['schema']}")
     print()
-    print("Mindar HostName: {}".format(response['host']))
-    print("Mindar Port: {}".format(response['port']))
-    print("Mindar Service: {}".format(response['service']))
-    print("username: {}".format(response['schema']))
+    print('You may not be able to connect to your mindar until the creation process is complete!')
 
 
 def delete_mindar(args, config, mindar):
@@ -97,6 +102,7 @@ def delete_mindar(args, config, mindar):
 
     print(f'Deleting mindar: {args.schema}')
 
+    print('Executing request, this might take some time...')
     response = mindar.delete_mindar(args.schema)
 
     print(response['message'])
@@ -115,6 +121,7 @@ def submit_mindar(args, config, mindar):
 
 
 def show_mindar(args, config, mindar):
+    print('Executing request, this might take some time...')
     response = mindar.show_mindars()
     num_mindar = len(response)
 
@@ -133,6 +140,7 @@ def show_mindar(args, config, mindar):
                                          mindar['package_id'],
                                          mindar['status'],
                                          mindar['created_date']))
+
 
 def export_mindar(args, config, mindar):
     print('Export, Mindar!')
@@ -174,16 +182,27 @@ def requires_mindar_password(args, confirm=False):
 
 
 def load_config(args):
+    config_mutated = False
+
     if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
         config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'), args.username, args.password, None, None)
     else:
         config = ClientConfiguration('clientscripts/config/settings.cfg', args.username, args.password, None, None)
+        config_mutated = True
 
         config.read_user_credentials()
-        config.make_config()
 
     if args.url:
         config.mindar = args.url
+        config_mutated = True
+
+    if not config.password or not config.username:
+        print('Missing or malformed credentials in settings.cfg')
+        config.read_user_credentials()
+        config_mutated = True
+
+    if config_mutated:
+        config.make_config()
 
     return config
 
