@@ -114,15 +114,15 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None):
         r.raise_for_status()
 
     elif r.status_code == 400:
-        m = r.text
-        try:
-            response = json_lib.loads(r.text)
-            m = response['error'] + ': ' + response['message']
-        except (ValueError, KeyError):
-            print('Unable to parse json.')
+        response = json_lib.loads(r.text)
 
-        print(m)
-        logging.error(m)
+        if 'error' in response or 'message' in response:
+            e = response['error'] if 'error' in response else 'Error Message'
+            m = response['message'] if 'message' in response else 'No Error Message Available'
+            message = '{}: {}'.format(e, m)
+            print(message)
+            logging.error(message)
+
         r.raise_for_status()
 
     elif r.status_code in (500, 502, 503, 504):
