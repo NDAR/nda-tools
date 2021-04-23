@@ -99,7 +99,6 @@ def delete_mindar(args, config, mindar):
 
     print(f'Deleting mindar: {args.schema}')
 
-    print('Executing request, this might take some time...')
     response = mindar.delete_mindar(args.schema)
 
     print('Delete Intiated for miNDAR {}'.format(args.schema))
@@ -118,7 +117,6 @@ def submit_mindar(args, config, mindar):
 
 
 def show_mindar(args, config, mindar):
-    print('Executing request, this might take some time...')
     response = mindar.show_mindars()
     num_mindar = len(response)
 
