@@ -118,12 +118,12 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None):
         message ='Error occurred while processing request {} {}.\r\n'.format(verb, endpoint)
         message += 'Error response from server: {}'.format(r.text)
 
-        if r.headers['Content-Type'] == 'application/json' and r.text:
+        if 'application/json' in r.headers['Content-Type'] and r.text:
             response = json_lib.loads(r.text)
             if not 'error' in response and not 'message' in response:
                 message = 'Error response from server: {}'.format(response)
             else:
-                e = response['error'] if 'error' in response else 'Error Message'
+                e = response['error'] if 'error' in response else 'An error occurred during processing of the last request'
                 m = response['message'] if 'message' in response else 'No Error Message Available'
                 message = '{}: {}'.format(e, m)
         print(message)

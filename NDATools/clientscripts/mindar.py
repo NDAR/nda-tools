@@ -10,10 +10,10 @@ def parse_args():
 
     make_subcommand(subparsers, 'create', create_mindar, [create_mindar_args, mindar_password_args])  # mindar create
     make_subcommand(subparsers, 'delete', delete_mindar, [delete_mindar_args, require_schema])  # mindar delete
+    make_subcommand(subparsers, 'show', show_mindar, [show_mindar_args])  # mindar show
     make_subcommand(subparsers, 'validate', validate_mindar)  # mindar validate
     make_subcommand(subparsers, 'describe', describe_mindar)  # mindar describe
     make_subcommand(subparsers, 'submit', submit_mindar)  # mindar submit
-    make_subcommand(subparsers, 'show', show_mindar)  # mindar show
     make_subcommand(subparsers, 'export', export_mindar)  # mindar export
     make_subcommand(subparsers, 'import', import_mindar)  # mindar import
 
@@ -41,6 +41,9 @@ def make_subcommand(subparser, command, method, provider=None):
     result.add_argument('--password', dest='password', help='NDA password')
 
     return result
+
+def show_mindar_args(parser):
+    parser.add_argument('--include-deleted', action='store_true', help='Include deleted miNDARs in output' )
 
 
 def create_mindar_args(parser):
@@ -117,7 +120,7 @@ def submit_mindar(args, config, mindar):
 
 
 def show_mindar(args, config, mindar):
-    response = mindar.show_mindars()
+    response = mindar.show_mindars(args.include_deleted)
     num_mindar = len(response)
 
     if num_mindar <= 0:
