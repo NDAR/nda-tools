@@ -1,7 +1,6 @@
 import argparse
 from NDATools.MindarManager import *
 
-
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.set_defaults(func=default)
@@ -81,10 +80,14 @@ def create_mindar(args, config, mindar):
     print("Package ID: {}".format(response['package_id']))
     print("Package Name: {}".format(response['name']))
     print()
-    print("Mindar HostName: {}".format(response['host']))
+    print("Mindar Host Name: {}".format(response['host']))
     print("Mindar Port: {}".format(response['port']))
     print("Mindar Service: {}".format(response['service']))
-    print("username: {}".format(response['schema']))
+    print("Mindar Username: {}".format(response['schema']))
+    print()
+    print("To connect to your miNDAR, download a client like SQL Developer and enter the connection details above."
+          " Be sure to enter the password that you specified here")
+
 
 
 def delete_mindar(args, config, mindar):
@@ -99,7 +102,7 @@ def delete_mindar(args, config, mindar):
 
     response = mindar.delete_mindar(args.schema)
 
-    print(response['message'])
+    print('Delete Intiated for miNDAR {}'.format(args.schema))
 
 
 def describe_mindar(args, config, mindar):
@@ -124,12 +127,12 @@ def show_mindar(args, config, mindar):
 
     print(f'Showing {num_mindar} mindars...')
     print()
-    print('Name,Schema,Mindar Id,Package Id,Status,Created Date')
+    table_format ='{:<35} {:<20} {:<15} {:<25} {:<8}'
+    print(table_format.format('Name','Schema','Package Id','Status','Created Date'))
 
     for mindar in response:
-        print("{},{},{},{},{},{}".format(mindar['name'],
+        print(table_format.format(mindar['name'],
                                          mindar['schema'],
-                                         mindar['mindar_id'],
                                          mindar['package_id'],
                                          mindar['status'],
                                          mindar['created_date']))
