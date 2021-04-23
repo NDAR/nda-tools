@@ -88,6 +88,7 @@ class ClientConfiguration:
         copy_config.set("Endpoints", "submission_package", self.submission_package_api)
         copy_config.set("Endpoints", "submission", self.submission_api)
         copy_config.set("Endpoints", "validationtool", self.validationtool_api)
+        copy_config.set("Endpoints", "mindar", self.mindar)
 
         copy_config.add_section("Files")
         copy_config.set("Files", "validation_results", self.validation_results)

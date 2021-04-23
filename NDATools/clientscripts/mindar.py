@@ -8,8 +8,8 @@ def parse_args():
 
     subparsers = parser.add_subparsers(dest='subparser_name')
 
-    make_subcommand(subparsers, 'create', create_mindar, provide_create_mindar_arguments)  # mindar create
-    make_subcommand(subparsers, 'delete', delete_mindar, provide_delete_arguments)  # mindar delete
+    make_subcommand(subparsers, 'create', create_mindar, [create_mindar_args, mindar_password_args])  # mindar create
+    make_subcommand(subparsers, 'delete', delete_mindar, [delete_mindar_args, require_schema])  # mindar delete
     make_subcommand(subparsers, 'validate', validate_mindar)  # mindar validate
     make_subcommand(subparsers, 'describe', describe_mindar)  # mindar describe
     make_subcommand(subparsers, 'submit', submit_mindar)  # mindar submit
@@ -20,6 +20,7 @@ def parse_args():
     table_parser = make_subcommand(subparsers, 'table', default)  # mindar table
     table_subparser = table_parser.add_subparsers(dest='table_subparser_name')
     make_subcommand(table_subparser, 'add', add_table)  # mindar table add
+    make_subcommand(table_subparser, 'show', show_table, require_schema)  # mindar table show
     make_subcommand(table_subparser, 'drop', drop_table)  # mindar table drop
     make_subcommand(table_subparser, 'reset', reset_table)  # mindar table reset
 
@@ -30,32 +31,32 @@ def make_subcommand(subparser, command, method, provider=None):
     result = subparser.add_parser(command)
     result.set_defaults(func=method)
 
-    if provider:
+    if isinstance(provider, list):
+        for func in provider:
+            func(result)
+    elif provider:
         provider(result)
 
-    if provider is not provide_credentials_arguments:
-        provide_credentials_arguments(result)
+    result.add_argument('--username', dest='username', help='NDA username')
+    result.add_argument('--password', dest='password', help='NDA password')
 
     return result
 
 
-def provide_create_mindar_arguments(parser):
+def create_mindar_args(parser):
     parser.add_argument('--package', dest='package', help='Package ID to create miNDAR with')
     parser.add_argument('--nickname', dest='nickname', help='Created miNDAR nickname')
-    provide_mindar_credentials_arguments(parser)
 
 
-def provide_delete_arguments(parser):
-    parser.add_argument('schema')
+def delete_mindar_args(parser):
     parser.add_argument('-f', '--force', dest='force_delete', action='store_true')
 
 
-def provide_credentials_arguments(parser):
-    parser.add_argument('--username', dest='username', help='NDA username')
-    parser.add_argument('--password', dest='password', help='NDA password')
+def require_schema(parser):
+    parser.add_argument('schema')
 
 
-def provide_mindar_credentials_arguments(parser):
+def mindar_password_args(parser):
     parser.add_argument('--mpassword', dest='mindar_password', help='miNDAR password')
     parser.add_argument('--mcreds', dest='mindar_cred_file', help='miNDAR credentials file')
 
@@ -72,13 +73,21 @@ def create_mindar(args, config, mindar):
     else:
         print('Creating an empty mindar...')
 
+    print('Executing request, this might take some time...')
     response = mindar.create_mindar(package_id=args.package, password=args.mindar_password, nickname=args.nickname)
 
     print()
-    print('------ Mindar Created ------')
-    print("Current Status: {}".format(response['status']))
-    print("Package ID: {}".format(response['package_id']))
-    print("Package Name: {}".format(response['name']))
+    print('------ Mindar Creation Initiated ------')
+    print(f"Mindar ID: {response['mindar_id']}")
+    print(f"Package ID: {response['package_id']}")
+    print(f"Package Name: {response['name']}")
+    print(f"Mindar Schema: {response['schema']}")
+    print(f"Current Status: {response['status']}")
+    print("--- Connection Info")
+    print(f"Host: {response['host']}")
+    print(f"Port: {response['port']}")
+    print(f"Service Name: {response['service']}")
+    print(f"Username: {response['schema']}")
     print()
     print("Mindar Host Name: {}".format(response['host']))
     print("Mindar Port: {}".format(response['port']))
@@ -87,7 +96,6 @@ def create_mindar(args, config, mindar):
     print()
     print("To connect to your miNDAR, download a client like SQL Developer and enter the connection details above."
           " Be sure to enter the password that you specified here")
-
 
 
 def delete_mindar(args, config, mindar):
@@ -100,6 +108,7 @@ def delete_mindar(args, config, mindar):
 
     print(f'Deleting mindar: {args.schema}')
 
+    print('Executing request, this might take some time...')
     response = mindar.delete_mindar(args.schema)
 
     print('Delete Intiated for miNDAR {}'.format(args.schema))
@@ -118,6 +127,7 @@ def submit_mindar(args, config, mindar):
 
 
 def show_mindar(args, config, mindar):
+    print('Executing request, this might take some time...')
     response = mindar.show_mindars()
     num_mindar = len(response)
 
@@ -137,6 +147,7 @@ def show_mindar(args, config, mindar):
                                          mindar['status'],
                                          mindar['created_date']))
 
+
 def export_mindar(args, config, mindar):
     print('Export, Mindar!')
 
@@ -147,6 +158,10 @@ def import_mindar(args, config, mindar):
 
 def add_table(args, config, mindar):
     print('Add, Table!')
+
+
+def show_table(args, config, mindar):
+    print('Show, Table!')
 
 
 def drop_table(args, config, mindar):
@@ -177,16 +192,27 @@ def requires_mindar_password(args, confirm=False):
 
 
 def load_config(args):
+    config_mutated = False
+
     if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
         config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'), args.username, args.password, None, None)
     else:
         config = ClientConfiguration('clientscripts/config/settings.cfg', args.username, args.password, None, None)
+        config_mutated = True
 
         config.read_user_credentials()
-        config.make_config()
 
     if args.url:
         config.mindar = args.url
+        config_mutated = True
+
+    if not config.password or not config.username:
+        print('Missing or malformed credentials in settings.cfg')
+        config.read_user_credentials()
+        config_mutated = True
+
+    if config_mutated:
+        config.make_config()
 
     return config
 
