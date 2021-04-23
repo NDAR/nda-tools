@@ -9,8 +9,8 @@ def parse_args():
 
     subparsers = parser.add_subparsers(dest='subparser_name')
 
-    make_subcommand(subparsers, 'create', create_mindar, provide_create_mindar_arguments)  # mindar create
-    make_subcommand(subparsers, 'delete', delete_mindar, provide_delete_arguments)  # mindar delete
+    make_subcommand(subparsers, 'create', create_mindar, [create_mindar_args, mindar_password_args])  # mindar create
+    make_subcommand(subparsers, 'delete', delete_mindar, [delete_mindar_args, require_schema])  # mindar delete
     make_subcommand(subparsers, 'validate', validate_mindar)  # mindar validate
     make_subcommand(subparsers, 'describe', describe_mindar)  # mindar describe
     make_subcommand(subparsers, 'submit', submit_mindar)  # mindar submit
@@ -21,6 +21,7 @@ def parse_args():
     table_parser = make_subcommand(subparsers, 'table', default)  # mindar table
     table_subparser = table_parser.add_subparsers(dest='table_subparser_name')
     make_subcommand(table_subparser, 'add', add_table)  # mindar table add
+    make_subcommand(table_subparser, 'show', show_table, require_schema)  # mindar table show
     make_subcommand(table_subparser, 'drop', drop_table)  # mindar table drop
     make_subcommand(table_subparser, 'reset', reset_table)  # mindar table reset
 
@@ -31,32 +32,32 @@ def make_subcommand(subparser, command, method, provider=None):
     result = subparser.add_parser(command)
     result.set_defaults(func=method)
 
-    if provider:
+    if isinstance(provider, list):
+        for func in provider:
+            func(result)
+    elif provider:
         provider(result)
 
-    if provider is not provide_credentials_arguments:
-        provide_credentials_arguments(result)
+    result.add_argument('--username', dest='username', help='NDA username')
+    result.add_argument('--password', dest='password', help='NDA password')
 
     return result
 
 
-def provide_create_mindar_arguments(parser):
+def create_mindar_args(parser):
     parser.add_argument('--package', dest='package', help='Package ID to create miNDAR with')
     parser.add_argument('--nickname', dest='nickname', help='Created miNDAR nickname')
-    provide_mindar_credentials_arguments(parser)
 
 
-def provide_delete_arguments(parser):
-    parser.add_argument('schema')
+def delete_mindar_args(parser):
     parser.add_argument('-f', '--force', dest='force_delete', action='store_true')
 
 
-def provide_credentials_arguments(parser):
-    parser.add_argument('--username', dest='username', help='NDA username')
-    parser.add_argument('--password', dest='password', help='NDA password')
+def require_schema(parser):
+    parser.add_argument('schema')
 
 
-def provide_mindar_credentials_arguments(parser):
+def mindar_password_args(parser):
     parser.add_argument('--mpassword', dest='mindar_password', help='miNDAR password')
     parser.add_argument('--mcreds', dest='mindar_cred_file', help='miNDAR credentials file')
 
@@ -152,6 +153,10 @@ def import_mindar(args, config, mindar):
 
 def add_table(args, config, mindar):
     print('Add, Table!')
+
+
+def show_table(args, config, mindar):
+    print('Show, Table!')
 
 
 def drop_table(args, config, mindar):
