@@ -95,7 +95,7 @@ def create_mindar(args, config, mindar):
 
 def delete_mindar(args, config, mindar):
     if not args.force_delete:
-        verify = input(f'Are you sure you want to delete mindar: {args.schema}? (Y/N) ')
+        verify = input('Are you sure you want to delete mindar: {}? (Y/N) '.format(args.schema))
 
         if verify.lower() != 'y':
             print('Aborting.')
