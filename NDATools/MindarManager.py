@@ -36,6 +36,6 @@ class MindarManager:
         return response
 
     def show_tables(self, schema):
-        response, session = api_request(self, "GET", self.__make_url(f'/{schema}/tables/'))
+        response, session = api_request(self, "GET", self.__make_url('/{}/tables/'.format(schema)))
 
         return response
