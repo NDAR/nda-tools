@@ -74,7 +74,7 @@ def create_mindar(args, config, mindar):
     else:
         print('Creating an empty mindar...')
 
-    print('Executing request, this might take some time...')
+    request_warning()
     response = mindar.create_mindar(package_id=args.package, password=args.mindar_password, nickname=args.nickname)
 
     print()
@@ -95,7 +95,7 @@ def create_mindar(args, config, mindar):
 
 def delete_mindar(args, config, mindar):
     if not args.force_delete:
-        verify = input('Are you sure you want to delete mindar: {}? (Y/N) '.format(args.schema))
+        verify = input(f'Are you sure you want to delete mindar: {args.schema}? (Y/N) ')
 
         if verify.lower() != 'y':
             print('Aborting.')
@@ -103,7 +103,7 @@ def delete_mindar(args, config, mindar):
 
     print(f'Deleting mindar: {args.schema}')
 
-    print('Executing request, this might take some time...')
+    request_warning()
     response = mindar.delete_mindar(args.schema)
 
     print(response['message'])
@@ -122,7 +122,7 @@ def submit_mindar(args, config, mindar):
 
 
 def show_mindar(args, config, mindar):
-    print('Executing request, this might take some time...')
+    request_warning()
     response = mindar.show_mindars()
     num_mindar = len(response)
 
@@ -156,7 +156,10 @@ def add_table(args, config, mindar):
 
 
 def show_table(args, config, mindar):
-    print('Show, Table!')
+    request_warning()
+    response = mindar.show_tables(args.schema)
+
+    print(response)
 
 
 def drop_table(args, config, mindar):
@@ -165,6 +168,10 @@ def drop_table(args, config, mindar):
 
 def reset_table(args, config, mindar):
     print('Reset, Table!')
+
+
+def request_warning():
+    print('Executing request, this might take some time...')
 
 
 def requires_mindar_password(args, confirm=False):
