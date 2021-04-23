@@ -7,10 +7,7 @@ class MindarManager:
         self.config = config
         self.url = config.mindar
 
-    def __make_url(self, extension='/', replace=None):
-        if replace:
-            return self.url + extension.format(replace)
-
+    def __make_url(self, extension='/'):
         return self.url + extension
 
     def create_mindar(self, package_id, password, nickname):
@@ -39,10 +36,6 @@ class MindarManager:
         return response
 
     def add_table(self, schema, table_name):
-        payload = {
-            'table_name': table_name
-        }
-
-        response, session = api_request(self, "POST", self.__make_url('/{}/tables', schema), json=payload)
+        response, session = api_request(self, "POST", self.__make_url('/{}/tables?table_name={}'.format(schema, table_name)))
 
         return response
