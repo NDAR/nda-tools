@@ -77,16 +77,19 @@ def create_mindar(args, config, mindar):
 
     print()
     print('------ Mindar Created ------')
-    print(f"Mindar ID: {response['mindar_id']}")
-    print(f"Package ID: {response['package_id']}")
-    print(f"Package Name: {response['name']}")
-    print(f"Mindar Schema: {response['schema']}")
-    print(f"Current Status: {response['status']}")
+    print("Current Status: {}".format(response['status']))
+    print("Package ID: {}".format(response['package_id']))
+    print("Package Name: {}".format(response['name']))
+    print()
+    print("Mindar HostName: {}".format(response['host']))
+    print("Mindar Port: {}".format(response['port']))
+    print("Mindar Service: {}".format(response['service']))
+    print("username: {}".format(response['schema']))
 
 
 def delete_mindar(args, config, mindar):
     if not args.force_delete:
-        verify = input(f'Are you sure you want to delete mindar: {args.schema}? (Y/N) ')
+        verify = input('Are you sure you want to delete mindar: {}? (Y/N) '.format(args.schema))
 
         if verify.lower() != 'y':
             print('Aborting.')
@@ -124,9 +127,12 @@ def show_mindar(args, config, mindar):
     print('Name,Schema,Mindar Id,Package Id,Status,Created Date')
 
     for mindar in response:
-        print(f"{mindar['name']},{mindar['schema']},{mindar['mindar_id']},"
-              f"{mindar['package_id']},{mindar['status']},{mindar['created_date']}")
-
+        print("{},{},{},{},{},{}".format(mindar['name'],
+                                         mindar['schema'],
+                                         mindar['mindar_id'],
+                                         mindar['package_id'],
+                                         mindar['status'],
+                                         mindar['created_date']))
 
 def export_mindar(args, config, mindar):
     print('Export, Mindar!')
