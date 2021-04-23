@@ -1,5 +1,6 @@
 import argparse
 from NDATools.MindarManager import *
+import csv
 
 
 def parse_args():
@@ -20,7 +21,7 @@ def parse_args():
 
     table_parser = make_subcommand(subparsers, 'table', default)  # mindar table
     table_subparser = table_parser.add_subparsers(dest='table_subparser_name')
-    make_subcommand(table_subparser, 'add', add_table)  # mindar table add
+    make_subcommand(table_subparser, 'add', add_table, [require_schema, add_table_args])  # mindar table add
     make_subcommand(table_subparser, 'show', show_table, require_schema)  # mindar table show
     make_subcommand(table_subparser, 'drop', drop_table)  # mindar table drop
     make_subcommand(table_subparser, 'reset', reset_table)  # mindar table reset
@@ -47,6 +48,10 @@ def make_subcommand(subparser, command, method, provider=None):
 def create_mindar_args(parser):
     parser.add_argument('--package', dest='package', help='Package ID to create miNDAR with')
     parser.add_argument('--nickname', dest='nickname', help='Created miNDAR nickname')
+
+
+def add_table_args(parser):
+    parser.add_argument('tables')
 
 
 def delete_mindar_args(parser):
@@ -152,7 +157,12 @@ def import_mindar(args, config, mindar):
 
 
 def add_table(args, config, mindar):
-    print('Add, Table!')
+    table_list = args.tables.split(',')
+
+    for table in table_list:
+        print('Adding table {} to schema {}'.format(table, args.schema))
+        response = mindar.add_table(args.schema, table)
+        print(response)
 
 
 def show_table(args, config, mindar):
