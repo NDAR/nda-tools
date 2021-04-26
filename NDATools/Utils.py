@@ -88,7 +88,7 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None):
             thread.interrupt_main()
         exit_client(signal.SIGTERM)
 
-    if r and r.ok:
+    if r.ok:
         if api.__class__.__name__ == 'Download':
             return r, session
         else:
@@ -107,29 +107,27 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None):
                 else:
                     raise Exception(ValueError)
 
-    if r.status_code == 401:
+    elif r.status_code == 401:
         m = 'The NDA username or password is not recognized.'
         print(m)
         logging.error(m)
         r.raise_for_status()
 
-    elif r.status_code == 400:
-        response = json_lib.loads(r.text)
+    else:
+        # default error message
+        message ='Error occurred while processing request {} {}.\r\n'.format(verb, endpoint)
+        message += 'Error response from server: {}'.format(r.text)
 
-        if 'error' in response or 'message' in response:
-            e = response['error'] if 'error' in response else 'Error Message'
-            m = response['message'] if 'message' in response else 'No Error Message Available'
-            message = '{}: {}'.format(e, m)
-            print(message)
-            logging.error(message)
-
-        r.raise_for_status()
-
-    elif r.status_code in (500, 502, 503, 504):
-        response = r.text
-        m = response
-        print(m)
-        logging.error(m)
+        if 'application/json' in r.headers['Content-Type'] and r.text:
+            response = json_lib.loads(r.text)
+            if not 'error' in response and not 'message' in response:
+                message = 'Error response from server: {}'.format(response)
+            else:
+                e = response['error'] if 'error' in response else 'An error occurred during processing of the last request'
+                m = response['message'] if 'message' in response else 'No Error Message Available'
+                message = '{}: {}'.format(e, m)
+        print(message)
+        logging.error(message)
         r.raise_for_status()
 
     return response, session

@@ -25,8 +25,16 @@ class MindarManager:
 
         return response
 
-    def show_mindars(self):
-        response, session = api_request(self, "GET", self.__make_url())
+    def show_mindars(self, include_deleted=False):
+
+        query_params = []
+        if (include_deleted):
+            query_params.append(('excludeDeleted=false'))
+
+        q = ''
+        if query_params:
+            q = '?' + '&'.join(query_params)
+        response, session = api_request(self, "GET", self.__make_url(q))
 
         return response
 

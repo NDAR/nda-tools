@@ -2,7 +2,6 @@ import argparse
 from NDATools.MindarManager import *
 import csv
 
-
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.set_defaults(func=default)
@@ -12,10 +11,10 @@ def parse_args():
 
     make_subcommand(subparsers, 'create', create_mindar, [create_mindar_args, mindar_password_args])  # mindar create
     make_subcommand(subparsers, 'delete', delete_mindar, [delete_mindar_args, require_schema])  # mindar delete
+    make_subcommand(subparsers, 'show', show_mindar, [show_mindar_args])  # mindar show
     make_subcommand(subparsers, 'validate', validate_mindar)  # mindar validate
     make_subcommand(subparsers, 'describe', describe_mindar)  # mindar describe
     make_subcommand(subparsers, 'submit', submit_mindar)  # mindar submit
-    make_subcommand(subparsers, 'show', show_mindar)  # mindar show
     make_subcommand(subparsers, 'export', export_mindar)  # mindar export
     make_subcommand(subparsers, 'import', import_mindar)  # mindar import
 
@@ -43,6 +42,9 @@ def make_subcommand(subparser, command, method, provider=None):
     result.add_argument('--password', dest='password', help='NDA password')
 
     return result
+
+def show_mindar_args(parser):
+    parser.add_argument('--include-deleted', action='store_true', help='Include deleted miNDARs in output' )
 
 
 def create_mindar_args(parser):
@@ -79,23 +81,20 @@ def create_mindar(args, config, mindar):
     else:
         print('Creating an empty mindar...')
 
-    print('Executing request, this might take some time...')
     response = mindar.create_mindar(package_id=args.package, password=args.mindar_password, nickname=args.nickname)
-
     print()
-    print('------ Mindar Creation Initiated ------')
-    print(f"Mindar ID: {response['mindar_id']}")
-    print(f"Package ID: {response['package_id']}")
-    print(f"Package Name: {response['name']}")
-    print(f"Mindar Schema: {response['schema']}")
-    print(f"Current Status: {response['status']}")
-    print("--- Connection Info")
-    print(f"Host: {response['host']}")
-    print(f"Port: {response['port']}")
-    print(f"Service Name: {response['service']}")
-    print(f"Username: {response['schema']}")
+    print('------ Mindar Created ------')
+    print("Current Status: {}".format(response['status']))
+    print("Package ID: {}".format(response['package_id']))
+    print("Package Name: {}".format(response['name']))
     print()
-    print('You may not be able to connect to your mindar until the creation process is complete!')
+    print("Mindar Host Name: {}".format(response['host']))
+    print("Mindar Port: {}".format(response['port']))
+    print("Mindar Service: {}".format(response['service']))
+    print("Mindar Username: {}".format(response['schema']))
+    print()
+    print("To connect to your miNDAR, download a client like SQL Developer and enter the connection details above."
+          " Be sure to enter the password that you specified here")
 
 
 def delete_mindar(args, config, mindar):
@@ -108,10 +107,9 @@ def delete_mindar(args, config, mindar):
 
     print(f'Deleting mindar: {args.schema}')
 
-    print('Executing request, this might take some time...')
     response = mindar.delete_mindar(args.schema)
 
-    print(response['message'])
+    print('Delete Intiated for miNDAR {}'.format(args.schema))
 
 
 def describe_mindar(args, config, mindar):
@@ -127,8 +125,7 @@ def submit_mindar(args, config, mindar):
 
 
 def show_mindar(args, config, mindar):
-    print('Executing request, this might take some time...')
-    response = mindar.show_mindars()
+    response = mindar.show_mindars(args.include_deleted)
     num_mindar = len(response)
 
     if num_mindar <= 0:
@@ -137,12 +134,12 @@ def show_mindar(args, config, mindar):
 
     print(f'Showing {num_mindar} mindars...')
     print()
-    print('Name,Schema,Mindar Id,Package Id,Status,Created Date')
+    table_format ='{:<35} {:<20} {:<15} {:<25} {:<8}'
+    print(table_format.format('Name','Schema','Package Id','Status','Created Date'))
 
     for mindar in response:
-        print("{},{},{},{},{},{}".format(mindar['name'],
+        print(table_format.format(mindar['name'],
                                          mindar['schema'],
-                                         mindar['mindar_id'],
                                          mindar['package_id'],
                                          mindar['status'],
                                          mindar['created_date']))
