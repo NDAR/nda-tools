@@ -1,6 +1,5 @@
 import argparse
 from NDATools.MindarManager import *
-import csv
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -159,7 +158,8 @@ def add_table(args, config, mindar):
     for table in table_list:
         print('Adding table {} to schema {}'.format(table, args.schema))
         response = mindar.add_table(args.schema, table)
-        print(response)
+        print('Successfully added data structure: {} ({} rows added)'
+              .format(response['shortName'], response['rowCount']))
 
 
 def show_table(args, config, mindar):
