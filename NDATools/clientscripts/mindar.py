@@ -12,7 +12,7 @@ def parse_args():
     make_subcommand(subparsers, 'create', create_mindar, [create_mindar_args, mindar_password_args])  # mindar create
     make_subcommand(subparsers, 'delete', delete_mindar, [delete_mindar_args, require_schema])  # mindar delete
     make_subcommand(subparsers, 'show', show_mindar, [show_mindar_args])  # mindar show
-    make_subcommand(subparsers, 'describe', describe_mindar, [require_schema])  # mindar describe
+    make_subcommand(subparsers, 'describe', describe_mindar, [describe_mindar_args, require_schema])  # mindar describe
     make_subcommand(subparsers, 'validate', validate_mindar)  # mindar validate
     make_subcommand(subparsers, 'submit', submit_mindar)  # mindar submit
     make_subcommand(subparsers, 'export', export_mindar)  # mindar export
@@ -55,8 +55,9 @@ def delete_mindar_args(parser):
     parser.add_argument('-f', '--force', dest='force_delete', action='store_true')
 
 
-def describe_mindar_args(args):
-    pass
+def describe_mindar_args(parser):
+    parser.add_argument('--refresh-stats', dest='refresh_stats', action='store_true')
+
 
 def require_schema(parser):
     parser.add_argument('schema')
@@ -152,6 +153,11 @@ def add_table(args, config, mindar):
 
 
 def describe_mindar(args, config, mindar):
+    if args.refresh_stats:
+        print('Refreshing stats - this can take several minutes...')
+        mindar.refresh_stats(args.schema)
+        print('Stats for mindar {} have been refreshed'.format(args.schema))
+
     response = mindar.show_tables(args.schema)
     structures = response['dataStructures']
 

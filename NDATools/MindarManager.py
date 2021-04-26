@@ -47,3 +47,7 @@ class MindarManager:
         response, session = api_request(self, "GET", self.__make_url('/{}/tables/'.format(schema)))
 
         return response
+
+    def refresh_stats(self, schema):
+        response, session = api_request(self, "POST", self.__make_url('/{}/refresh_stats'.format(schema)))
+        return response
