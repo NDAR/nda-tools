@@ -20,7 +20,7 @@ def parse_args():
 
     table_parser = make_subcommand(subparsers, 'table', default)  # mindar table
     table_subparser = table_parser.add_subparsers(dest='table_subparser_name')
-    make_subcommand(table_subparser, 'add', add_table, [require_schema, add_table_args])  # mindar table add
+    make_subcommand(table_subparser, 'add', add_table, [add_table_args, require_schema])  # mindar table add
     make_subcommand(table_subparser, 'show', show_table, require_schema)  # mindar table show
     make_subcommand(table_subparser, 'drop', drop_table)  # mindar table drop
     make_subcommand(table_subparser, 'reset', reset_table)  # mindar table reset
