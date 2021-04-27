@@ -1,6 +1,7 @@
 import argparse
 from NDATools.MindarManager import *
 
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.set_defaults(func=default)
@@ -11,8 +12,8 @@ def parse_args():
     make_subcommand(subparsers, 'create', create_mindar, [create_mindar_args, mindar_password_args])  # mindar create
     make_subcommand(subparsers, 'delete', delete_mindar, [delete_mindar_args, require_schema])  # mindar delete
     make_subcommand(subparsers, 'show', show_mindar, [show_mindar_args])  # mindar show
+    make_subcommand(subparsers, 'describe', describe_mindar, [describe_mindar_args, require_schema])  # mindar describe
     make_subcommand(subparsers, 'validate', validate_mindar)  # mindar validate
-    make_subcommand(subparsers, 'describe', describe_mindar)  # mindar describe
     make_subcommand(subparsers, 'submit', submit_mindar)  # mindar submit
     make_subcommand(subparsers, 'export', export_mindar)  # mindar export
     make_subcommand(subparsers, 'import', import_mindar)  # mindar import
@@ -20,7 +21,6 @@ def parse_args():
     table_parser = make_subcommand(subparsers, 'table', default)  # mindar table
     table_subparser = table_parser.add_subparsers(dest='table_subparser_name')
     make_subcommand(table_subparser, 'add', add_table, [add_table_args, require_schema])  # mindar table add
-    make_subcommand(table_subparser, 'show', show_table, require_schema)  # mindar table show
     make_subcommand(table_subparser, 'drop', drop_table)  # mindar table drop
     make_subcommand(table_subparser, 'reset', reset_table)  # mindar table reset
 
@@ -47,7 +47,6 @@ def show_mindar_args(parser):
 
 
 def create_mindar_args(parser):
-    parser.add_argument('--package', dest='package', help='Package ID to create miNDAR with')
     parser.add_argument('--nickname', dest='nickname', help='Created miNDAR nickname')
 
 
@@ -57,6 +56,10 @@ def add_table_args(parser):
 
 def delete_mindar_args(parser):
     parser.add_argument('-f', '--force', dest='force_delete', action='store_true')
+
+
+def describe_mindar_args(parser):
+    parser.add_argument('--refresh-stats', dest='refresh_stats', action='store_true')
 
 
 def require_schema(parser):
@@ -104,15 +107,11 @@ def delete_mindar(args, config, mindar):
             print('Aborting.')
             return
 
-    print(f'Deleting mindar: {args.schema}')
+    print('Deleting mindar: {}'.format(args.schema))
 
     response = mindar.delete_mindar(args.schema)
 
     print('Delete Intiated for miNDAR {}'.format(args.schema))
-
-
-def describe_mindar(args, config, mindar):
-    print('Describe, Mindar!')
 
 
 def validate_mindar(args, config, mindar):
@@ -131,9 +130,9 @@ def show_mindar(args, config, mindar):
         print('This user has no mindars, you can create one by executing \'mindar create\'.')
         return
 
-    print(f'Showing {num_mindar} mindars...')
+    print('Showing {} mindars...'.format(num_mindar))
     print()
-    table_format ='{:<35} {:<20} {:<15} {:<25} {:<8}'
+    table_format ='{:<40} {:<40} {:<15} {:<25} {:<8}'
     print(table_format.format('Name','Schema','Package Id','Status','Created Date'))
 
     for mindar in response:
@@ -162,8 +161,28 @@ def add_table(args, config, mindar):
               .format(response['shortName'], response['rowCount']))
 
 
-def show_table(args, config, mindar):
-    print('Show, Table!')
+def describe_mindar(args, config, mindar):
+    if args.refresh_stats:
+        print('Refreshing stats - this can take several minutes...')
+        mindar.refresh_stats(args.schema)
+        print('Stats for mindar {} have been refreshed'.format(args.schema))
+
+    response = mindar.show_tables(args.schema)
+    structures = response['dataStructures']
+
+    if len(structures) <= 0:
+        print('This mindar has no tables yet. You can add one by executing \'mindar add-table <table-name>\'.')
+        return
+
+    structures.sort(key=lambda x: x['shortName'])
+    print('Showing {} tables from {}...'.format(len(structures), args.schema))
+    print()
+    table_format ='{:<35} {:<20}'
+    print(table_format.format('Name','Approximate Row Count'))
+
+    for table in structures:
+        print(table_format.format(table['shortName'],
+                                         table['rowCount']))
 
 
 def drop_table(args, config, mindar):
@@ -172,6 +191,10 @@ def drop_table(args, config, mindar):
 
 def reset_table(args, config, mindar):
     print('Reset, Table!')
+
+
+def request_warning():
+    print('Executing request, this might take some time...')
 
 
 def requires_mindar_password(args, confirm=False):
