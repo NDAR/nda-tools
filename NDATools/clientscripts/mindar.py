@@ -171,9 +171,9 @@ def filter_existing_tables(schema, test_tables, mindar):
 
 def verify_all_tables_exist(schema, test_tables, mindar):
     existing_tables = filter_existing_tables(schema, test_tables, mindar)
-    missing_tables = list(filter(lambda table: table not in existing_tables, test_tables))
-    if set(existing_tables) != set(test_tables):
-        print('The following structures do not exist in the mindar and cannot be deleted at this time: {}'.format(','.join(missing_tables)))
+    missing_tables = set(filter(lambda table: table not in existing_tables, test_tables))
+    if missing_tables:
+        print('The following structures do not exist in the mindar and cannot be used with the ''drop'' or ''reset'' command at this time: {}'.format(','.join(missing_tables)))
         exit_client(signal.SIGTERM)
 
 
@@ -201,8 +201,21 @@ def drop_table(args, config, mindar):
 
     for table in table_list:
         print('Deleting table {} from schema {}'.format(table, args.schema))
-        response = mindar.drop_table(args.schema, table)
+        mindar.drop_table(args.schema, table)
         print('Successfully removed data structure: {}'.format(table))
+
+
+def reset_table(args, config, mindar):
+    table_list = args.tables.split(',')
+    verify_all_tables_exist(args.schema, table_list, mindar)
+
+    for table in table_list:
+        print('Deleting table {} from schema {}'.format(table, args.schema))
+        mindar.drop_table(args.schema, table)
+        print('Successfully removed data structure: {}'.format(table))
+        print('Adding table {} to schema {}'.format(table, args.schema))
+        response = mindar.add_table(args.schema, table)
+        print('Successfully added data structure: {}'.format(response['shortName'].lower()))
 
 
 def describe_mindar(args, config, mindar):
@@ -230,10 +243,6 @@ def describe_mindar(args, config, mindar):
     print()
     print('Note - the row numbers are approximate and based on the most recent statistics that Oracle has gathered for the table''s in your schema.')
     print('To get the most accurate numers, use the --refresh-stats flag. For more information see https://docs.oracle.com/cd/A84870_01/doc/server.816/a76992/stats.htm.')
-
-
-def reset_table(args, config, mindar):
-    print('Reset, Table!')
 
 
 def request_warning():
