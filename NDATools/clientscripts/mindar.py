@@ -20,7 +20,7 @@ def parse_args():
 
     table_parser = make_subcommand(subparsers, 'table', default)  # mindar table
     table_subparser = table_parser.add_subparsers(dest='table_subparser_name')
-    make_subcommand(table_subparser, 'add', add_table)  # mindar table add
+    make_subcommand(table_subparser, 'add', add_table, [add_table_args, require_schema])  # mindar table add
     make_subcommand(table_subparser, 'drop', drop_table)  # mindar table drop
     make_subcommand(table_subparser, 'reset', reset_table)  # mindar table reset
 
@@ -48,6 +48,10 @@ def show_mindar_args(parser):
 
 def create_mindar_args(parser):
     parser.add_argument('--nickname', dest='nickname', help='Created miNDAR nickname')
+
+
+def add_table_args(parser):
+    parser.add_argument('tables')
 
 
 def delete_mindar_args(parser):
@@ -148,7 +152,13 @@ def import_mindar(args, config, mindar):
 
 
 def add_table(args, config, mindar):
-    print('Add, Table!')
+    table_list = args.tables.split(',')
+
+    for table in table_list:
+        print('Adding table {} to schema {}'.format(table, args.schema))
+        response = mindar.add_table(args.schema, table)
+        print('Successfully added data structure: {} ({} rows added)'
+              .format(response['shortName'], response['rowCount']))
 
 
 def describe_mindar(args, config, mindar):
