@@ -1,6 +1,6 @@
 import argparse
 from NDATools.MindarManager import *
-
+from datetime import datetime
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -184,38 +184,71 @@ def verify_no_tables_exist(schema, test_tables, mindar):
         exit_client(signal.SIGTERM)
 
 
+
+def add_table_helper(schema, table, mindar):
+    try:
+        print('Adding table {} to schema {}'.format(table, schema))
+        mindar.add_table(schema, table)
+        return True
+    except Exception as e:
+        # an error message will already be printed out from the Utils. class. Do not print out more info
+        return False
+
+
+def drop_table_helper(schema, table, mindar):
+    try:
+        print('Deleting table {} from schema {}'.format(table, schema))
+        mindar.drop_table(schema, table)
+        return True
+    except Exception as e:
+        # an error message will already be printed out from the Utils. class. Do not print out more info
+        return False
+
+
 def add_table(args, config, mindar):
     table_list = args.tables.split(',')
     # check first that each table doesn't already exist in the mindar
     verify_no_tables_exist(args.schema, table_list, mindar)
 
+    success_count = 0
     for table in table_list:
-        print('Adding table {} to schema {}'.format(table, args.schema))
-        response = mindar.add_table(args.schema, table)
-        print('Successfully added data structure: {}'.format(response['shortName'].lower()))
+        success_count += 1 if add_table_helper(args.schema, table, mindar) else 0
+
+    print()
+    print('Finished - {}/{} tables successfully added to schema {}.'.format(success_count, len(table_list), args.schema))
+    exit_client(signal.SIGTERM)
 
 
 def drop_table(args, config, mindar):
     table_list = args.tables.split(',')
     verify_all_tables_exist(args.schema, table_list, mindar)
 
+    success_count = 0
     for table in table_list:
-        print('Deleting table {} from schema {}'.format(table, args.schema))
-        mindar.drop_table(args.schema, table)
-        print('Successfully removed data structure: {}'.format(table))
+        success_count += 1 if drop_table_helper(args.schema, table, mindar) else 0
+
+    print()
+    print('Finished - {}/{} tables successfully dropped from schema {}'.format(success_count, len(table_list), args.schema))
+    exit_client(signal.SIGTERM)
 
 
 def reset_table(args, config, mindar):
     table_list = args.tables.split(',')
-    verify_all_tables_exist(args.schema, table_list, mindar)
 
+    existing_tables = filter_existing_tables(args.schema, table_list, mindar)
+
+    success_count = 0
     for table in table_list:
-        print('Deleting table {} from schema {}'.format(table, args.schema))
-        mindar.drop_table(args.schema, table)
-        print('Successfully removed data structure: {}'.format(table))
-        print('Adding table {} to schema {}'.format(table, args.schema))
-        response = mindar.add_table(args.schema, table)
-        print('Successfully added data structure: {}'.format(response['shortName'].lower()))
+        if table in existing_tables:
+            success = drop_table_helper(args.schema, table, mindar)
+            if not success:
+                print('skipping add of table {}'.format(table))
+                continue
+        success_count += 1 if add_table_helper(args.schema, table, mindar) else 0
+
+    print()
+    print('Finished - {}/{} tables successfully recreated in schema {}'.format(success_count, len(table_list), args.schema))
+    exit_client(signal.SIGTERM)
 
 
 def describe_mindar(args, config, mindar):
