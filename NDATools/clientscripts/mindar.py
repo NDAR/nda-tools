@@ -173,7 +173,9 @@ def describe_mindar(args, config, mindar):
     for table in structures:
         print(table_format.format(table['shortName'],
                                          table['rowCount']))
-
+    print()
+    print('Note - the row numbers are approximate and based on the most recent statistics that Oracle has gathered for the table''s in your schema.')
+    print('To get the most accurate numers, use the --refresh-stats flag. For more information see https://docs.oracle.com/cd/A84870_01/doc/server.816/a76992/stats.htm.')
 
 def drop_table(args, config, mindar):
     print('Drop, Table!')
