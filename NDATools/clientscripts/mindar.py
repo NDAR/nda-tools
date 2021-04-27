@@ -47,7 +47,6 @@ def show_mindar_args(parser):
 
 
 def create_mindar_args(parser):
-    parser.add_argument('--package', dest='package', help='Package ID to create miNDAR with')
     parser.add_argument('--nickname', dest='nickname', help='Created miNDAR nickname')
 
 
@@ -129,7 +128,7 @@ def show_mindar(args, config, mindar):
 
     print(f'Showing {num_mindar} mindars...')
     print()
-    table_format ='{:<35} {:<20} {:<15} {:<25} {:<8}'
+    table_format ='{:<40} {:<40} {:<15} {:<25} {:<8}'
     print(table_format.format('Name','Schema','Package Id','Status','Created Date'))
 
     for mindar in response:
