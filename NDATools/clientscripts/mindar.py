@@ -42,11 +42,13 @@ def make_subcommand(subparser, command, method, provider=None):
 
     return result
 
+
 def show_mindar_args(parser):
-    parser.add_argument('--include-deleted', action='store_true', help='Include deleted miNDARs in output' )
+    parser.add_argument('--include-deleted', action='store_true', help='Include deleted miNDARs in output')
 
 
 def create_mindar_args(parser):
+    # parser.add_argument('--package', dest='package', help='Create mindar using a pre-existing package')
     parser.add_argument('--nickname', dest='nickname', help='Created miNDAR nickname')
 
 
@@ -78,12 +80,14 @@ def default(args, config, mindar):
 def create_mindar(args, config, mindar):
     requires_mindar_password(args, True)
 
-    if args.package:
-        print(f'Creating a mindar for package {args.package}')
-    else:
-        print('Creating an empty mindar...')
+    # if args.package:
+    #     print('Creating a mindar for package {}'.format(args.package))
+    # else:
+    #     print('Creating an empty mindar...')
 
-    response = mindar.create_mindar(package_id=args.package, password=args.mindar_password, nickname=args.nickname)
+    # response = mindar.create_mindar(package_id=args.package, password=args.mindar_password, nickname=args.nickname)
+    print('Creating an empty mindar, this might take some time...')
+    response = mindar.create_mindar(password=args.mindar_password, nickname=args.nickname)
     print()
     print('------ Mindar Created ------')
     print("Current Status: {}".format(response['status']))

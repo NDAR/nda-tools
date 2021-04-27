@@ -10,7 +10,7 @@ class MindarManager:
     def __make_url(self, extension='/'):
         return self.url + extension
 
-    def create_mindar(self, package_id, password, nickname):
+    def create_mindar(self, password, nickname, package_id=None):
         payload = {
             'password': password
         }
