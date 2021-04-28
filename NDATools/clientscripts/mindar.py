@@ -15,7 +15,7 @@ def parse_args():
     make_subcommand(subparsers, 'describe', describe_mindar, [describe_mindar_args, require_schema])  # mindar describe
     make_subcommand(subparsers, 'validate', validate_mindar)  # mindar validate
     make_subcommand(subparsers, 'submit', submit_mindar)  # mindar submit
-    make_subcommand(subparsers, 'export', export_mindar)  # mindar export
+    make_subcommand(subparsers, 'export', export_mindar, [export_mindar_args, require_schema])  # mindar export
     make_subcommand(subparsers, 'import', import_mindar)  # mindar import
 
     table_parser = make_subcommand(subparsers, 'tables', default)  # mindar table
@@ -73,6 +73,12 @@ def delete_mindar_args(parser):
 
 def describe_mindar_args(parser):
     parser.add_argument('--refresh-stats', dest='refresh_stats', action='store_true')
+
+
+def export_mindar_args(parser):
+    parser.add_argument('--tables')
+    parser.add_argument('--include-id', action='store_true')
+    parser.add_argument('--download-dir', help='target directory for download')
 
 
 def require_schema(parser):
@@ -161,8 +167,19 @@ def show_mindar(args, config, mindar):
 
 
 def export_mindar(args, config, mindar):
-    print('Export, Mindar!')
+    if args.tables:
+        tables = args.tables.split(',')
+    else:
+        response = mindar.show_tables(args.schema)
+        tables = { ds['shortName'].lower() for ds in response['dataStructures'] }
 
+    dir = args.download_dir or '{}/{}'.format(os.path.expanduser('~'), args.schema)
+    for table in tables:
+        mindar.export_table_to_file(args.schema, table, dir)
+
+    print()
+    print('Export of {} tables in schema {} finished at {}'.format(len(tables), args.schema, datetime.now()))
+    exit_client(signal.SIGTERM)
 
 def import_mindar(args, config, mindar):
     print('Import, Mindar!')

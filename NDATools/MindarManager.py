@@ -1,5 +1,7 @@
-from NDATools.Utils import *
+import http
 
+from NDATools.Utils import *
+import requests
 
 class MindarManager:
 
@@ -60,3 +62,25 @@ class MindarManager:
     def refresh_stats(self, schema):
         response, session = api_request(self, "POST", self.__make_url('/{}/refresh_stats'.format(schema)))
         return response
+
+    def export_table_to_file(self, schema, table, root_dir='.'):
+        with open(os.path.join(root_dir, '{}.csv'.format(table)), 'w') as f:
+            print('Exporting table {} to {}'.format(table, f.name))
+            basic_auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
+            headers = { 'Accept' : 'text/plain'}
+
+            with requests.get(self.__make_url('/{}/tables/{}/records'.format(schema, table)), stream=True, auth=basic_auth, headers=headers) as r:
+                if not r.ok:
+                    r.raise_for_status()
+                line_count = 0
+                PROGRESS_REPORT_INTERVAL = 10000
+                for line in r.iter_lines():
+                    line_count += 1
+                    # filter out keep-alive new lines
+                    if line_count % PROGRESS_REPORT_INTERVAL == 0:
+                        print(
+                            'Exporting row {} - {}'.format(line_count, line_count + (PROGRESS_REPORT_INTERVAL - 1)))
+                    if line:
+                        f.write(line.decode('utf-8') + "\n")
+
+            f.flush()
