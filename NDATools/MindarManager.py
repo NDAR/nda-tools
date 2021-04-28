@@ -2,6 +2,7 @@ import http
 
 from NDATools.Utils import *
 import requests
+import pandas as pd
 
 class MindarManager:
 
@@ -63,9 +64,12 @@ class MindarManager:
         response, session = api_request(self, "POST", self.__make_url('/{}/refresh_stats'.format(schema)))
         return response
 
-    def export_table_to_file(self, schema, table, root_dir='.'):
-        with open(os.path.join(root_dir, '{}.csv'.format(table)), 'w') as f:
-            print('Exporting table {} to {}'.format(table, f.name))
+    def export_table_to_file(self, schema, table, root_dir='.', include_id=False):
+        f_name_tmp = os.path.join(root_dir, '{}.csv.tmp'.format(table))
+        final_csv_dest = f_name_tmp.replace('.tmp', '')
+
+        with open(f_name_tmp, 'w') as f:
+            print('Exporting table {} to {}'.format(table, final_csv_dest))
             basic_auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
             headers = { 'Accept' : 'text/plain'}
 
@@ -77,10 +81,21 @@ class MindarManager:
                 for line in r.iter_lines():
                     line_count += 1
                     # filter out keep-alive new lines
-                    if line_count % PROGRESS_REPORT_INTERVAL == 0:
+                    if (line_count - 1 ) % PROGRESS_REPORT_INTERVAL == 0:
                         print(
-                            'Exporting row {} - {}'.format(line_count, line_count + (PROGRESS_REPORT_INTERVAL - 1)))
+                            'Exporting {} {} rows (currently at row #{})'.format('first' if line_count==1 else 'next', PROGRESS_REPORT_INTERVAL, line_count))
                     if line:
                         f.write(line.decode('utf-8') + "\n")
 
             f.flush()
+
+        if include_id:
+            os.rename(f_name_tmp, final_csv_dest)
+            return
+        # continue processing file to get rid of ID column
+        print('Removing ID column from csv {}'.format(final_csv_dest))
+
+        f = pd.read_csv(f_name_tmp)
+        f.drop('{}_ID'.format(table.upper()), inplace=True, axis=1)
+        f.to_csv(final_csv_dest, encoding='utf-8',index=False)
+        os.remove(f_name_tmp)
