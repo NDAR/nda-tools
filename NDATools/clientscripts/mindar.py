@@ -1,6 +1,6 @@
 import argparse
 from NDATools.MindarManager import *
-
+from datetime import datetime
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -18,11 +18,11 @@ def parse_args():
     make_subcommand(subparsers, 'export', export_mindar)  # mindar export
     make_subcommand(subparsers, 'import', import_mindar)  # mindar import
 
-    table_parser = make_subcommand(subparsers, 'table', default)  # mindar table
+    table_parser = make_subcommand(subparsers, 'tables', default)  # mindar table
     table_subparser = table_parser.add_subparsers(dest='table_subparser_name')
-    make_subcommand(table_subparser, 'add', add_table, [add_table_args, require_schema])  # mindar table add
-    make_subcommand(table_subparser, 'drop', drop_table)  # mindar table drop
-    make_subcommand(table_subparser, 'reset', reset_table)  # mindar table reset
+    make_subcommand(table_subparser, 'add', add_table, [add_table_args])  # mindar table add
+    make_subcommand(table_subparser, 'drop', drop_table, [drop_table_args])  # mindar table drop
+    make_subcommand(table_subparser, 'reset', reset_table, [reset_table_args])  # mindar table reset
 
     return parser.parse_args()
 
@@ -54,6 +54,17 @@ def create_mindar_args(parser):
 
 def add_table_args(parser):
     parser.add_argument('tables')
+    parser.add_argument('--schema', help='Schema to add tables to')
+
+
+def drop_table_args(parser):
+    parser.add_argument('tables')
+    parser.add_argument('--schema', help='Schema to drop tables from')
+
+
+def reset_table_args(parser):
+    parser.add_argument('tables')
+    parser.add_argument('--schema', help='Schema with affected tables')
 
 
 def delete_mindar_args(parser):
@@ -157,14 +168,93 @@ def import_mindar(args, config, mindar):
     print('Import, Mindar!')
 
 
+def filter_existing_tables(schema, test_tables, mindar):
+    table_list = set(map(lambda x: x.lower(), test_tables))
+    response = mindar.show_tables(schema)
+    structures = { ds['shortName'].lower() for ds in response['dataStructures'] }
+    return list(filter(lambda table: table in structures, table_list))
+
+
+def verify_all_tables_exist(schema, test_tables, mindar):
+    existing_tables = filter_existing_tables(schema, test_tables, mindar)
+    missing_tables = set(filter(lambda table: table not in existing_tables, test_tables))
+    if missing_tables:
+        print('The following structures do not exist in the mindar and cannot be used with the ''drop'' or ''reset'' command at this time: {}'.format(','.join(missing_tables)))
+        exit_client(signal.SIGTERM)
+
+
+def verify_no_tables_exist(schema, test_tables, mindar):
+    existing_tables = filter_existing_tables(schema, test_tables, mindar)
+    if existing_tables:
+        print('The following structures already exist in the mindar and cannot be added at this time: {}'.format(','.join(existing_tables)))
+        exit_client(signal.SIGTERM)
+
+
+
+def add_table_helper(schema, table, mindar):
+    try:
+        print('Adding table {} to schema {}'.format(table, schema))
+        mindar.add_table(schema, table)
+        return True
+    except Exception as e:
+        # an error message will already be printed out from the Utils. class. Do not print out more info
+        return False
+
+
+def drop_table_helper(schema, table, mindar):
+    try:
+        print('Deleting table {} from schema {}'.format(table, schema))
+        mindar.drop_table(schema, table)
+        return True
+    except Exception as e:
+        # an error message will already be printed out from the Utils. class. Do not print out more info
+        return False
+
+
 def add_table(args, config, mindar):
     table_list = args.tables.split(',')
+    # check first that each table doesn't already exist in the mindar
+    verify_no_tables_exist(args.schema, table_list, mindar)
 
+    success_count = 0
     for table in table_list:
-        print('Adding table {} to schema {}'.format(table, args.schema))
-        response = mindar.add_table(args.schema, table)
-        print('Successfully added data structure: {} ({} rows added)'
-              .format(response['shortName'], response['rowCount']))
+        success_count += 1 if add_table_helper(args.schema, table, mindar) else 0
+
+    print()
+    print('Finished - {}/{} tables successfully added to schema {}.'.format(success_count, len(table_list), args.schema))
+    exit_client(signal.SIGTERM)
+
+
+def drop_table(args, config, mindar):
+    table_list = args.tables.split(',')
+    verify_all_tables_exist(args.schema, table_list, mindar)
+
+    success_count = 0
+    for table in table_list:
+        success_count += 1 if drop_table_helper(args.schema, table, mindar) else 0
+
+    print()
+    print('Finished - {}/{} tables successfully dropped from schema {}'.format(success_count, len(table_list), args.schema))
+    exit_client(signal.SIGTERM)
+
+
+def reset_table(args, config, mindar):
+    table_list = args.tables.split(',')
+
+    existing_tables = filter_existing_tables(args.schema, table_list, mindar)
+
+    success_count = 0
+    for table in table_list:
+        if table in existing_tables:
+            success = drop_table_helper(args.schema, table, mindar)
+            if not success:
+                print('skipping add of table {}'.format(table))
+                continue
+        success_count += 1 if add_table_helper(args.schema, table, mindar) else 0
+
+    print()
+    print('Finished - {}/{} tables successfully recreated in schema {}'.format(success_count, len(table_list), args.schema))
+    exit_client(signal.SIGTERM)
 
 
 def describe_mindar(args, config, mindar):
@@ -187,18 +277,11 @@ def describe_mindar(args, config, mindar):
     print(table_format.format('Name','Approximate Row Count'))
 
     for table in structures:
-        print(table_format.format(table['shortName'],
-                                         table['rowCount']))
+        print(table_format.format(table['shortName'], table['rowCount']))
+
     print()
     print('Note - the row numbers are approximate and based on the most recent statistics that Oracle has gathered for the table''s in your schema.')
     print('To get the most accurate numers, use the --refresh-stats flag. For more information see https://docs.oracle.com/cd/A84870_01/doc/server.816/a76992/stats.htm.')
-
-def drop_table(args, config, mindar):
-    print('Drop, Table!')
-
-
-def reset_table(args, config, mindar):
-    print('Reset, Table!')
 
 
 def request_warning():
