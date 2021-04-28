@@ -104,6 +104,8 @@ def create_mindar(args, config, mindar):
 
 
 def delete_mindar(args, config, mindar):
+    print('Before deleting your miNDAR, please make sure there are no active connections or the delete operation will not succeed.'.format(args.schema))
+
     if not args.force_delete:
         verify = input('Are you sure you want to delete mindar: {}? (Y/N) '.format(args.schema))
 
@@ -115,7 +117,7 @@ def delete_mindar(args, config, mindar):
 
     response = mindar.delete_mindar(args.schema)
 
-    print('Delete Intiated for miNDAR {}'.format(args.schema))
+    print('Delete Initiated for miNDAR {}'.format(args.schema))
 
 
 def validate_mindar(args, config, mindar):
