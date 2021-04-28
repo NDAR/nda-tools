@@ -179,16 +179,16 @@ def verify_all_tables_exist(schema, test_tables, mindar):
     existing_tables = filter_existing_tables(schema, test_tables, mindar)
     missing_tables = set(filter(lambda table: table not in existing_tables, test_tables))
     if missing_tables:
-        print('The following structures do not exist in the mindar and cannot be used with the ''drop'' or ''reset'' command at this time: {}'.format(','.join(missing_tables)))
-        exit_client(signal.SIGTERM)
+        print('WARNING: The following structures were specified as an argument but do not exist in the mindar: {}'.format(','.join(missing_tables)))
+        return missing_tables
 
 
 def verify_no_tables_exist(schema, test_tables, mindar):
     existing_tables = filter_existing_tables(schema, test_tables, mindar)
     if existing_tables:
-        print('The following structures already exist in the mindar and cannot be added at this time: {}'.format(','.join(existing_tables)))
-        exit_client(signal.SIGTERM)
-
+        print('WARNING: The following structures were specified as an argument but they already exist in the mindar'
+              ' so they will not be processed at this time: {}'.format(','.join(existing_tables)))
+        return existing_tables
 
 
 def add_table_helper(schema, table, mindar):
@@ -212,29 +212,39 @@ def drop_table_helper(schema, table, mindar):
 
 
 def add_table(args, config, mindar):
-    table_list = args.tables.split(',')
+    table_list = list(map(lambda x: x.lower(), args.tables.split(',')))
     # check first that each table doesn't already exist in the mindar
-    verify_no_tables_exist(args.schema, table_list, mindar)
+    existing_tables = verify_no_tables_exist(args.schema, table_list, mindar) or set()
+
+    tables = set(table_list) - set(existing_tables)
+    if not tables:
+        print('Invalid table list specified as a command line argument. Correct argument list and try again.')
+        exit_client(signal.SIGTERM)
 
     success_count = 0
-    for table in table_list:
+    for table in tables:
         success_count += 1 if add_table_helper(args.schema, table, mindar) else 0
 
     print()
-    print('Finished - {}/{} tables successfully added to schema {}.'.format(success_count, len(table_list), args.schema))
+    print('Finished - {}/{} tables successfully added to schema {}.'.format(success_count, len(tables), args.schema))
     exit_client(signal.SIGTERM)
 
 
 def drop_table(args, config, mindar):
-    table_list = args.tables.split(',')
-    verify_all_tables_exist(args.schema, table_list, mindar)
+    table_list = list(map(lambda x: x.lower(), args.tables.split(',')))
+    missing_tables = verify_all_tables_exist(args.schema, table_list, mindar) or set()
+
+    tables = set(table_list) - set(missing_tables)
+    if not tables:
+        print('Invalid table list specified as a command line argument. Correct argument list and try again.')
+        exit_client(signal.SIGTERM)
 
     success_count = 0
-    for table in table_list:
+    for table in tables:
         success_count += 1 if drop_table_helper(args.schema, table, mindar) else 0
 
     print()
-    print('Finished - {}/{} tables successfully dropped from schema {}'.format(success_count, len(table_list), args.schema))
+    print('Finished - {}/{} tables successfully dropped from schema {}'.format(success_count, len(tables), args.schema))
     exit_client(signal.SIGTERM)
 
 
