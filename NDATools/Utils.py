@@ -6,6 +6,8 @@ import sys
 import getpass
 import time
 import threading
+import traceback
+
 import requests
 from requests.adapters import HTTPAdapter
 import requests.packages.urllib3.util
@@ -46,6 +48,27 @@ class Protocol(object):
     @staticmethod
     def get_protocol(cls):
         return cls.JSON
+
+
+def get_error():
+    exc_type, exc_value, exc_tb = sys.exc_info()
+    tbe = traceback.TracebackException(
+        exc_type, exc_value, exc_tb,
+    )
+    ex = ''.join(tbe.format_exception_only())
+    #print('Error: {}'.format(ex))
+    return ex
+
+
+def get_stack_trace():
+    exc_type, exc_value, exc_tb = sys.exc_info()
+    tbe = traceback.TracebackException(
+        exc_type, exc_value, exc_tb,
+    )
+    tb = ''.join(tbe.format())
+    return tb
+    #print(tb)
+
 
 def api_request(api, verb, endpoint, data=None, session=None, json=None):
 

@@ -171,15 +171,25 @@ def export_mindar(args, config, mindar):
         tables = args.tables.split(',')
     else:
         response = mindar.show_tables(args.schema)
-        tables = { ds['shortName'].lower() for ds in response['dataStructures'] }
+        tables = [ ds['shortName'].lower() for ds in response['dataStructures'] ]
+        tables.sort()
 
     dir = args.download_dir or '{}/{}'.format(os.path.expanduser('~'), args.schema)
+    success_count = 0
     for table in tables:
-        mindar.export_table_to_file(args.schema, table, dir)
+        try:
+            mindar.export_table_to_file(args.schema, table, dir, args.include_id)
+            success_count += 1
+        except Exception as e:
+            print('Error while trying to export table {}. Error was {}'.format(table, e))
+            # for debugging
+            # print (get_stack_trace())
+            logging.error(get_stack_trace())
 
     print()
-    print('Export of {} tables in schema {} finished at {}'.format(len(tables), args.schema, datetime.now()))
+    print('Export of {}/{} tables in schema {} finished at {}'.format(success_count, len(tables), args.schema, datetime.now()))
     exit_client(signal.SIGTERM)
+
 
 def import_mindar(args, config, mindar):
     print('Import, Mindar!')
@@ -205,7 +215,6 @@ def verify_no_tables_exist(schema, test_tables, mindar):
     if existing_tables:
         print('The following structures already exist in the mindar and cannot be added at this time: {}'.format(','.join(existing_tables)))
         exit_client(signal.SIGTERM)
-
 
 
 def add_table_helper(schema, table, mindar):

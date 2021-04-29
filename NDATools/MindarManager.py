@@ -1,8 +1,8 @@
+from datetime import datetime
 import http
 
 from NDATools.Utils import *
 import requests
-import pandas as pd
 
 class MindarManager:
 
@@ -65,15 +65,18 @@ class MindarManager:
         return response
 
     def export_table_to_file(self, schema, table, root_dir='.', include_id=False):
-        f_name_tmp = os.path.join(root_dir, '{}.csv.tmp'.format(table))
-        final_csv_dest = f_name_tmp.replace('.tmp', '')
+        final_csv_dest = os.path.join(root_dir, '{}.csv'.format(table))
 
-        with open(f_name_tmp, 'w') as f:
+        if os.path.isfile(final_csv_dest):
+            os.remove(final_csv_dest)
+
+        with open(final_csv_dest, 'w') as f:
             print('Exporting table {} to {}'.format(table, final_csv_dest))
             basic_auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
             headers = { 'Accept' : 'text/plain'}
 
-            with requests.get(self.__make_url('/{}/tables/{}/records'.format(schema, table)), stream=True, auth=basic_auth, headers=headers) as r:
+            WAIT_TIME_SEC = 60 * 60 * .5
+            with requests.get(self.__make_url('/{}/tables/{}/records?include_table_row_id={}'.format(schema, table, include_id)), stream=True, auth=basic_auth, headers=headers, timeout=WAIT_TIME_SEC) as r:
                 if not r.ok:
                     r.raise_for_status()
                 line_count = 0
@@ -88,14 +91,3 @@ class MindarManager:
                         f.write(line.decode('utf-8') + "\n")
 
             f.flush()
-
-        if include_id:
-            os.rename(f_name_tmp, final_csv_dest)
-            return
-        # continue processing file to get rid of ID column
-        print('Removing ID column from csv {}'.format(final_csv_dest))
-
-        f = pd.read_csv(f_name_tmp)
-        f.drop('{}_ID'.format(table.upper()), inplace=True, axis=1)
-        f.to_csv(final_csv_dest, encoding='utf-8',index=False)
-        os.remove(f_name_tmp)
