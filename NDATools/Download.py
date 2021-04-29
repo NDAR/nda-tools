@@ -1,9 +1,7 @@
-from __future__ import with_statement
 from __future__ import absolute_import
+from __future__ import with_statement
 
 import sys
-
-from NDATools.S3Authentication import S3Authentication
 
 IS_PY2 = sys.version_info < (3, 0)
 
@@ -14,13 +12,9 @@ else:
     from queue import Queue
 import csv
 from threading import Thread
-import boto3
 import botocore
-import datetime
-from boto3.s3.transfer import S3Transfer
 import multiprocessing
 
-from NDATools.TokenGenerator import *
 from NDATools.Utils import *
 
 
@@ -99,41 +93,6 @@ class Download(Protocol):
         if self.verbose:
             print(' '.join(list(args)))
 
-    # def useDataManager(self):
-    #     """ Download package files (not associated files) """
-    #
-    #     payload = ('<?xml version="1.0" ?>\n' +
-    #                '<S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/">\n' +
-    #                '<S:Body> <ns3:QueryPackageFileElement\n' +
-    #                'xmlns:ns4="http://dataManagerService"\n' +
-    #                'xmlns:ns3="http://gov/nih/ndar/ws/datamanager/server/bean/jaxb"\n' +
-    #                'xmlns:ns2="http://dataManager/transfer/model">\n' +
-    #                '<packageId>' + self.package + '</packageId>\n' +
-    #                '<associated>true</associated>\n' +
-    #                '</ns3:QueryPackageFileElement>\n' +
-    #                '</S:Body>\n' +
-    #                '</S:Envelope>')
-    #     print(payload)
-    #     response, session = api_request(self, "POST", self.url, data=payload)
-    #     print(response.text)
-    #     root = ET.fromstring(response.text)
-    #     packageFiles = root.findall(".//queryPackageFiles")
-    #     for element in packageFiles:
-    #         associated = element.findall(".//isAssociated")
-    #         path = element.findall(".//path")
-    #         alias = element.findall(".//alias")
-    #         for a in associated:
-    #             if a.text == 'false':
-    #                 for p in path:
-    #                     file = 's3:/' + p.text
-    #                     print(file)
-    #                     self.path_list.add(file)
-    #                 for al in alias:
-    #                     alias_path = al.text
-    #
-    #                 self.local_file_names[file] = alias_path
-    #
-    #     self.verbose_print('Downloading package files for package {}.'.format(self.package))
 
     def get_presigned_urls(self):
         """ Download package files (not associated files) """
@@ -184,30 +143,6 @@ class Download(Protocol):
             package_file_id = element['package_file_id']
             self.s3_links[package_file_id] = download_url
 
-    # todo: not being used
-    # def searchForDataStructure(self, resume, dir):
-    #     """ Download associated files listed in data structures """
-    #
-    #     all_paths = self.path_list
-    #     self.path_list = set()
-    #
-    #     for path in all_paths:
-    #         if 'Package_{}'.format(self.package) in path:
-    #             file = path.split('/')[-1]
-    #             shortName = file.split('.')[0]
-    #             try:
-    #                 ddr = requests.request("GET", "https://nda.nih.gov/api/datadictionary/v2/datastructure/{}".format(
-    #                     shortName))
-    #                 ddr.raise_for_status()
-    #                 dataStructureFile = path.split('gpop/')[1]
-    #                 dataStructureFile = os.path.join(self.directory, dataStructureFile)
-    #                 self.dataStructure = dataStructureFile
-    #                 self.useDataStructure()
-    #                 self.get_tokens()
-    #                 self.start_workers(resume, prev_directory=dir)
-    #             except requests.exceptions.HTTPError as e:
-    #                 if e.response.status_code == 404:
-    #                     continue
 
     def useDataStructure(self, data_structure):
         try:
@@ -220,11 +155,6 @@ class Download(Protocol):
                         if element.startswith('s3://'):
                             self.path_list.add(element)  # todo: replace with package_file_id_list
                 self.get_package_file_ids()
-                            # if data_structure:
-                            #     e = element.split('/')
-                            #     path = "".join(e[4:])
-                            #     path = "/".join([ds, path])
-                            #     self.local_file_names[element] = path
 
         except IOError as e:
             self.verbose_print(
@@ -267,64 +197,16 @@ class Download(Protocol):
             self.path_list = files
             self.get_package_file_ids()
 
-    # def download_path(self, path, resume, prev_directory):
-    #     filename = path.split('/')
-    #     self.filename = filename[3:]
-    #     key = '/'.join(self.filename)
-    #     bucket = filename[2]
-    #
-    #     if self.local_file_names:
-    #         dir = (self.local_file_names[path]).split('/')
-    #         self.newdir = dir[:-1]
-    #         alias = self.local_file_names[path]
-    #     else:
-    #         self.newdir = filename[3:-1]
-    #         alias = key
-    #     self.newdir = '/'.join(self.newdir)
-    #     self.newdir = os.path.join(self.directory, self.newdir)
-    #     local_filename = os.path.join(self.directory, alias)
-    #     downloaded = False
-    #
-    #     # check previous downloads
-    #     if resume:
-    #         prev_local_filename = os.path.join(prev_directory, key)
-    #         if os.path.isfile(prev_local_filename):
-    #             downloaded = True
-    #
-    #     if not downloaded:
-    #         try:
-    #             os.makedirs(self.newdir)
-    #         except OSError as e:
-    #             pass
-    #
-    #         # check tokens
-    #         self.check_time()
-    #         # todo: can likely skip this step since using presigned url
-    #         s3transfer = S3Transfer(S3Authentication.get_s3_client_with_config(self.access_key,
-    #                                                                            self.secret_key,
-    #                                                                            self.session))
-    #
-    #         try:
-    #             s3transfer.download_file(bucket, key, local_filename) # todo: replace with GET request
-    #             # GET request and download to local file path
-    #
-    #             self.verbose_print('downloaded: {}'.format(path))
-    #
-    #         except botocore.exceptions.ClientError as e:
-    #             # If a client error is thrown, then check that it was a 404 error.
-    #             # If it was a 404 error, then the bucket does not exist.
-    #             error_code = int(e.response['Error']['Code'])
-    #             if error_code == 404:
-    #                 message = 'This path is incorrect: {}. Please try again.'.format(path)
-    #                 self.verbose_print(message)
-    #                 raise Exception(e)
-    #
-    #             if error_code == 403:
-    #                 message = '\nThis is a private bucket. Please contact NDAR for help: {}'.format(path)
-    #                 self.verbose_print(message)
-    #                 raise Exception(e)
 
     def download_from_s3link(self, package_file_id, resume, prev_directory):
+
+        # use this instead of exists_ok in order to work with python v.2
+        def mk_dir_ignore_err(dir):
+            try:
+                os.makedirs(os.path.normpath(dir))
+            except FileExistsError as e:
+                pass
+
 
         s3_link = self.s3_links[package_file_id]
         print('s3_link: {}'.format(s3_link))
@@ -332,10 +214,10 @@ class Download(Protocol):
         alias = self.local_file_names[package_file_id]
         print('alias: {}'.format(alias))
 
-        local_path = ('/').join(str(local_path).split('/')[3:-1])
-        self.newdir = os.path.join(self.directory, alias)
+        local_path = ('/').join(str(s3_link).split('/')[3:-1])
+        newdir = os.path.normpath(os.path.join(self.directory, local_path))
         print('local_path: {}'.format(local_path))
-        local_file = os.path.join(self.directory, alias)
+        local_file = os.path.normpath(os.path.join(newdir, alias))
         # split on '/' and then substring until alias
         print('local_file: {}'.format(local_file))
 
@@ -347,29 +229,27 @@ class Download(Protocol):
                 downloaded = True
 
         if not downloaded:
+            mk_dir_ignore_err(os.path.dirname(local_file))
+
             try:
-                os.makedirs(os.path.normpath(self.newdir))
-            except OSError as e:
-                pass
-        try:
-            with requests.get(s3_link, stream=True) as response:
-                os.makedirs(os.path.normpath(local_file).rsplit('/')[0])
-                with open(os.path.normpath(local_file), "wb") as downloaded_file:
-                    for chunk in response.iter_content(chunk_size=512 * 1024):
-                        if chunk:
-                            downloaded_file.write(chunk)
-        except botocore.exceptions.ClientError as e:
-            # If a client error is thrown, then check that it was a 404 error.
-            # If it was a 404 error, then the bucket does not exist.
-            error_code = int(e.response['Error']['Code'])
-            if error_code == 404:
-                message = 'This path is incorrect: {}. Please try again.'.format(s3_link)
-                self.verbose_print(message)
-                raise Exception(e)
-            if error_code == 403:
-                message = '\nThis is a private bucket. Please contact NDAR for help: {}'.format(s3_link)
-                self.verbose_print(message)
-                raise Exception(e)
+                with requests.get(s3_link, stream=True) as response:
+                    with open(local_file, "wb") as downloaded_file:
+                        for chunk in response.iter_content(chunk_size=512 * 1024):
+                            if chunk:
+                                downloaded_file.write(chunk)
+            #except botocore.exceptions.ClientError as e:
+            except Exception as e:
+                # If a client error is thrown, then check that it was a 404 error.
+                # If it was a 404 error, then the bucket does not exist.
+                error_code = int(e.response['Error']['Code'])
+                if error_code == 404:
+                    message = 'This path is incorrect: {}. Please try again.'.format(s3_link)
+                    self.verbose_print(message)
+                    raise Exception(e)
+                if error_code == 403:
+                    message = '\nThis is a private bucket. Please contact NDAR for help: {}'.format(s3_link)
+                    self.verbose_print(message)
+                    raise Exception(e)
 
     def start_workers(self, resume, prev_directory, thread_num=None):
         def download(path):
@@ -383,6 +263,5 @@ class Download(Protocol):
         pool = ThreadPool(self.thread_num)
 
         # Add the jobs in bulk to the thread pool
-        # pool.map(download, self.path_list)
         pool.map(download, self.package_file_id_list)
         pool.wait_completion()
