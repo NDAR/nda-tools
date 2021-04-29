@@ -332,11 +332,10 @@ class Download(Protocol):
         alias = self.local_file_names[package_file_id]
         print('alias: {}'.format(alias))
 
-        local_path = s3_link.split('?')
         local_path = ('/').join(str(local_path).split('/')[3:-1])
-        self.newdir = os.path.join(self.directory, local_path)
+        self.newdir = os.path.join(self.directory, alias)
         print('local_path: {}'.format(local_path))
-        local_file = os.path.join(self.directory, local_path, alias)
+        local_file = os.path.join(self.directory, alias)
         # split on '/' and then substring until alias
         print('local_file: {}'.format(local_file))
 
@@ -349,13 +348,16 @@ class Download(Protocol):
 
         if not downloaded:
             try:
-                os.makedirs(self.newdir)
+                os.makedirs(os.path.normpath(self.newdir))
             except OSError as e:
                 pass
         try:
-            response = requests.get(s3_link)
-            with open(local_file, "wb") as downloaded_file:
-                downloaded_file.write(response.content)
+            with requests.get(s3_link, stream=True) as response:
+                os.makedirs(os.path.normpath(local_file).rsplit('/')[0])
+                with open(os.path.normpath(local_file), "wb") as downloaded_file:
+                    for chunk in response.iter_content(chunk_size=512 * 1024):
+                        if chunk:
+                            downloaded_file.write(chunk)
         except botocore.exceptions.ClientError as e:
             # If a client error is thrown, then check that it was a 404 error.
             # If it was a 404 error, then the bucket does not exist.
