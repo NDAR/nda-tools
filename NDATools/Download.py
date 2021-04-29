@@ -18,9 +18,9 @@ import multiprocessing
 from NDATools.Utils import *
 
 
-
 class Worker(Thread):
     """ Thread executing tasks from a given tasks queue """
+
     def __init__(self, tasks):
         Thread.__init__(self)
         self.tasks = tasks
@@ -42,6 +42,7 @@ class Worker(Thread):
 
 class ThreadPool:
     """ Pool of threads consuming tasks from a queue """
+
     def __init__(self, num_threads):
         self.tasks = Queue(num_threads)
         for _ in range(num_threads):
@@ -68,7 +69,7 @@ class Download(Protocol):
             self.config = config
         else:
             self.config = ClientConfiguration()
-        self.url = self.config.datamanager_api  #todo: delete me
+        self.url = self.config.datamanager_api  # todo: delete me
         self.package_url = self.config.package_api
         self.username = config.username
         self.password = config.password
@@ -92,7 +93,6 @@ class Download(Protocol):
     def verbose_print(self, *args):
         if self.verbose:
             print(' '.join(list(args)))
-
 
     def get_presigned_urls(self):
         """ Download package files (not associated files) """
@@ -142,7 +142,6 @@ class Download(Protocol):
             download_url = element['downloadURL']
             package_file_id = element['package_file_id']
             self.s3_links[package_file_id] = download_url
-
 
     def useDataStructure(self, data_structure):
         try:
@@ -197,7 +196,6 @@ class Download(Protocol):
             self.path_list = files
             self.get_package_file_ids()
 
-
     def download_from_s3link(self, package_file_id, resume, prev_directory):
 
         # use this instead of exists_ok in order to work with python v.2
@@ -207,24 +205,20 @@ class Download(Protocol):
             except FileExistsError as e:
                 pass
 
-
         s3_link = self.s3_links[package_file_id]
         print('s3_link: {}'.format(s3_link))
 
         alias = self.local_file_names[package_file_id]
         print('alias: {}'.format(alias))
 
-        local_path = ('/').join(str(s3_link).split('/')[3:-1])
-        newdir = os.path.normpath(os.path.join(self.directory, local_path))
-        print('local_path: {}'.format(local_path))
-        local_file = os.path.normpath(os.path.join(newdir, alias))
+        local_file = os.path.normpath(os.path.join(self.directory, alias))
         # split on '/' and then substring until alias
         print('local_file: {}'.format(local_file))
 
         downloaded = False
 
         if resume:
-            prev_local_filename = os.path.join(prev_directory, alias)
+            prev_local_filename = os.path.normpath(os.path.join(prev_directory, alias))
             if os.path.isfile(prev_local_filename):
                 downloaded = True
 
@@ -237,7 +231,7 @@ class Download(Protocol):
                         for chunk in response.iter_content(chunk_size=512 * 1024):
                             if chunk:
                                 downloaded_file.write(chunk)
-            #except botocore.exceptions.ClientError as e:
+            # except botocore.exceptions.ClientError as e:
             except Exception as e:
                 # If a client error is thrown, then check that it was a 404 error.
                 # If it was a 404 error, then the bucket does not exist.
