@@ -103,11 +103,11 @@ class Download(Protocol):
 
         for element in response['results']:
             associated = element['associatedFile']
-            if not associated:  # Does not loaded associated files
-                alias = element['download_alias']
-                package_file_id = element['package_file_id']
-                self.package_file_id_list.add(package_file_id)
-                self.local_file_names[package_file_id] = alias
+            # if not associated:  # Does not loaded associated files
+            alias = element['download_alias']
+            package_file_id = element['package_file_id']
+            self.package_file_id_list.add(package_file_id)
+            self.local_file_names[package_file_id] = alias
 
         logging.debug("Generating download links...")
         self.__chunk_file_id_list()
