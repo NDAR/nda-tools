@@ -265,7 +265,7 @@ After this command completes, a Delete request will be initiated for the mindar 
 ## Adding tables to a Mindar
 Enter the following command to add a table to a mindar
 ```
-mindar tables add image01,genomics03,datastructureexample07  --schmea <schema>
+mindar tables add image03,genomics03,datastructureexample07  --schema <schema>
 ``` 
 This command will attempt to add each table specified at the command line to the mindar, one by one. If an error is encountered during the addition of one of the tables to the mindar, the tool will display an error message and continue onto the next table in the list. The tables argument must be a comma delimitted list without spaces. If a table is specified on the command line that already exists in the mindar, it will be skipped over during processing and the data in that table will not be affected by the command.
 
@@ -286,7 +286,7 @@ After this command completes, a table will be output to the console containing b
 ## Dropping tables from a Mindar
 Enter the following command to remove a table to a mindar
 ```
-mindar tables drop image01,genomics03,datastructureexample07  --schmea <schema>
+mindar tables drop image03,genomics03,datastructureexample07  --schema <schema>
 ``` 
 This command will attempt to drop each table specified at the command line to the mindar, one by one. If an error is encountered during the processing of one of the tables , the tool will display an error message and continue onto the next table in the list. The tables argument must be a comma delimitted list without spaces. If a table is specified on the command line that does not exist in the mindar, it will be skipped over during processing and the data in that table will not be affected by the command.
     
@@ -295,7 +295,7 @@ This command is provided in the even that a user wants to undo edits made to tab
 
 Enter the following command to drop and re-add tables to a mindar. 
 ```
-  mindar tables reset image01,genomics03,datastructureexample07  --schmea <schema>
+  mindar tables reset image03,genomics03,datastructureexample07  --schema <schema>
 ``` 
 This command will attempt to drop each table specified (if it exists in the mindar) and then re-add the table to the mindar. At the end of this command, each table will not contain any rows and the table structure will match the latest structure definition retrieved from the data-dictionary api (https://nda.nih.gov/api/datadictionary/docs/swagger-ui.html). If an error is encountered during the processing of one of the tables , the tool will display an error message and continue onto the next table in the list. The tables argument must be a comma delimitted list without spaces. 
 
