@@ -269,7 +269,7 @@ mindar tables add image01,genomics03,datastructureexample07  --schmea <schema>
 ``` 
 This command will attempt to add each table specified at the command line to the mindar, one by one. If an error is encountered during the addition of one of the tables to the mindar, the tool will display an error message and continue onto the next table in the list. The tables argument must be a comma delimitted list without spaces. If a table is specified on the command line that already exists in the mindar, it will be skipped over during processing and the data in that table will not be affected by the command.
 
-#####Command line args
+##### Command line args
 - **tables** - _required_ - comma delimitted list of data-structure short-names to add to mindar. The list of data-structures that are available to add come from the shared data-structure list available via the data-dictionary api. (https://nda.nih.gov/api/datadictionary/docs/swagger-ui.html) 
 - **schema** - _required_ - schema corresponding to the mindar to add tables to.
      
@@ -280,7 +280,7 @@ mindar describe --refresh-stats <schema>
 ``` 
 After this command completes, a table will be output to the console containing basic information about each table inside the mindar with the specified schema
  
-#####Command line args
+##### Command line args
 - **refresh-stats** - _optional_ - if specified, stats will be gathered for the schema before retrieving table information. Gathering stats will make the number of rows displayed for each table more accurate. The approximate number of rows is retrieved from the all_tab_columns table, which reflects the most recent stats gathered by the DB. For more information about gathering schema statistics, see https://docs.oracle.com/cd/A84870_01/doc/server.816/a76992/stats.htm
      
 ## Dropping tables from a Mindar
