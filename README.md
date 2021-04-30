@@ -1,4 +1,4 @@
-# nda-tools
+# NDA Tools
 
 In order to submit data to the National Institute of Mental Health Data Archives (NDA), users must
 validate their data to ensure it complies with the required format. This is done using the NDA
@@ -199,19 +199,19 @@ run, but include the -r flag and the directory where all the files were being do
 `downloadcmd path/to/all/s3/txt/file/alls3.txt -t -r /Users/<your_user>/AWS_downloads`
  
 
-## Staging Data for Submission - mindar
+## Staging Data for Submission – mindar command
 The 'mindar' command is a new script added to the nda-tools module to facilitate:
-1. creating and deleting mindars
-2. adding and removing tables from/to mindars
-3. importing and exporting data from/to mindars
-4. creating NDA submissions from data stored in a mindar   
+1. creating and deleting miNDARs
+2. adding and removing tables from/to miNDARs
+3. importing and exporting data from/to miNDARs
+4. creating NDA submissions from data stored in a miNDARs   
 
 The mindar command is being provided to select NDA users for the purpose of creating RDB staging environments (miNDAR's) for NDA submission data. The mindar 
 command will also automate the process of creating NDA submissions from the miNDAR, which should accelerate the submission process for certain research projects.
 
 **Note** - At this time, this feature is experimental and is only available to a limited selection of users. If you would like access
 to this feature, please reach out to the NDA Help Desk for assistance.
-### Using the Tool	
+### Using the Tool 
    To use the tool, you will need to start by downloading the tool from TestPyPi. After that you can being creating your mindar and adding the necessary data-structures. 
 #### Downloading/Installing the tool
 The version of NDA tools containing the mindar command is experimental and is currently only available on TestPyPi. 
@@ -225,79 +225,79 @@ Confirm that the tool is installed by running
  ```
  mindar -h
 ```   
-## Creating an empty Mindar
-Enter the following command to create an empty mindar
+## Creating an empty miNDAR
+Enter the following command to create an empty miNDAR
 ```
 mindar create --nickname  <name here> --mpasword <mindar-password-here>
 ```
-After this command completes, an empty mindar for your user will have been created. The connection information required to connect directly to to this DB will be output to the command line. 
+After this command completes, an empty miNDAR for your user will have been created. The connection information required to connect directly to this DB will be output to the command line. 
  
-**Note** - In Oracle terminology, schema is equivilent to a DB user. In this document, we use the terms schema and username interchangably. 
+**Note** - In Oracle terminology, schema is equivalent to a DB user. In this document, we use the terms schema and username interchangeably. 
  
 ##### Command line args  
 - **mpassword** - _required_ - the password entered here will be the password that you need to use in order to connect to the DB
 - **nickname** - _optional_ - the value provided here will become the name of the mindar and associated package. 
 If none is provided, a default name of 'MINDAR_BLANK_PKG_XXXXX' will be assigned, where XXXXX is the package-id created for the mindar.
 
-## Showing existing mindars
-The following command will show all mindars associated with the current user. 
+## Showing existing miNDAR
+The following command will show all miNDARs associated with the current user. 
 ```
   mindar show --include-deleted
 ``` 
-After this command completes, a table will be output to the console containing basic information about each mindar associated with the current user.
+After this command completes, a table will be output to the console containing basic information about each miNDAR associated with the current user.
  
 ##### Command line args
-- **include-deleted** - _optional_ - if specified, the output will include mindar's that have been deleted.
+- **include-deleted** - _optional_ - if specified, the output will include miNDARs that have been deleted.
      
-## Deleting a mindar
-This command is provided in the event that a mindar is no longer required or if a mindar becomes corrupt and the user would prefer to start over from scratch. 
+## Deleting a miNDAR
+This command is provided in the event that a miNDAR is no longer required or if a miNDAR becomes corrupt and the user would prefer to start over from scratch. 
 
-The following command will delete a mindar
+The following command will delete a miNDAR 
 ```
 mindar delete --force <schema> 
 ```
-After this command completes, a Delete request will be initiated for the mindar specified. The user will be prompted for confirmation unless the --force flag is specified.
+After this command completes, a Delete request will be initiated for the miNDAR specified. The user will be prompted for confirmation unless the --force flag is specified.
 
 ##### Command line args 
 - **force** - _optional_ - If provided, no confirmation message will be printed to the console. 
 - **schema** - _required_ - The schema corresponding to the mindar to be deleted.
      
-## Adding tables to a Mindar
-Enter the following command to add a table to a mindar
+## Adding tables to a miNDAR
+Enter the following command to add a table to a miNDAR
 ```
 mindar tables add image03,genomics03,datastructureexample07  --schema <schema>
 ``` 
-This command will attempt to add each table specified at the command line to the mindar, one by one. If an error is encountered during the addition of one of the tables to the mindar, the tool will display an error message and continue onto the next table in the list. The tables argument must be a comma delimitted list without spaces. If a table is specified on the command line that already exists in the mindar, it will be skipped over during processing and the data in that table will not be affected by the command.
+This command will attempt to add each table specified at the command line to the miNDAR, one by one. If an error is encountered during the addition of one of the tables to the miNDAR, the tool will display an error message and continue onto the next table in the list. The tables argument must be a comma delimited list without spaces. If a table is specified on the command line that already exists in the miNDAR, it will be skipped over during processing and the data in that table will not be affected by the command.
 
 ##### Command line args
-- **tables** - _required_ - comma delimitted list of data-structure short-names to add to mindar. The list of data-structures that are available to add come from the shared data-structure list available via the data-dictionary api. (https://nda.nih.gov/api/datadictionary/docs/swagger-ui.html) 
-- **schema** - _required_ - schema corresponding to the mindar to add tables to.
+- **tables** - _required_ - comma delimited list of data-structure short-names to add to miNDAR. The list of data-structures that are available to add come from the shared data-structure list available via the data-dictionary api. (https://nda.nih.gov/api/datadictionary/docs/swagger-ui.html) 
+- **schema** - _required_ - schema corresponding to the miNDAR to add tables to.
      
-## Showing existing tables in a mindar
-The following command will show all the tables contained in a particular mindar. 
+## Showing existing tables in a miNDAR
+The following command will show all the tables contained in a particular miNDAR. 
 ```
 mindar describe --refresh-stats <schema>
 ``` 
-After this command completes, a table will be output to the console containing basic information about each table inside the mindar with the specified schema
+After this command completes, a table will be output to the console containing basic information about each table inside the miNDAR with the specified schema
  
 ##### Command line args
 - **refresh-stats** - _optional_ - if specified, stats will be gathered for the schema before retrieving table information. Gathering stats will make the number of rows displayed for each table more accurate. The approximate number of rows is retrieved from the all_tab_columns table, which reflects the most recent stats gathered by the DB. For more information about gathering schema statistics, see https://docs.oracle.com/cd/A84870_01/doc/server.816/a76992/stats.htm
      
-## Dropping tables from a Mindar
-Enter the following command to remove a table to a mindar
+## Dropping tables from a miNDAR
+Enter the following command to remove a table to a miNDAR
 ```
 mindar tables drop image03,genomics03,datastructureexample07  --schema <schema>
 ``` 
-This command will attempt to drop each table specified at the command line to the mindar, one by one. If an error is encountered during the processing of one of the tables , the tool will display an error message and continue onto the next table in the list. The tables argument must be a comma delimitted list without spaces. If a table is specified on the command line that does not exist in the mindar, it will be skipped over during processing and the data in that table will not be affected by the command.
+This command will attempt to drop each table specified at the command line to the miNDAR, one by one. If an error is encountered during the processing of one of the tables, the tool will display an error message and continue onto the next table in the list. The tables argument must be a comma delimited list without spaces. If a table is specified on the command line that does not exist in the miNDAR, it will be skipped over during processing and the data in that table will not be affected by the command.
     
-## Recreating tables in a mindar
+## Recreating tables in a miNDAR
 This command is provided in the even that a user wants to undo edits made to table structures. 
 
-Enter the following command to drop and re-add tables to a mindar. 
+Enter the following command to drop and re-add tables to a miNDAR. 
 ```
   mindar tables reset image03,genomics03,datastructureexample07  --schema <schema>
 ``` 
-This command will attempt to drop each table specified (if it exists in the mindar) and then re-add the table to the mindar. At the end of this command, each table will not contain any rows and the table structure will match the latest structure definition retrieved from the data-dictionary api (https://nda.nih.gov/api/datadictionary/docs/swagger-ui.html). If an error is encountered during the processing of one of the tables , the tool will display an error message and continue onto the next table in the list. The tables argument must be a comma delimitted list without spaces. 
+This command will attempt to drop each table specified (if it exists in the miNDAR) and then re-add the table to the miNDAR. At the end of this command, each table will not contain any rows and the table structure will match the latest structure definition retrieved from the data-dictionary API (https://nda.nih.gov/api/datadictionary/docs/swagger-ui.html). If an error is encountered during the processing of one of the tables, the tool will display an error message and continue onto the next table in the list. The tables argument must be a comma delimited list without spaces. 
 
 ## Further Assistance
 If you have any problems with this validation tool python client, or would like to provide feedback/comments,
