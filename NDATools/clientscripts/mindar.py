@@ -1,11 +1,16 @@
 import argparse
 from NDATools.MindarManager import *
-from datetime import datetime
+import csv
+import time
+import atexit
+import sys
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.set_defaults(func=default)
     parser.add_argument('--url', dest='url')
+    parser.add_argument('--profile', action='store_true', help='Enable runtime profiling.')
 
     subparsers = parser.add_subparsers(dest='subparser_name')
 
@@ -16,7 +21,7 @@ def parse_args():
     make_subcommand(subparsers, 'validate', validate_mindar)  # mindar validate
     make_subcommand(subparsers, 'submit', submit_mindar)  # mindar submit
     make_subcommand(subparsers, 'export', export_mindar)  # mindar export
-    make_subcommand(subparsers, 'import', import_mindar)  # mindar import
+    make_subcommand(subparsers, 'import', import_mindar, [require_schema, mindar_import_args])  # mindar import
 
     table_parser = make_subcommand(subparsers, 'tables', default)  # mindar table
     table_subparser = table_parser.add_subparsers(dest='table_subparser_name')
@@ -44,7 +49,7 @@ def make_subcommand(subparser, command, method, provider=None):
 
 
 def show_mindar_args(parser):
-    parser.add_argument('--include-deleted', action='store_true', help='Include deleted miNDARs in output')
+    parser.add_argument('--include-deleted', dest='include_deleted', action='store_true', help='Include deleted miNDARs in output')
 
 
 def create_mindar_args(parser):
@@ -76,12 +81,20 @@ def describe_mindar_args(parser):
 
 
 def require_schema(parser):
-    parser.add_argument('schema')
+    parser.add_argument('schema', help='miNDAR schema name')
 
 
 def mindar_password_args(parser):
     parser.add_argument('--mpassword', dest='mindar_password', help='miNDAR password')
     parser.add_argument('--mcreds', dest='mindar_cred_file', help='miNDAR credentials file')
+
+
+def mindar_import_args(parser):
+    parser.add_argument('table', help='miNDAR schema table name')
+    parser.add_argument('files', nargs='+', help='CSV data files')
+    parser.add_argument('--validate', dest='validate', action='store_true')
+    parser.add_argument('--continue-on-error', dest='error_continue', action='store_true')
+    parser.add_argument('--chunk-size', type=int, default=10, dest='chunks', help='How many rows should each request contain')
 
 
 def default(args, config, mindar):
@@ -92,23 +105,23 @@ def create_mindar(args, config, mindar):
     requires_mindar_password(args, True)
 
     # if args.package:
-    #     print('Creating a mindar for package {}'.format(args.package))
+    #     print('Creating a miNDAR for package {}'.format(args.package))
     # else:
-    #     print('Creating an empty mindar...')
+    #     print('Creating an empty miNDAR...')
 
     # response = mindar.create_mindar(package_id=args.package, password=args.mindar_password, nickname=args.nickname)
-    print('Creating an empty mindar, this might take some time...')
+    print('Creating an empty miNDAR, this might take some time...')
     response = mindar.create_mindar(password=args.mindar_password, nickname=args.nickname)
     print()
-    print('------ Mindar Created ------')
+    print('------ MiNDAR Created ------')
     print("Current Status: {}".format(response['status']))
     print("Package ID: {}".format(response['package_id']))
     print("Package Name: {}".format(response['name']))
     print()
-    print("Mindar Host Name: {}".format(response['host']))
-    print("Mindar Port: {}".format(response['port']))
-    print("Mindar Service: {}".format(response['service']))
-    print("Mindar Username: {}".format(response['schema']))
+    print("MiNDAR Host Name: {}".format(response['host']))
+    print("MiNDAR Port: {}".format(response['port']))
+    print("MiNDAR Service: {}".format(response['service']))
+    print("MiNDAR Username: {}".format(response['schema']))
     print()
     print("To connect to your miNDAR, download a client like SQL Developer and enter the connection details above."
           " Be sure to enter the password that you specified here")
@@ -118,15 +131,15 @@ def delete_mindar(args, config, mindar):
     print('Before deleting your miNDAR, please make sure there are no active connections or the delete operation will not succeed.'.format(args.schema))
 
     if not args.force_delete:
-        verify = input('Are you sure you want to delete mindar: {}? (Y/N) '.format(args.schema))
+        verify = input('Are you sure you want to delete miNDAR: {}? (Y/N) '.format(args.schema))
 
         if verify.lower() != 'y':
             print('Aborting.')
             return
 
-    print('Deleting mindar: {}'.format(args.schema))
+    print('Deleting miNDAR: {}'.format(args.schema))
 
-    response = mindar.delete_mindar(args.schema)
+    mindar.delete_mindar(args.schema)
 
     print('Delete Initiated for miNDAR {}'.format(args.schema))
 
@@ -144,20 +157,20 @@ def show_mindar(args, config, mindar):
     num_mindar = len(response)
 
     if num_mindar <= 0:
-        print('This user has no mindars, you can create one by executing \'mindar create\'.')
+        print('This user has no miNDARs, you can create one by executing \'mindar create\'.')
         return
 
-    print('Showing {} mindars...'.format(num_mindar))
+    print('Showing {} miNDARs...'.format(num_mindar))
     print()
-    table_format ='{:<40} {:<40} {:<15} {:<25} {:<8}'
-    print(table_format.format('Name','Schema','Package Id','Status','Created Date'))
+    table_format = '{:<40} {:<40} {:<15} {:<25} {:<8}'
+    print(table_format.format('Name', 'Schema', 'Package Id', 'Status', 'Created Date'))
 
     for mindar in response:
         print(table_format.format(mindar['name'],
-                                         mindar['schema'],
-                                         mindar['package_id'],
-                                         mindar['status'],
-                                         mindar['created_date']))
+                                  mindar['schema'],
+                                  mindar['package_id'],
+                                  mindar['status'],
+                                  mindar['created_date']))
 
 
 def export_mindar(args, config, mindar):
@@ -165,13 +178,74 @@ def export_mindar(args, config, mindar):
 
 
 def import_mindar(args, config, mindar):
-    print('Import, Mindar!')
+    print('---- Debug lines ----')
+    print('validate: {}'.format(args.validate))
+    print('continue: {}'.format(args.error_continue))
+    print('chunk size: {}'.format(args.chunks))
+    print('files: {}'.format(args.files))
+    print('schema: {}'.format(args.schema))
+    print('table: {}'.format(args.table))
+    print('---- End debug lines ----')
+
+    data = []
+    count = 1
+
+    for file in args.files:
+        file_data = []
+
+        with open(file, 'r') as line:
+            temp = []
+
+            for rows in csv.reader(line, dialect='excel-tab'):
+                temp.append(rows)
+
+                if count % args.chunks == 0:
+                    file_data.append(temp)
+                    temp = []
+
+                count += 1
+
+            if temp:
+                file_data.append(temp)
+
+        data.append(file_data)
+
+    file_num = 1
+
+    for file_data in data:
+        print('File #{}:'.format(file_num))
+        print('    Total Chunks: {}'.format(len(file_data)))
+
+        chunk_num = 1
+
+        for chunk in file_data:
+            if sys.version_info.major >= 3:
+                print('    Pushing Chunk #{}...'.format(chunk_num), end=" ")
+            else:
+                print('    Pushing Chunk #{}... '.format(chunk_num)),
+
+            try:
+                payload = ''
+
+                for row in chunk:
+                    payload += '{}\n'.format(','.join(row))
+
+                response = mindar.import_data_csv(args.schema, args.table, payload)
+                print('Done!')
+                print('{}'.format(response))
+            except Exception as e:
+                if not args.error_continue:
+                    raise e
+
+            chunk_num += 1
+
+        file_num += 1
 
 
 def filter_existing_tables(schema, test_tables, mindar):
     table_list = set(map(lambda x: x.lower(), test_tables))
     response = mindar.show_tables(schema)
-    structures = { ds['shortName'].lower() for ds in response['dataStructures'] }
+    structures = {ds['shortName'].lower() for ds in response['dataStructures']}
     return list(filter(lambda table: table in structures, table_list))
 
 
@@ -271,13 +345,13 @@ def describe_mindar(args, config, mindar):
     if args.refresh_stats:
         print('Refreshing stats - this can take several minutes...')
         mindar.refresh_stats(args.schema)
-        print('Stats for mindar {} have been refreshed'.format(args.schema))
+        print('Stats for miNDAR {} have been refreshed'.format(args.schema))
 
     response = mindar.show_tables(args.schema)
     structures = response['dataStructures']
 
     if len(structures) <= 0:
-        print('This mindar has no tables yet. You can add one by executing \'mindar add-table <table-name>\'.')
+        print('This miNDAR has no tables yet. You can add one by executing \'mindar add-table <table-name>\'.')
         return
 
     structures.sort(key=lambda x: x['shortName'])
@@ -300,7 +374,7 @@ def request_warning():
 
 def requires_mindar_password(args, confirm=False):
     if not args.mindar_password and not args.mindar_cred_file:
-        args.mindar_password = getpass.getpass('Please enter this mindar\'s access password: ')
+        args.mindar_password = getpass.getpass('Please enter this miNDAR\'s access password: ')
 
         if confirm:
             confirm_password = ''
@@ -314,7 +388,7 @@ def requires_mindar_password(args, confirm=False):
         print('Opening credentials file...')
         with open(args.mindar_cred_file, 'r') as cred_file:  # TODO: Verify secure permissions before
             args.mindar_password = cred_file.read()
-        print('Loaded mindar password from credentials file!')
+        print('Loaded miNDAR password from credentials file!')
 
 
 def load_config(args):
@@ -343,8 +417,15 @@ def load_config(args):
     return config
 
 
+def print_time_exit(start_time):
+    print('Execution took %.2fs' % (time.time() - start_time))
+
+
 def main():
     args = parse_args()
+
+    if args.profile:
+        atexit.register(print_time_exit, start_time=time.time())
 
     config = load_config(args)
     mindar = MindarManager(config)
