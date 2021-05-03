@@ -13,6 +13,8 @@ import json as json_lib
 import signal
 import os
 import logging
+from enum import Enum, auto
+from inspect import signature
 
 from NDATools.Configuration import ClientConfiguration
 
@@ -38,6 +40,7 @@ else:
 
 import xml.etree.ElementTree as ET
 
+
 class Protocol(object):
     CSV = "csv"
     XML = "xml"
@@ -46,6 +49,137 @@ class Protocol(object):
     @staticmethod
     def get_protocol(cls):
         return cls.JSON
+
+
+class ContentType(Enum):
+    CSV = "text/csv"
+    XML = "text/xml"
+    JSON = "application/json"
+
+
+class Verb(Enum):
+    GET = auto()
+    POST = auto()
+    PUT = auto()
+    DELETE = auto()
+    UPDATE = auto()
+
+
+def report_error(req, response):
+    if 'error' not in response and 'message' not in response:
+        message = 'Error response from server: {}'.format(response)
+    else:
+        e = response['error'] if 'error' in response else 'An error occurred during processing of the last request'
+        m = response['message'] if 'message' in response else 'No Error Message Available'
+        message = '{}: {}'.format(e, m)
+
+    print(message)
+
+
+def request(endpoint, verb=Verb.GET, content_type=ContentType.JSON, data=None, headers=None, num_retry=0,
+            retry_codes=None, error_consumer=report_error, timeout=300, username=None, password=None):
+
+    if retry_codes is None:
+        retry_codes = [504]
+
+    error_msg = '{} parameter is not of type {}'
+
+    if endpoint and not isinstance(endpoint, str):
+        raise TypeError(error_msg.format('endpoint', 'str'))
+
+    if verb and not isinstance(verb, Verb):
+        raise TypeError(error_msg.format('verb', 'Verb'))
+
+    if headers is None:
+        headers = {
+            'content-type': content_type.value
+        }
+
+    if content_type and not isinstance(content_type, ContentType):
+        raise TypeError(error_msg.format('content_type', 'ContentType'))
+
+    if num_retry and not isinstance(num_retry, int):
+        raise TypeError(error_msg.format('num_retry', 'int'))
+
+    if retry_codes and not isinstance(retry_codes, list):
+        raise TypeError(error_msg.format('retry_codes', 'list'))
+
+    if error_consumer and not callable(error_consumer):
+        raise TypeError('error_consumer is not callable')
+
+    if timeout and not isinstance(timeout, int):
+        raise TypeError(error_msg.format('timeout', 'int'))
+
+    if username and not isinstance(username, str):
+        raise TypeError(error_msg.format('username', 'str'))
+
+    if password and not isinstance(password, str):
+        raise TypeError(error_msg.format('password', 'str'))
+
+    if headers and not isinstance(headers, dict):
+        raise TypeError(error_msg.format('headers', 'dict'))
+
+    # This method is written like this because we don't want this error to
+    # present if there is no authentication data supplied
+    if (username and not password) or (password and not username):
+        raise ValueError('username AND password are required')
+
+    if retry_codes:
+        for c in retry_codes:
+            if c and not isinstance(c, int):
+                raise TypeError('retry_codes must be list of type int')
+
+    if content_type is ContentType.JSON and data:
+        try:
+            data = json_lib.dumps(data)
+        except ValueError:
+            raise TypeError('data cannot be converted to json object')
+
+    retry = None
+
+    if num_retry and retry_codes:
+        retry = requests.packages.urllib3.util.retry.Retry(total=num_retry, status_forcelist=retry_codes)
+
+    if 'content-type' not in headers:
+        headers['content-type'] = content_type.value
+
+    auth = None
+
+    # We know that if username is present password will be present too due to error checking
+    if username:
+        auth = requests.auth.HTTPBasicAuth(username, password)
+
+    session = requests.session()
+
+    if retry:
+        session.mount(endpoint, HTTPAdapter(max_retries=retry))
+    else:
+        session.mount(endpoint, HTTPAdapter())
+
+    sig = signature(error_consumer)
+
+    if len(sig.parameters) != 2:
+        raise ValueError('error_consumer requires 2 parameters, but has {}'.format(len(sig.parameters)))
+
+    req = None
+
+    try:
+        req = session.send(requests.Request(verb.name, endpoint, headers, auth=auth, data=data).prepare(), timeout=timeout, stream=False)
+    except requests.exceptions.RequestException as e:
+        print('\nAn error occurred while making {} request, check your endpoint configuration:\n'.
+              format(e.request.method))
+        exit_client(signal.SIGTERM)
+
+    try:
+        result = json_lib.loads(req.text)
+    except ValueError:
+        result = req.text
+
+    if req.ok:
+        return result
+
+    error_consumer(req, result)
+
 
 def api_request(api, verb, endpoint, data=None, session=None, json=None):
 
@@ -120,7 +254,7 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None):
 
         if 'application/json' in r.headers['Content-Type'] and r.text:
             response = json_lib.loads(r.text)
-            if not 'error' in response and not 'message' in response:
+            if 'error' not in response and 'message' not in response:
                 message = 'Error response from server: {}'.format(response)
             else:
                 e = response['error'] if 'error' in response else 'An error occurred during processing of the last request'

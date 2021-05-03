@@ -39,9 +39,11 @@ class MindarManager:
         if nickname:
             payload['nick_name'] = nickname
 
-        response, session = api_request(self, "POST", self.__make_url(), json=payload)
+        return request(self.__make_url(), verb=Verb.POST, data=payload, username=self.config.username, password=self.config.password)
 
-        return response
+        # response, session = api_request(self, "POST", self.__make_url(), json=payload)
+        #
+        # return response
 
     def show_mindars(self, include_deleted=False):
         query_params = {}
