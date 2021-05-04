@@ -236,6 +236,8 @@ def import_mindar(args, config, mindar):
             except Exception as e:
                 if not args.error_continue:
                     raise e
+                else:
+                    print('Failed!')
 
             chunk_num += 1
 
