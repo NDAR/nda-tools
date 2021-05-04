@@ -78,8 +78,11 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None):
         data = json_lib.dumps(json)
 
     retry_request = requests.packages.urllib3.util.retry.Retry(
-        total=1,
-        status_forcelist=[504]
+        total=7,
+        read=20,
+        connect=20,
+        backoff_factor=3,
+        status_forcelist=(502, 504)
     )
 
     headers = {'accept': 'application/json'}

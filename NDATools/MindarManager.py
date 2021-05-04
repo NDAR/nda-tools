@@ -9,6 +9,10 @@ class MindarManager:
     def __init__(self, config):
         self.config = config
         self.url = config.mindar
+        self.session = requests.Session()
+        a = requests.adapters.HTTPAdapter(max_retries=requests.packages.urllib3.util.retry.Retry(total=6, status_forcelist=[502], backoff_factor=3,  read=300, connect=20))
+        self.session.mount('https://', a)
+        self.session.mount('http://', a)
 
     def __make_url(self, extension='/'):
         return self.url + extension
@@ -70,20 +74,18 @@ class MindarManager:
         if os.path.isfile(final_csv_dest):
             os.remove(final_csv_dest)
 
-        try:
             with open(final_csv_dest, 'wb') as f:
                 print('Exporting table {} to {}'.format(table, final_csv_dest))
                 basic_auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
-                headers = { 'Accept' : 'text/plain'}
+                self.session.headers['Accept']='text/plain'
 
                 WAIT_TIME_SEC = 60 * 60 * .5
-                s = requests.Session() # use of a session instead of a 'request' object directly avoids errors during read and automatically adds features like 'Keep-Alive'
-                with s.get(self.__make_url('/{}/tables/{}/records?include_table_row_id={}'.format(schema, table, include_id)), stream=True, auth=basic_auth, headers=headers, timeout=WAIT_TIME_SEC) as r:
+                with self.session.get(self.__make_url('/{}/tables/{}/records?include_table_row_id={}'.format(schema, table, include_id)), stream=True, auth=basic_auth, timeout=WAIT_TIME_SEC) as r:
                     if not r.ok:
                         r.raise_for_status()
                     line_count = 0
                     PROGRESS_REPORT_INTERVAL = 10000
-                    for line in r.iter_lines():
+                    for line in r.iter_content(chunk_size=None):
                         line_count += 1
                         # filter out keep-alive new lines
                         if (line_count - 1 ) % PROGRESS_REPORT_INTERVAL == 0:
@@ -94,7 +96,5 @@ class MindarManager:
                             f.write(b"\n")
 
                 f.flush()
-        finally:
-            if s:
-                s.close()
+
 
