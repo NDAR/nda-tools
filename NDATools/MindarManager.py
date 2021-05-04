@@ -74,27 +74,24 @@ class MindarManager:
         if os.path.isfile(final_csv_dest):
             os.remove(final_csv_dest)
 
-            with open(final_csv_dest, 'wb') as f:
-                print('Exporting table {} to {}'.format(table, final_csv_dest))
-                basic_auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
-                self.session.headers['Accept']='text/plain'
+        with open(final_csv_dest, 'wb') as f:
+            print('Exporting table {} to {}'.format(table, final_csv_dest))
+            basic_auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
+            self.session.headers['Accept']='text/plain'
 
-                WAIT_TIME_SEC = 60 * 60 * .5
-                with self.session.get(self.__make_url('/{}/tables/{}/records?include_table_row_id={}'.format(schema, table, include_id)), stream=True, auth=basic_auth, timeout=WAIT_TIME_SEC) as r:
-                    if not r.ok:
-                        r.raise_for_status()
-                    line_count = 0
-                    PROGRESS_REPORT_INTERVAL = 10000
-                    for line in r.iter_content(chunk_size=None):
-                        line_count += 1
-                        # filter out keep-alive new lines
-                        if (line_count - 1 ) % PROGRESS_REPORT_INTERVAL == 0:
-                            print(
-                                'Exporting {} {} rows (currently at row #{})'.format('first' if line_count==1 else 'next', PROGRESS_REPORT_INTERVAL, line_count))
-                        if line:
-                            f.write(line)
-                            f.write(b"\n")
+            WAIT_TIME_SEC = 60 * 60 * .5
+            with self.session.get(self.__make_url('/{}/tables/{}/records?include_table_row_id={}'.format(schema, table, include_id)), stream=True, auth=basic_auth, timeout=WAIT_TIME_SEC) as r:
+                if not r.ok:
+                    r.raise_for_status()
+                line_count = 0
+                PROGRESS_REPORT_INTERVAL = 10000
+                for line in r.iter_lines(chunk_size=None):
+                    line_count += 1
+                    # filter out keep-alive new lines
+                    if (line_count - 1 ) % PROGRESS_REPORT_INTERVAL == 0:
+                        print(
+                            'Exporting {} {} rows (currently at row #{}) at {}'.format('first' if line_count==1 else 'next', PROGRESS_REPORT_INTERVAL, line_count, datetime.now()))
+                    if line:
+                        f.write(line + b"\n")
 
-                f.flush()
-
-
+            f.flush()

@@ -97,12 +97,6 @@ def default(args, config, mindar):
 def create_mindar(args, config, mindar):
     requires_mindar_password(args, True)
 
-    # if args.package:
-    #     print('Creating a mindar for package {}'.format(args.package))
-    # else:
-    #     print('Creating an empty mindar...')
-
-    # response = mindar.create_mindar(package_id=args.package, password=args.mindar_password, nickname=args.nickname)
     print('Creating an empty mindar, this might take some time...')
     response = mindar.create_mindar(password=args.mindar_password, nickname=args.nickname)
     print()
