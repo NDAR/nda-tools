@@ -52,8 +52,5 @@ class MindarManager:
         return self.__authenticated_request(self.__make_url('/{}/refresh_stats'), path_params=[schema], verb=Verb.POST)
 
     def import_data_csv(self, schema, table_name, csv_data):
-        print('Sending:')
-        print(csv_data)
-
         return self.__authenticated_request(self.__make_url('/{}/tables/{}/records/'), path_params=[schema, table_name],
                                             content_type=ContentType.CSV, verb=Verb.POST, data=csv_data)

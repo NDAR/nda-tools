@@ -192,10 +192,10 @@ def import_mindar(args, config, mindar):
 
     for file in args.files:
         file_data = []
+        header_line = None
+        temp = []
 
         with open(file, 'r') as line:
-            temp = []
-
             for rows in csv.reader(line, dialect='excel-tab'):
                 temp.append(rows)
 
@@ -203,7 +203,14 @@ def import_mindar(args, config, mindar):
                     file_data.append(temp)
                     temp = []
 
+                    if header_line:
+                        temp.append(header_line)
+
                 count += 1
+
+                if not header_line:
+                    header_line = rows
+                    count -= 1  # Here to prevent header row from counting as a row towards chunking
 
             if temp:
                 file_data.append(temp)
@@ -230,7 +237,7 @@ def import_mindar(args, config, mindar):
                 for row in chunk:
                     payload += '{}\n'.format(','.join(row))
 
-                response = mindar.import_data_csv(args.schema, args.table, payload)
+                response = mindar.import_data_csv(args.schema, args.table.lower(), payload)
                 print('Done!')
                 print('{}'.format(response))
             except Exception as e:
