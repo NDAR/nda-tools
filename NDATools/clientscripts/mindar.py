@@ -2,9 +2,10 @@ import argparse
 import concurrent
 from concurrent.futures._base import ALL_COMPLETED
 from concurrent.futures.thread import ThreadPoolExecutor
+import itertools
 
 from NDATools.MindarManager import *
-from datetime import datetime
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -175,9 +176,6 @@ def export_mindar(args, config, mindar):
         tables.sort()
 
     dir = args.download_dir or '{}/{}'.format(os.path.expanduser('~'), args.schema)
-
-
-    import itertools
     success_count = itertools.count()
     def increment_success(f):
         if not f.exception():
@@ -186,21 +184,13 @@ def export_mindar(args, config, mindar):
     with ThreadPoolExecutor(max_workers=args.worker_threads) as executor:
         tasks = []
         for table in tables:
-            start = datetime.now()
-            try:
-                #mindar.export_table_to_file(args.schema, table, dir, args.include_id)
-                t = executor.submit(mindar.export_table_to_file, args.schema, table, dir, args.include_id)
-                tasks.append(t)
-                t.add_done_callback(increment_success)
-            except Exception as e:
-                print('Error while trying to export table {}. Error was {}'.format(table, e))
-                print('Export attempt took {}'.format(datetime.now() - start))
-                # for debugging
-                print (get_stack_trace())
-                logging.error(get_stack_trace())
+            t = executor.submit(mindar.export_table_to_file, args.schema, table, dir, args.include_id)
+            tasks.append(t)
+            t.add_done_callback(increment_success)
     concurrent.futures.wait(tasks, timeout=None, return_when=ALL_COMPLETED)
 
     print()
+    success_count = re.search(r'count\((\d+)\)', str(success_count)).group(1)
     print('Export of {}/{} tables in schema {} finished at {}'.format(success_count, len(tables), args.schema, datetime.now()))
     exit_client(signal.SIGTERM)
 
