@@ -10,7 +10,7 @@ class MindarManager:
         self.config = config
         self.url = config.mindar
         self.session = requests.Session()
-        a = requests.adapters.HTTPAdapter(max_retries=requests.packages.urllib3.util.retry.Retry(total=6, status_forcelist=[502], backoff_factor=3,  read=300, connect=20))
+        a = requests.adapters.HTTPAdapter(max_retries=requests.packages.urllib3.util.retry.Retry(total=6, status_forcelist=[502,503], backoff_factor=3,  read=300, connect=20))
         self.session.mount('https://', a)
         self.session.mount('http://', a)
 
@@ -90,8 +90,9 @@ class MindarManager:
                     # filter out keep-alive new lines
                     if (line_count - 1 ) % PROGRESS_REPORT_INTERVAL == 0:
                         print(
-                            'Exporting {} {} rows (currently at row #{}) at {}'.format('first' if line_count==1 else 'next', PROGRESS_REPORT_INTERVAL, line_count, datetime.now()))
+                            'Exporting {} {} rows to  {} (currently at row #{}) at {}'.format('first' if line_count==1 else 'next', PROGRESS_REPORT_INTERVAL, f.name, line_count, datetime.now()))
                     if line:
                         f.write(line + b"\n")
 
             f.flush()
+            print ('Done exporting table {} to {} at {}'.format(table, final_csv_dest, datetime.now() ))

@@ -1,4 +1,8 @@
 import argparse
+import concurrent
+from concurrent.futures._base import ALL_COMPLETED
+from concurrent.futures.thread import ThreadPoolExecutor
+
 from NDATools.MindarManager import *
 from datetime import datetime
 
@@ -79,6 +83,7 @@ def export_mindar_args(parser):
     parser.add_argument('--tables')
     parser.add_argument('--include-id', action='store_true')
     parser.add_argument('--download-dir', help='target directory for download')
+    parser.add_argument('--worker-threads', default='1', help='specifies the number of threads to use for exporting csv''s', type=int)
 
 
 def require_schema(parser):
@@ -161,6 +166,7 @@ def show_mindar(args, config, mindar):
 
 
 def export_mindar(args, config, mindar):
+
     if args.tables:
         tables = args.tables.split(',')
     else:
@@ -169,16 +175,30 @@ def export_mindar(args, config, mindar):
         tables.sort()
 
     dir = args.download_dir or '{}/{}'.format(os.path.expanduser('~'), args.schema)
-    success_count = 0
-    for table in tables:
-        try:
-            mindar.export_table_to_file(args.schema, table, dir, args.include_id)
-            success_count += 1
-        except Exception as e:
-            print('Error while trying to export table {}. Error was {}'.format(table, e))
-            # for debugging
-            # print (get_stack_trace())
-            logging.error(get_stack_trace())
+
+
+    import itertools
+    success_count = itertools.count()
+    def increment_success(f):
+        if not f.exception():
+            next(success_count)
+
+    with ThreadPoolExecutor(max_workers=args.worker_threads) as executor:
+        tasks = []
+        for table in tables:
+            start = datetime.now()
+            try:
+                #mindar.export_table_to_file(args.schema, table, dir, args.include_id)
+                t = executor.submit(mindar.export_table_to_file, args.schema, table, dir, args.include_id)
+                tasks.append(t)
+                t.add_done_callback(increment_success)
+            except Exception as e:
+                print('Error while trying to export table {}. Error was {}'.format(table, e))
+                print('Export attempt took {}'.format(datetime.now() - start))
+                # for debugging
+                print (get_stack_trace())
+                logging.error(get_stack_trace())
+    concurrent.futures.wait(tasks, timeout=None, return_when=ALL_COMPLETED)
 
     print()
     print('Export of {}/{} tables in schema {} finished at {}'.format(success_count, len(tables), args.schema, datetime.now()))
