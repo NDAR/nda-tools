@@ -1,8 +1,9 @@
 from datetime import datetime
-import http
+
+import requests
 
 from NDATools.Utils import *
-import requests
+
 
 class MindarManager:
 
@@ -10,7 +11,7 @@ class MindarManager:
         self.config = config
         self.url = config.mindar
         self.session = requests.Session()
-        a = requests.adapters.HTTPAdapter(max_retries=requests.packages.urllib3.util.retry.Retry(total=6, status_forcelist=[502,503], backoff_factor=3,  read=300, connect=20))
+        a = requests.adapters.HTTPAdapter(max_retries=requests.packages.urllib3.util.retry.Retry(total=6, status_forcelist=[502, 503], backoff_factor=3, read=300, connect=20))
         self.session.mount('https://', a)
         self.session.mount('http://', a)
 
@@ -54,11 +55,9 @@ class MindarManager:
         response, session = api_request(self, "POST", self.__make_url('/{}/tables?table_name={}'.format(schema, table_name)))
         return response
 
-
     def drop_table(self, schema, table_name):
         response, session = api_request(self, "DELETE", self.__make_url('/{}/tables/{}/'.format(schema, table_name)))
         return response
-
 
     def show_tables(self, schema):
         response, session = api_request(self, "GET", self.__make_url('/{}/tables/'.format(schema)))
@@ -68,7 +67,7 @@ class MindarManager:
         response, session = api_request(self, "POST", self.__make_url('/{}/refresh_stats'.format(schema)))
         return response
 
-    def export_table_to_file(self, schema, table, root_dir='.', include_id=False):
+    def export_table_to_file(self, schema, table, root_dir='.', include_id=False, add_nda_header=False):
         start = datetime.now()
         invalid_structure = False
         try:
@@ -80,7 +79,7 @@ class MindarManager:
             with open(final_csv_dest, 'wb') as f:
                 print('Exporting table {} to {}'.format(table, final_csv_dest))
                 basic_auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
-                self.session.headers['Accept']='text/plain'
+                self.session.headers['Accept'] = 'text/plain'
 
                 WAIT_TIME_SEC = 60 * 60 * .5
                 with self.session.get(self.__make_url('/{}/tables/{}/records?include_table_row_id={}'.format(schema, table, include_id)), stream=True, auth=basic_auth, timeout=WAIT_TIME_SEC) as r:
@@ -89,12 +88,18 @@ class MindarManager:
                             invalid_structure = True
 
                         r.raise_for_status()
+                    if add_nda_header:
+                        version = re.search(r'^.*?(\d+)$', table).group(1)
+                        name = table.rstrip(version)
+                        f.write('{},{}\n'.format(name, version).encode("UTF-8"))
                     for content in r.iter_content(chunk_size=None):
                         if content:
                             f.write(content)
 
                 f.flush()
-                print ('Done exporting table {} to {} at {}'.format(table, final_csv_dest, datetime.now() ))
+                print('Done exporting table {} to {} at {}'.format(table, final_csv_dest, datetime.now()))
+
+                return f.name
 
         except Exception as e:
             if invalid_structure:
