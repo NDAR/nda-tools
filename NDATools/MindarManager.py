@@ -83,16 +83,9 @@ class MindarManager:
             with self.session.get(self.__make_url('/{}/tables/{}/records?include_table_row_id={}'.format(schema, table, include_id)), stream=True, auth=basic_auth, timeout=WAIT_TIME_SEC) as r:
                 if not r.ok:
                     r.raise_for_status()
-                line_count = 0
-                PROGRESS_REPORT_INTERVAL = 10000
-                for line in r.iter_lines(chunk_size=None):
-                    line_count += 1
-                    # filter out keep-alive new lines
-                    if (line_count - 1 ) % PROGRESS_REPORT_INTERVAL == 0:
-                        print(
-                            'Exporting {} {} rows to  {} (currently at row #{}) at {}'.format('first' if line_count==1 else 'next', PROGRESS_REPORT_INTERVAL, f.name, line_count, datetime.now()))
-                    if line:
-                        f.write(line + b"\n")
+                for content in r.iter_content(chunk_size=None):
+                    if content:
+                        f.write(content)
 
             f.flush()
             print ('Done exporting table {} to {} at {}'.format(table, final_csv_dest, datetime.now() ))
