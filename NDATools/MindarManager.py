@@ -70,6 +70,7 @@ class MindarManager:
 
     def export_table_to_file(self, schema, table, root_dir='.', include_id=False):
         start = datetime.now()
+        invalid_structure = False
         try:
             final_csv_dest = os.path.join(root_dir, '{}.csv'.format(table))
 
@@ -84,6 +85,9 @@ class MindarManager:
                 WAIT_TIME_SEC = 60 * 60 * .5
                 with self.session.get(self.__make_url('/{}/tables/{}/records?include_table_row_id={}'.format(schema, table, include_id)), stream=True, auth=basic_auth, timeout=WAIT_TIME_SEC) as r:
                     if not r.ok:
+                        if r.status_code == 404 and 'Data-structure {} does not exist or does not correspond to a data structure'.format(table) in r.text:
+                            invalid_structure = True
+
                         r.raise_for_status()
                     for content in r.iter_content(chunk_size=None):
                         if content:
@@ -93,9 +97,13 @@ class MindarManager:
                 print ('Done exporting table {} to {} at {}'.format(table, final_csv_dest, datetime.now() ))
 
         except Exception as e:
-            print('Error while trying to export table {}. Error was {}'.format(table, e))
-            print('Export attempt took {}'.format(datetime.now() - start))
-            # for debugging
-            print(get_stack_trace())
-            logging.error(get_stack_trace())
+            if invalid_structure:
+                print('Error while trying to export table {}: Could not find corresponding data-structure in NDA.'
+                      ' Only public data-structures can be exported in this iteration of the mindar tool.'.format(table, e))
+            else:
+                print('Error while trying to export table {}. Error was {}'.format(table, e))
+                # for debugging
+                print(get_stack_trace())
+                logging.error(get_stack_trace())
+                print('Export attempt took {}'.format(datetime.now() - start))
             raise e
