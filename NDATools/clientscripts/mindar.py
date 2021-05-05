@@ -85,6 +85,7 @@ def describe_mindar_args(parser):
 def export_mindar_args(parser):
     parser.add_argument('--tables')
     parser.add_argument('--include-id', action='store_true')
+    parser.add_argument('--validate', action='store_true')
     parser.add_argument('--add-nda-header', action='store_true')
     parser.add_argument('--download-dir', help='target directory for download')
     parser.add_argument('--worker-threads', default='1',
@@ -227,10 +228,17 @@ def export_mindar(args, config, mindar):
         tables = [ds['shortName'].lower() for ds in response['dataStructures']]
         tables.sort()
 
+    if args.validate and not args.add_nda_header:
+        print('WARNING - Adding nda-header to exported files even though --add-nda-header argument was not specified, because it is required for validation')
+        args.add_nda_header = True
+
     download_dir = args.download_dir or '{}/{}'.format(os.path.expanduser('~'), args.schema)
 
     files = export_mindar_helper(mindar, tables, args.schema, download_dir, args.include_id, args.worker_threads, args.add_nda_header)
     print('Export of {}/{} tables in schema {} finished at {}'.format(len(files), len(tables), args.schema, datetime.now()))
+    if args.validate:
+        validate_files(file_list=files, warnings=False, build_package=False, threads=args.worker_threads, config=config)
+
     exit_client(signal.SIGTERM)
 
 
