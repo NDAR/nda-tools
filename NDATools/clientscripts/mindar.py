@@ -94,7 +94,7 @@ def mindar_import_args(parser):
     parser.add_argument('files', nargs='+', help='CSV data files')
     parser.add_argument('--validate', dest='validate', action='store_true')
     parser.add_argument('--continue-on-error', dest='error_continue', action='store_true')
-    parser.add_argument('--chunk-size', type=int, default=10, dest='chunks', help='How many rows should each request contain')
+    parser.add_argument('--chunk-size', type=int, default=1000, dest='chunks', help='How many rows should each request contain')
 
 
 def default(args, config, mindar):
@@ -194,6 +194,7 @@ def import_mindar(args, config, mindar):
         file_data = []
         header_line = None
         temp = []
+        print('Chunking: {}...'.format(file))
 
         with open(file, 'r') as line:
             for rows in csv.reader(line, dialect='excel-tab'):
@@ -219,6 +220,9 @@ def import_mindar(args, config, mindar):
 
     file_num = 1
 
+    completed = []
+    errored = []
+
     for file_data in data:
         print('File #{}:'.format(file_num))
         print('    Total Chunks: {}'.format(len(file_data)))
@@ -227,9 +231,10 @@ def import_mindar(args, config, mindar):
 
         for chunk in file_data:
             if sys.version_info.major >= 3:
-                print('    Pushing Chunk #{}...'.format(chunk_num), end=" ")
+                print('    Pushing Chunk #{}...'.format(chunk_num), end=" ", flush=True)
             else:
                 print('    Pushing Chunk #{}... '.format(chunk_num)),
+                sys.stdout.flush()
 
             try:
                 payload = ''
@@ -239,8 +244,20 @@ def import_mindar(args, config, mindar):
 
                 response = mindar.import_data_csv(args.schema, args.table.lower(), payload)
                 print('Done!')
-                print('{}'.format(response))
+                completed.append(response[args.table.lower()])
             except Exception as e:
+                if chunk_num == 1:
+                    index = 0
+                else:
+                    index = completed[chunk_num - 1][-1]
+
+                if sys.version_info.major >= 3:
+                    err = list(range(index, index + args.chunks))
+                else:
+                    err = range(index, index + args.chunks)
+
+                errored.append(err)
+
                 if not args.error_continue:
                     raise e
                 else:
@@ -249,6 +266,18 @@ def import_mindar(args, config, mindar):
             chunk_num += 1
 
         file_num += 1
+
+    print('Import completed!')
+
+    if errored:
+        print('{} chunks produced errors, detailed report below: '.format(len(errored)))
+
+        chunk_num = 1
+
+        for err in errored:
+            print('Chunk {} - Impacting Row Numbers: {}'.format(chunk_num, err))
+
+            chunk_num += 1
 
 
 def filter_existing_tables(schema, test_tables, mindar):
