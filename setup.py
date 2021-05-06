@@ -10,8 +10,8 @@ with open("README.md", "r") as fh:
 setup(
         name='nda_tools',
         description="NIMH Data Archive Python Client",
-        install_requires=['boto3', 'botocore', 'tqdm', 'requests', 'mock', 'pytest'],
-        version=NDATools.__version__,
+        install_requires=['boto3', 'botocore', 'tqdm', 'requests', 'mock', 'pytest', 'packaging'],
+        version= NDATools.__version__,
         long_description=long_description,
         long_description_content_type="text/markdown",
         author='NDA',
