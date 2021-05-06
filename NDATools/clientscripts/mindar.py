@@ -249,7 +249,7 @@ def import_mindar(args, config, mindar):
                 if chunk_num == 1:
                     index = 0
                 else:
-                    index = completed[chunk_num - 1][-1]
+                    index = completed[-1][-1]
 
                 if sys.version_info.major >= 3:
                     err = list(range(index, index + args.chunks))
