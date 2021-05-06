@@ -19,7 +19,7 @@ class Validation:
     def __init__(self, file_list, config, hide_progress, allow_exit=False, thread_num=None):
         self.config = config
         self.hide_progress = hide_progress
-        self.api = self.config.validation_api.strip('/')
+        self.api = self.config.validation_api
         self.thread_num = max([1, multiprocessing.cpu_count() - 1])
         if thread_num:
             self.thread_num = thread_num
@@ -133,7 +133,7 @@ class Validation:
                 else:
                     for error, value in response['errors'].items():
                         for v in value:
-                            column = v['columnName']
+                            column = v['columnName'] if 'columnName' in v else ' '
                             message = v['message']
                             try:
                                 record = v['recordNumber']

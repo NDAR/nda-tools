@@ -106,8 +106,8 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None):
                          timeout=300, stream=False)
 
     except requests.exceptions.RequestException as e:
-        print('\nAn error occurred while making {} request, check your endpoint configuration:\n'.
-              format(e.request.method))
+        print('\nAn error occurred while making {} request to {}, check your endpoint configuration'.
+              format(e.request.method, endpoint))
         logging.error(e)
         if api.__class__.__name__.endswith('Task'):
             api.shutdown_flag.set()

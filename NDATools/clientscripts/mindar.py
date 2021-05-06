@@ -2,8 +2,6 @@ import argparse
 import concurrent
 from concurrent.futures._base import ALL_COMPLETED
 from concurrent.futures.thread import ThreadPoolExecutor
-import itertools
-import tempfile
 
 from NDATools.clientscripts.vtcmd import validate_files
 from NDATools.MindarManager import *
