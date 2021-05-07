@@ -1,4 +1,11 @@
 import argparse
+import concurrent
+from concurrent.futures._base import ALL_COMPLETED
+from concurrent.futures.thread import ThreadPoolExecutor
+import itertools
+import tempfile
+
+from NDATools.clientscripts.vtcmd import validate_files
 from NDATools.MindarManager import *
 import csv
 import time
@@ -18,10 +25,10 @@ def parse_args():
     make_subcommand(subparsers, 'delete', delete_mindar, [delete_mindar_args, require_schema])  # mindar delete
     make_subcommand(subparsers, 'show', show_mindar, [show_mindar_args])  # mindar show
     make_subcommand(subparsers, 'describe', describe_mindar, [describe_mindar_args, require_schema])  # mindar describe
-    make_subcommand(subparsers, 'validate', validate_mindar)  # mindar validate
+    make_subcommand(subparsers, 'validate', validate_mindar, [validate_mindar_args])  # mindar validate
     make_subcommand(subparsers, 'submit', submit_mindar)  # mindar submit
-    make_subcommand(subparsers, 'export', export_mindar)  # mindar export
     make_subcommand(subparsers, 'import', import_mindar, [require_schema, mindar_import_args])  # mindar import
+    make_subcommand(subparsers, 'export', export_mindar, [export_mindar_args, require_schema])  # mindar export
 
     table_parser = make_subcommand(subparsers, 'tables', default)  # mindar table
     table_subparser = table_parser.add_subparsers(dest='table_subparser_name')
@@ -78,6 +85,26 @@ def delete_mindar_args(parser):
 
 def describe_mindar_args(parser):
     parser.add_argument('--refresh-stats', dest='refresh_stats', action='store_true')
+
+
+def export_mindar_args(parser):
+    parser.add_argument('--tables')
+    parser.add_argument('--include-id', action='store_true')
+    parser.add_argument('--validate', action='store_true')
+    parser.add_argument('--add-nda-header', action='store_true')
+    parser.add_argument('--download-dir', help='target directory for download')
+    parser.add_argument('--worker-threads', default='1',
+                        help='specifies the number of threads to use for exporting csv''s', type=int)
+
+
+def validate_mindar_args(parser):
+    parser.add_argument('--files')
+    parser.add_argument('--tables')
+    parser.add_argument('--schema')
+    parser.add_argument('--worker-threads', default='1',
+                        help='specifies the number of threads to use for exporting/validating csv''s', type=int)
+    parser.add_argument('-w', '--warning', action='store_true', help='Returns validation warnings for list of files')
+    parser.add_argument('--download-dir', help='target directory for download')
 
 
 def require_schema(parser):
@@ -145,7 +172,46 @@ def delete_mindar(args, config, mindar):
 
 
 def validate_mindar(args, config, mindar):
-    print('Validate, Mindar!')
+    if args.tables or args.schema:
+        if not args.tables and args.schema:
+            raise Exception('Schema and table args must both be specified. Missing {} arg'.format(
+                'tables' if not args.tables else 'schema'))
+        elif args.files:
+            raise Exception('Schema/table arguments are incompatible with --files argument.')
+    if args.download_dir and args.files:
+        print('Warning: download-dir argument was provided, but does not have any affect when used with --files arg')
+
+    if args.files:
+        file_list = args.files.split(',')
+        invalid_files = []
+        for file in file_list:
+            if not os.path.isfile(file):
+                invalid_files.append(file)
+        if invalid_files:
+            raise Exception('The following files were not found: {}'.format(','.join(invalid_files)))
+    else:
+        download_dir = args.download_dir or '{}/{}'.format(os.path.expanduser('~'), args.schema)
+        if not args.tables:
+            response = mindar.show_tables(args.schema)
+            tables = [ds['shortName'].lower() for ds in response['dataStructures']]
+            tables.sort()
+        else:
+            tables = args.tables.split(',')
+
+        file_list = export_mindar_helper(mindar, tables, args.schema, download_dir, False, args.worker_threads, True)
+        print('Export of {}/{} tables in schema {} finished at {}'.format(len(file_list), len(tables), args.schema,
+                                                                          datetime.now()))
+        successful_table_exports = set(map(lambda f: os.path.basename(f).replace('.csv',''), file_list))
+        for short_name in tables:
+            if not short_name in successful_table_exports:
+                print('WARN - validation for table {} will be skipped because it was not successfully '
+                'exported from the mindar'.format(short_name))
+
+    if not file_list:
+        print('No valid files exist to validate. Fix arguments and re-run')
+        exit_client(signal.SIGTERM)
+
+    validate_files(file_list=file_list, warnings=args.warning, build_package=False, threads=args.worker_threads, config=config)
 
 
 def submit_mindar(args, config, mindar):
@@ -174,7 +240,42 @@ def show_mindar(args, config, mindar):
 
 
 def export_mindar(args, config, mindar):
-    print('Export, Mindar!')
+    if args.tables:
+        tables = args.tables.split(',')
+    else:
+        response = mindar.show_tables(args.schema)
+        tables = [ds['shortName'].lower() for ds in response['dataStructures']]
+        tables.sort()
+
+    if args.validate and not args.add_nda_header:
+        print('WARNING - Adding nda-header to exported files even though --add-nda-header argument was not specified, because it is required for validation')
+        args.add_nda_header = True
+
+    download_dir = args.download_dir or '{}/{}'.format(os.path.expanduser('~'), args.schema)
+
+    files = export_mindar_helper(mindar, tables, args.schema, download_dir, args.include_id, args.worker_threads, args.add_nda_header)
+    print('Export of {}/{} tables in schema {} finished at {}'.format(len(files), len(tables), args.schema, datetime.now()))
+    if args.validate:
+        validate_files(file_list=files, warnings=False, build_package=False, threads=args.worker_threads, config=config)
+
+    exit_client(signal.SIGTERM)
+
+
+def export_mindar_helper(mindar, tables, schema, download_dir, include_id=False, worker_threads=1, add_nda_header=False):
+    files = []
+
+    def increment_success(f):
+        if not f.exception():
+            files.append(f.result())
+
+    with ThreadPoolExecutor(max_workers=worker_threads) as executor:
+        tasks = []
+        for table in tables:
+            t = executor.submit(mindar.export_table_to_file, schema, table, download_dir, include_id, add_nda_header)
+            tasks.append(t)
+            t.add_done_callback(increment_success)
+    concurrent.futures.wait(tasks, timeout=None, return_when=ALL_COMPLETED)
+    return files
 
 
 def import_mindar(args, config, mindar):
@@ -302,7 +403,6 @@ def verify_no_tables_exist(schema, test_tables, mindar):
               ' so they will not be processed at this time: {}'.format(','.join(existing_tables)))
         return existing_tables
 
-
 def add_table_helper(schema, table, mindar):
     try:
         print('Adding table {} to schema {}'.format(table, schema))
@@ -395,8 +495,8 @@ def describe_mindar(args, config, mindar):
     structures.sort(key=lambda x: x['shortName'])
     print('Showing {} tables from {}...'.format(len(structures), args.schema))
     print()
-    table_format ='{:<35} {:<20}'
-    print(table_format.format('Name','Approximate Row Count'))
+    table_format = '{:<35} {:<20}'
+    print(table_format.format('Name', 'Approximate Row Count'))
 
     for table in structures:
         print(table_format.format(table['shortName'], table['rowCount']))

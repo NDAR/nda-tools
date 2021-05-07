@@ -6,6 +6,8 @@ import sys
 import getpass
 import time
 import threading
+import traceback
+
 import requests
 from requests.adapters import HTTPAdapter
 import requests.packages.urllib3.util
@@ -226,6 +228,26 @@ def advanced_request(endpoint, verb=Verb.GET, content_type=ContentType.JSON, dat
         req.raise_for_status()
 
 
+def get_error():
+    exc_type, exc_value, exc_tb = sys.exc_info()
+    tbe = traceback.TracebackException(
+        exc_type, exc_value, exc_tb,
+    )
+    ex = ''.join(tbe.format_exception_only())
+    #print('Error: {}'.format(ex))
+    return ex
+
+
+def get_stack_trace():
+    exc_type, exc_value, exc_tb = sys.exc_info()
+    tbe = traceback.TracebackException(
+        exc_type, exc_value, exc_tb,
+    )
+    tb = ''.join(tbe.format())
+    return tb
+    #print(tb)
+
+
 def api_request(api, verb, endpoint, data=None, session=None, json=None):
 
     if data and json:
@@ -234,8 +256,11 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None):
         data = json_lib.dumps(json)
 
     retry_request = requests.packages.urllib3.util.retry.Retry(
-        total=1,
-        status_forcelist=[504]
+        total=7,
+        read=20,
+        connect=20,
+        backoff_factor=3,
+        status_forcelist=(502, 504)
     )
 
     headers = {'accept': 'application/json'}
