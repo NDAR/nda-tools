@@ -144,7 +144,7 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None):
         message ='Error occurred while processing request {} {}.\r\n'.format(verb, endpoint)
         message += 'Error response from server: {}'.format(r.text)
 
-        if 'application/json' in r.headers['Content-Type'] and r.text:
+        if is_valid_json(r.text):
             response = json_lib.loads(r.text)
             if not 'error' in response and not 'message' in response:
                 message = 'Error response from server: {}'.format(response)
@@ -157,6 +157,14 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None):
         r.raise_for_status()
 
     return response, session
+
+
+def is_valid_json(test_json):
+    try:
+        json_lib.loads(test_json)
+        return True
+    except:
+        return False
 
 
 def exit_client(signal, frame=None, message=None):

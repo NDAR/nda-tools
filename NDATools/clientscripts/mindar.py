@@ -19,7 +19,7 @@ def parse_args():
     make_subcommand(subparsers, 'show', show_mindar, [show_mindar_args])  # mindar show
     make_subcommand(subparsers, 'describe', describe_mindar, [describe_mindar_args, require_schema])  # mindar describe
     make_subcommand(subparsers, 'validate', validate_mindar, [validate_mindar_args])  # mindar validate
-    make_subcommand(subparsers, 'submit', submit_mindar)  # mindar submit
+    make_subcommand(subparsers, 'submit', submit_mindar, [submit_mindar_args, require_schema])  # mindar submit
     make_subcommand(subparsers, 'export', export_mindar, [export_mindar_args, require_schema])  # mindar export
     make_subcommand(subparsers, 'import', import_mindar)  # mindar import
 
@@ -98,6 +98,23 @@ def validate_mindar_args(parser):
                         help='specifies the number of threads to use for exporting/validating csv''s', type=int)
     parser.add_argument('-w', '--warning', action='store_true', help='Returns validation warnings for list of files')
     parser.add_argument('--download-dir', help='target directory for download')
+
+
+def submit_mindar_args(parser):
+    parser.add_argument('--tables')
+    parser.add_argument('--worker-threads', default='1', help='specifies the number of threads to use for exporting/validating csv''s', type=int)
+    parser.add_argument('--download-dir', help='target directory for download')
+    parser.add_argument('-l', '--listDir', type=str, nargs='+', action='store', help='Specifies the directories in which the associated files are files located.')
+    parser.add_argument('-m', '--manifestPath', type=str, nargs='+', action='store', help='Specifies the directories in which the manifest files are located')
+    parser.add_argument('-s3', '--s3Bucket', type=str, action='store', help='Specifies the s3 bucket in which the associated files are files located.')
+    parser.add_argument('-pre', '--s3Prefix', type=str, action='store', help='Specifies the s3 prefix in which the associated files are files located.')
+    parser.add_argument('-w', '--warning', action='store_true', help='Returns validation warnings for list of files')
+    parser.add_argument('-c', '--collectionID', type=int, action='store', help='The NDA collection ID')
+    parser.add_argument('-d', '--description', type=str, nargs='+', action='store', help='The description of the submission')
+    parser.add_argument('-t', '--title', type=str, nargs='+', action='store', help='The title of the submission')
+    parser.add_argument('-s', '--scope', type=str, action='store', help='Flag whether to validate using a custom scope. Must enter a custom scope')
+    parser.add_argument('-r', '--resume', action='store_true', help='Restart an in-progress submission, resuming from the last successful part in a multi-part'
+                             'upload. Must enter a valid submission ID.')
 
 
 def require_schema(parser):
@@ -194,7 +211,52 @@ def validate_mindar(args, config, mindar):
 
 
 def submit_mindar(args, config, mindar):
-    print('Submit, Mindar!')
+    # need to support:
+    # resume,
+    # submit tables
+    # s3 to s3 copy operation
+    # rollback?
+    # multiple submissions (1 per ds)
+
+    # Argument section - just to keep track of different command line options\
+    # args.tables, args.worker_threads, args.download_dir, args.listDir, args.manifestPath, args.s3Bucket, args.s3Prefix, args.warning
+    # args.collectionID, args.description, args.title, args.scope, args.resume
+
+    # TODO - add endpoint to mindar in order to get:
+      # submissions from schema, if they exist
+      # table(s) for each submission
+      # data-structure row ranges for each table
+      # submission-package-id(s) and validation-id(s) for each table
+
+    # TODO - Add logic to client to error out if submission already exists for a particular mindar schmea + data-table (we can remove this restriction in the future)
+    #
+    # TODO - add submission_status, validation-uuid, submission-package-uuid to mindar_submission table
+    # TODO - add compressed index to mindar_submission for schema, submission-id, table, submission-package-id, validation-result-id
+
+    # Workflow ->
+    # For each data-structure in tables:
+        # check if submission exists for mindar schema + structure. If it does, print error message and continue to next structure
+        # add records to mindar-submission table first, before trying to create a submission. Add them with a submission_status of processing or initializing
+        # export and validate
+        # update submission_status to 'validated', and set validation-id for each record in mindar-submission
+        # create submission package from validation uuid
+        # update submission_status to 'submission-package-created', and set submission-package-id for each record in mindar-submission
+        # create submission from package
+        # update submission_status to 'submitted', and set submission_id, dataset_id and collection_id for each record in mindar-submission
+
+        # on Error:
+        #    print and log error message. Continue to next data-structure in tables
+
+    # TODO - add endpoint to update status of records in mindar-submission table
+    tables = []
+    if args.tables:
+        tables = args.tables.split(',')
+    else:
+        response = mindar.show_tables(args.schema)
+        tables = [ds['shortName'].lower() for ds in response['dataStructures']]
+        tables.sort()
+
+
 
 
 def show_mindar(args, config, mindar):
