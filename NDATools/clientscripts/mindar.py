@@ -4,6 +4,8 @@ from concurrent.futures._base import ALL_COMPLETED
 from concurrent.futures.thread import ThreadPoolExecutor
 import itertools
 import tempfile
+from shutil import copy2
+import re
 
 from NDATools.clientscripts.vtcmd import validate_files
 from NDATools.MindarManager import *
@@ -120,6 +122,8 @@ def mindar_import_args(parser):
     parser.add_argument('table', help='miNDAR schema table name')
     parser.add_argument('files', nargs='+', help='CSV data files')
     parser.add_argument('--validate', dest='validate', action='store_true')
+    parser.add_argument('--warning', '-w', dest='warning', action='store_true')
+    parser.add_argument('--worker-threads', dest='worker_threads', help='How many threads to use for validation')
     parser.add_argument('--continue-on-error', dest='error_continue', action='store_true')
     parser.add_argument('--chunk-size', type=int, default=1000, dest='chunks', help='How many rows should each request contain')
 
@@ -203,9 +207,9 @@ def validate_mindar(args, config, mindar):
                                                                           datetime.now()))
         successful_table_exports = set(map(lambda f: os.path.basename(f).replace('.csv',''), file_list))
         for short_name in tables:
-            if not short_name in successful_table_exports:
+            if short_name not in successful_table_exports:
                 print('WARN - validation for table {} will be skipped because it was not successfully '
-                'exported from the mindar'.format(short_name))
+                      'exported from the mindar'.format(short_name))
 
     if not file_list:
         print('No valid files exist to validate. Fix arguments and re-run')
@@ -291,14 +295,34 @@ def import_mindar(args, config, mindar):
     data = []
     count = 1
 
+    if args.validate:
+        validation_files = []
+
     for file in args.files:
         file_data = []
         header_line = None
+        file_name = os.path.basename(file)
         temp = []
-        print('Chunking: {}...'.format(file))
 
-        with open(file, 'r') as line:
-            for rows in csv.reader(line, dialect='excel-tab'):
+        if args.validate:
+            split = re.split(r'(\d+)', args.table)
+            table_name = split[0]
+            table_ver = split[1]
+            temp_dir = tempfile.gettempdir()
+
+        print('Chunking: {}...'.format(file_name))
+
+        with open(file, 'r') as f:
+            if args.validate:
+                temp_path = os.path.join(temp_dir, os.path.basename(file))
+                validation_files.append(temp_path)
+                temp_file = open(temp_path, 'r+')
+                temp_file.write('{},{}\n'.format(table_name, table_ver))
+
+            for rows in csv.reader(f, dialect='excel-tab'):
+                if args.validate:
+                    temp_file.write('{}\n'.format(','.join(rows)))
+
                 temp.append(rows)
 
                 if count % args.chunks == 0:
@@ -318,6 +342,12 @@ def import_mindar(args, config, mindar):
                 file_data.append(temp)
 
         data.append(file_data)
+
+        if args.validate:
+            temp_file.seek(0)
+            temp_file.close()
+
+        print('Finished chunking: {}'.format(file_name))
 
     file_num = 1
 
@@ -380,6 +410,9 @@ def import_mindar(args, config, mindar):
 
             chunk_num += 1
 
+    if args.validate:
+        validate_files(file_list=validation_files, warnings=args.warning, build_package=False, threads=args.worker_threads, config=config)
+
 
 def filter_existing_tables(schema, test_tables, mindar):
     table_list = set(map(lambda x: x.lower(), test_tables))
@@ -402,6 +435,7 @@ def verify_no_tables_exist(schema, test_tables, mindar):
         print('WARNING: The following structures were specified as an argument but they already exist in the mindar'
               ' so they will not be processed at this time: {}'.format(','.join(existing_tables)))
         return existing_tables
+
 
 def add_table_helper(schema, table, mindar):
     try:
