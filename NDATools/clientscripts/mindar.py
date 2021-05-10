@@ -358,9 +358,9 @@ def reset_table(args, config, mindar):
 
     existing_tables = filter_existing_tables(args.schema, table_list, mindar)
 
-    if not args.force:
+    if not args.force_delete and existing_tables:
         verify = input('If you continue, the data in the following tables will be deleted: {}.'
-                       'Are you sure you want to continue? (Y/N) '.format(','.join(existing_tables)))
+                       ' Are you sure you want to continue? (Y/N) '.format(','.join(existing_tables)))
 
         if verify.lower() != 'y':
             print('Aborting.')
