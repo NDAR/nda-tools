@@ -15,8 +15,11 @@ class MindarManager:
         self.session.mount('https://', a)
         self.session.mount('http://', a)
 
-    def __make_url(self, extension='/'):
+    def __make_url(self, extension=''):
         return self.url + extension
+
+    def __authenticated_request(self, endpoint, **kwargs):
+        return advanced_request(endpoint=endpoint, username=self.config.username, password=self.config.password, **kwargs)
 
     def create_mindar(self, password, nickname, package_id=None):
         payload = {
@@ -29,43 +32,36 @@ class MindarManager:
         if nickname:
             payload['nick_name'] = nickname
 
-        response, session = api_request(self, "POST", self.__make_url(), json=payload)
-
-        return response
+        return self.__authenticated_request(self.__make_url(), verb=Verb.POST, data=payload)
 
     def show_mindars(self, include_deleted=False):
+        query_params = {}
 
-        query_params = []
-        if (include_deleted):
-            query_params.append(('excludeDeleted=false'))
+        if include_deleted:
+            query_params['excludeDeleted'] = 'false'
 
-        q = ''
-        if query_params:
-            q = '?' + '&'.join(query_params)
-        response, session = api_request(self, "GET", self.__make_url(q))
-
-        return response
+        return self.__authenticated_request(self.__make_url(), query_params=query_params)
 
     def delete_mindar(self, schema):
-        response, session = api_request(self, "DELETE", self.__make_url(f'/{schema}/'))
-
-        return response
+        return self.__authenticated_request(self.__make_url('/{}/'), path_params=[schema], verb=Verb.DELETE)
 
     def add_table(self, schema, table_name):
-        response, session = api_request(self, "POST", self.__make_url('/{}/tables?table_name={}'.format(schema, table_name)))
-        return response
+        return self.__authenticated_request(self.__make_url('/{}/tables'), path_params=[schema],
+                                            query_params={'table_name': table_name}, verb=Verb.POST)
 
     def drop_table(self, schema, table_name):
-        response, session = api_request(self, "DELETE", self.__make_url('/{}/tables/{}/'.format(schema, table_name)))
-        return response
+        return self.__authenticated_request(self.__make_url('/{}/tables/{}/'), path_params=[schema, table_name],
+                                            verb=Verb.DELETE)
 
     def show_tables(self, schema):
-        response, session = api_request(self, "GET", self.__make_url('/{}/tables/'.format(schema)))
-        return response
+        return self.__authenticated_request(self.__make_url('/{}/tables/'), path_params=[schema])
 
     def refresh_stats(self, schema):
-        response, session = api_request(self, "POST", self.__make_url('/{}/refresh_stats'.format(schema)))
-        return response
+        return self.__authenticated_request(self.__make_url('/{}/refresh_stats'), path_params=[schema], verb=Verb.POST)
+
+    def import_data_csv(self, schema, table_name, csv_data):
+        return self.__authenticated_request(self.__make_url('/{}/tables/{}/records/'), path_params=[schema, table_name],
+                                            content_type=ContentType.CSV, verb=Verb.POST, data=csv_data)
 
     def export_table_to_file(self, schema, table, root_dir='.', include_id=False, add_nda_header=False):
         start = datetime.now()
