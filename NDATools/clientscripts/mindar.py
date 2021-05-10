@@ -283,15 +283,7 @@ def export_mindar_helper(mindar, tables, schema, download_dir, include_id=False,
 
 
 def import_mindar(args, config, mindar):
-    print('---- Debug lines ----')
-    print('validate: {}'.format(args.validate))
-    print('continue: {}'.format(args.error_continue))
-    print('chunk size: {}'.format(args.chunks))
-    print('files: {}'.format(args.files))
-    print('schema: {}'.format(args.schema))
-    print('table: {}'.format(args.table))
-    print('---- End debug lines ----')
-
+    print('Beginning miNDAR import procedure...')
     data = []
     count = 1
 
