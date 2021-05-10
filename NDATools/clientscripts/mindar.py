@@ -72,6 +72,7 @@ def drop_table_args(parser):
 def reset_table_args(parser):
     parser.add_argument('tables')
     parser.add_argument('--schema', help='Schema with affected tables')
+    parser.add_argument('-f', '--force', dest='force_delete', action='store_true')
 
 
 def delete_mindar_args(parser):
@@ -136,6 +137,16 @@ def create_mindar(args, config, mindar):
 
 
 def delete_mindar(args, config, mindar):
+    response = mindar.show_mindars(True)
+    match = [r for r in response if r['schema']==args.schema.lower()]
+    if not match:
+        print('miNDAR {} was not found. Please check your arguments and/or credentials and try again'.format(args.schema))
+        return
+    elif match[0]['status'] in {'miNDAR Deleted','miNDAR Delete In Progress'}:
+        print("miNDAR {} already has a status of '{}' and cannot be deleted at this time.".format(args.schema, match[0]['status']))
+        return
+
+
     print('Before deleting your miNDAR, please make sure there are no active connections or the delete operation will not succeed.'.format(args.schema))
 
     if not args.force_delete:
@@ -177,7 +188,7 @@ def validate_mindar(args, config, mindar):
             tables = [ds['shortName'].lower() for ds in response['dataStructures']]
             tables.sort()
         else:
-            tables = args.tables.split(',')
+            tables = list(map(lambda x: x.lower(), args.tables.split(',')))
 
         file_list = export_mindar_helper(mindar, tables, args.schema, download_dir, False, args.worker_threads, True)
         print('Export of {}/{} tables in schema {} finished at {}'.format(len(file_list), len(tables), args.schema,
@@ -222,7 +233,7 @@ def show_mindar(args, config, mindar):
 
 def export_mindar(args, config, mindar):
     if args.tables:
-        tables = args.tables.split(',')
+        tables = list(map(lambda x: x.lower(), args.tables.split(',')))
     else:
         response = mindar.show_tables(args.schema)
         tables = [ds['shortName'].lower() for ds in response['dataStructures']]
@@ -343,9 +354,17 @@ def drop_table(args, config, mindar):
 
 
 def reset_table(args, config, mindar):
-    table_list = args.tables.split(',')
+    table_list = list(map(lambda x: x.lower(), args.tables.split(',')))
 
     existing_tables = filter_existing_tables(args.schema, table_list, mindar)
+
+    if not args.force:
+        verify = input('If you continue, the data in the following tables will be deleted: {}.'
+                       'Are you sure you want to continue? (Y/N) '.format(','.join(existing_tables)))
+
+        if verify.lower() != 'y':
+            print('Aborting.')
+            return
 
     success_count = 0
     for table in table_list:
