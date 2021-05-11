@@ -373,7 +373,7 @@ def import_mindar(args, config, mindar):
             split = re.split(r'(\d+)', args.table)
             table_name = split[0]
             table_ver = split[1]
-            temp_dir = tempfile.gettempdir()
+            temp_dir = os.path.realpath(tempfile.mkdtemp())
 
         print('Chunking: {}...'.format(file_name))
 
@@ -381,7 +381,12 @@ def import_mindar(args, config, mindar):
             if args.validate:
                 temp_path = os.path.join(temp_dir, os.path.basename(file))
                 validation_files.append(temp_path)
-                temp_file = open(temp_path, 'r+')
+
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)  # There's a chance that this exact file was written to in temp already
+
+                temp_file = open(temp_path, 'a+')
+                temp_file.seek(0)  # sanity check
                 temp_file.write('{},{}\n'.format(table_name, table_ver))
 
             for rows in csv.reader(f, dialect='excel-tab'):
@@ -409,7 +414,6 @@ def import_mindar(args, config, mindar):
         data.append(file_data)
 
         if args.validate:
-            temp_file.seek(0)
             temp_file.close()
 
         print('Finished chunking: {}'.format(file_name))
@@ -445,12 +449,14 @@ def import_mindar(args, config, mindar):
                 if chunk_num == 1:
                     index = 0
                 else:
-                    index = completed[-1][-1]
+                    index = chunk_num * args.chunks
+
+                chunk_length = len(chunk)
 
                 if sys.version_info.major >= 3:
-                    err = list(range(index, index + args.chunks))
+                    err = list(range(index, index + chunk_length))
                 else:
-                    err = range(index, index + args.chunks)
+                    err = range(index, index + chunk_length)
 
                 errored.append(err)
 
@@ -463,17 +469,21 @@ def import_mindar(args, config, mindar):
 
         file_num += 1
 
-    print('Import completed!')
-
     if errored:
+        print('Import completed with errors!')
         print('{} chunks produced errors, detailed report below: '.format(len(errored)))
 
         chunk_num = 1
 
         for err in errored:
-            print('Chunk {} - Impacting Row Numbers: {}'.format(chunk_num, err))
+            if err:
+                print('Chunk {} - Impacting Row Numbers: {} - {}'.format(chunk_num, err[0], err[-1]))
+            else:
+                print('Error reporting failed to properly estimate impacted row numbers, please report this.')
 
             chunk_num += 1
+    else:
+        print('Import successfully completed!')
 
     if args.validate:
         validate_files(file_list=validation_files, warnings=args.warning, build_package=False, threads=args.worker_threads, config=config)
