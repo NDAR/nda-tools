@@ -414,7 +414,10 @@ def import_mindar(args, config, mindar):
         chunk_num = 1
 
         for err in errored:
-            print('Chunk {} - Impacting Row Numbers: {}'.format(chunk_num, err))
+            if err:
+                print('Chunk {} - Impacting Row Numbers: {} - {}'.format(chunk_num, err[0], err[-1]))
+            else:
+                print('Error reporting failed to properly estimate impacted row numbers, please report this.')
 
             chunk_num += 1
     else:
