@@ -387,7 +387,7 @@ def import_mindar(args, config, mindar):
                 if chunk_num == 1:
                     index = 0
                 else:
-                    index = completed[-1][-1]
+                    index = chunk_num * args.chunks
 
                 chunk_length = len(chunk)
 
