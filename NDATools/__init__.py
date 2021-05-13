@@ -3,9 +3,10 @@ import requests
 import json
 import sys
 
-__version__ = '0.3.0.dev18'
+__version__ = '0.3.0.dev19'
 pypi_version = None
 version_checked = False
+
 
 def check_version():
     try:
