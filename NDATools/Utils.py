@@ -15,8 +15,12 @@ import json as json_lib
 import signal
 import os
 import logging
-from enum import Enum, auto
-from inspect import signature
+
+from enum import Enum
+try:
+    from inspect import signature
+except:
+    from funcsigs import signature
 
 from NDATools.Configuration import ClientConfiguration
 
@@ -62,11 +66,11 @@ class ContentType(Enum):
 
 
 class Verb(Enum):
-    GET = auto()
-    POST = auto()
-    PUT = auto()
-    DELETE = auto()
-    UPDATE = auto()
+    GET = 1
+    POST = 2
+    PUT = 3
+    DELETE = 4
+    UPDATE = 5
 
 
 def report_error(req, response):

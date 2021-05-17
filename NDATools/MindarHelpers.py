@@ -14,7 +14,7 @@ from NDATools.Configuration import ClientConfiguration
 
 __all__ = ['requires_mindar_password', 'get_export_dir', 'export_mindar_helper',
     'verify_no_tables_exist', 'verify_all_tables_exist', 'load_config', 'drop_table_helper', 'add_table_helper',
-    'filter_existing_tables', 'print_time_exit', 'unpack_kwargs']
+    'filter_existing_tables', 'print_time_exit', 'unpack_kwargs', 'verify_directory']
 
 
 def unpack_kwargs(kwargs):
