@@ -214,6 +214,8 @@ def validate_mindar(args, config, mindar):
         else:
             tables = list(map(lambda x: x.lower(), args.tables.split(',')))
 
+        verify_directory(download_dir)
+
         file_list = export_mindar_helper(mindar, tables, args.schema, download_dir, False, args.worker_threads, True)
         print('Export of {}/{} tables in schema {} finished at {}'.format(len(file_list), len(tables), args.schema,
                                                                           datetime.now()))
@@ -268,6 +270,8 @@ def export_mindar(args, config, mindar):
         args.add_nda_header = True
 
     download_dir = args.download_dir or '{}/{}'.format(os.path.expanduser('~'), args.schema)
+
+    verify_directory(download_dir)
 
     files = export_mindar_helper(mindar, tables, args.schema, download_dir, args.include_id, args.worker_threads, args.add_nda_header)
     print('Export of {}/{} tables in schema {} finished at {}'.format(len(files), len(tables), args.schema, datetime.now()))
@@ -359,11 +363,11 @@ def import_mindar(args, config, mindar):
 
     file_num = 1
 
-    completed = []
-    errored = []
-
     for file_data in data:
-        print('File #{}:'.format(file_num))
+        errored = []
+        file_name = os.path.basename(args.files[file_num - 1])
+
+        print('{}:'.format(file_name))
         print('    Total Chunks: {}'.format(len(file_data)))
 
         chunk_num = 1
@@ -381,9 +385,8 @@ def import_mindar(args, config, mindar):
                 for row in chunk:
                     payload += '{}\n'.format(','.join(row))
 
-                response = mindar.import_data_csv(args.schema, args.table.lower(), payload)
+                mindar.import_data_csv(args.schema, args.table.lower(), payload)
                 print('Done!')
-                completed.append(response[args.table.lower()])
             except Exception as e:
                 if chunk_num == 1:
                     index = 0
@@ -406,23 +409,23 @@ def import_mindar(args, config, mindar):
 
             chunk_num += 1
 
+        if errored:
+            print('{} import completed with errors!'.format(file_name))
+            print('{} chunks produced errors, detailed report below: '.format(len(errored)))
+
+            chunk_num = 1
+
+            for err in errored:
+                if err:
+                    print('Chunk {} - Impacting Row Numbers: {} - {}'.format(chunk_num, err[0], err[-1]))
+                else:
+                    print('Error reporting failed to properly estimate impacted row numbers, please report this.')
+
+                chunk_num += 1
+        else:
+            print('{} import successfully completed!'.format(file_name))
+
         file_num += 1
-
-    if errored:
-        print('Import completed with errors!')
-        print('{} chunks produced errors, detailed report below: '.format(len(errored)))
-
-        chunk_num = 1
-
-        for err in errored:
-            if err:
-                print('Chunk {} - Impacting Row Numbers: {} - {}'.format(chunk_num, err[0], err[-1]))
-            else:
-                print('Error reporting failed to properly estimate impacted row numbers, please report this.')
-
-            chunk_num += 1
-    else:
-        print('Import successfully completed!')
 
     if args.validate:
         validate_files(file_list=validation_files, warnings=args.warning, build_package=False, threads=args.worker_threads, config=config)
@@ -609,6 +612,15 @@ def load_config(args):
         config.make_config()
 
     return config
+
+
+def verify_directory(directory):
+    if not os.path.exists(directory):
+        os.mkdir(directory)
+
+    if not os.path.isdir(directory):
+        print('{} is not a directory!'.format(directory))
+        exit_client(signal.SIGTERM)
 
 
 def print_time_exit(start_time):
