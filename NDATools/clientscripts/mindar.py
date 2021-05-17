@@ -2,10 +2,7 @@ import argparse
 import concurrent
 from concurrent.futures._base import ALL_COMPLETED
 from concurrent.futures.thread import ThreadPoolExecutor
-import itertools
 import tempfile
-from shutil import copy2
-import re
 
 from NDATools.clientscripts.vtcmd import validate_files
 from NDATools.MindarManager import *
@@ -373,11 +370,7 @@ def import_mindar(args, config, mindar):
         chunk_num = 1
 
         for chunk in file_data:
-            if sys.version_info.major >= 3:
-                print('    Pushing Chunk #{}...'.format(chunk_num), end=" ", flush=True)
-            else:
-                print('    Pushing Chunk #{}... '.format(chunk_num)),
-                sys.stdout.flush()
+            sys.stdout.write('    Pushing Chunk #{}...'.format(chunk_num))
 
             try:
                 payload = ''

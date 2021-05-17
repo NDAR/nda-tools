@@ -10,7 +10,9 @@ with open("README.md", "r") as fh:
 setup(
         name='nda_tools',
         description="NIMH Data Archive Python Client",
-        install_requires=['boto3', 'botocore', 'tqdm', 'requests', 'mock', 'pytest'],
+        install_requires=['boto3', 'botocore', 'tqdm', 'requests', 'mock', 'pytest',
+                          # backport libraries for py2 compatability
+                          'enum34', 'funcsigs'],
         version=NDATools.__version__,
         long_description=long_description,
         long_description_content_type="text/markdown",
