@@ -218,7 +218,7 @@ def validate_files(file_list, warnings, build_package, threads, config=None):
             else:
                 print('Your answer <{}> was not recognized, please enter yes or no.'.format(str(proceed)))
                 continue
-    return([validation.uuid, validation.associated_files])
+    return [validation.uuid, validation.associated_files]
 
 
 def build_package(uuid, associated_files, config):

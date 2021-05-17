@@ -12,6 +12,8 @@ else:
 import os
 from pkg_resources import resource_filename
 
+# TODO Make an __all__
+
 
 class ClientConfiguration:
 

@@ -20,6 +20,8 @@ from inspect import signature
 
 from NDATools.Configuration import ClientConfiguration
 
+# TODO Make an __all__
+
 if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
     config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'))
 else:

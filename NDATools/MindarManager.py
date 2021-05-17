@@ -1,8 +1,13 @@
-from datetime import datetime
-
 import requests
+import re
+import os
+import logging
 
-from NDATools.Utils import *
+from datetime import datetime
+from NDATools.Utils import advanced_request, Verb, ContentType, get_stack_trace
+
+
+__all__ = ['MindarManager']
 
 
 class MindarManager:
@@ -63,6 +68,7 @@ class MindarManager:
         return self.__authenticated_request(self.__make_url('/{}/tables/{}/records/'), path_params=[schema, table_name],
                                             content_type=ContentType.CSV, verb=Verb.POST, data=csv_data)
 
+    # TODO Refactor me!
     def export_table_to_file(self, schema, table, root_dir='.', include_id=False, add_nda_header=False):
         start = datetime.now()
         invalid_structure = False
