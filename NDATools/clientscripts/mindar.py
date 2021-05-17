@@ -421,10 +421,8 @@ def import_mindar(args, config, mindar):
 
     file_num = 1
 
-    completed = []
-    errored = []
-
     for file_data in data:
+        errored = []
         file_name = os.path.basename(args.files[file_num - 1])
 
         print('{}:'.format(file_name))
@@ -445,9 +443,8 @@ def import_mindar(args, config, mindar):
                 for row in chunk:
                     payload += '{}\n'.format(','.join(row))
 
-                response = mindar.import_data_csv(args.schema, args.table.lower(), payload)
+                mindar.import_data_csv(args.schema, args.table.lower(), payload)
                 print('Done!')
-                completed.append(response[args.table.lower()])
             except Exception as e:
                 if chunk_num == 1:
                     index = 0
