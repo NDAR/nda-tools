@@ -27,7 +27,7 @@ def parse_args():
     make_subcommand(subparsers, 'delete', delete_mindar, [delete_mindar_args, require_schema])  # mindar delete
     make_subcommand(subparsers, 'show', show_mindar, [show_mindar_args])  # mindar show
     make_subcommand(subparsers, 'describe', describe_mindar, [describe_mindar_args, require_schema])  # mindar describe
-    make_subcommand(subparsers, 'validate', validate_mindar, [validate_mindar_args])  # mindar validate
+    make_subcommand(subparsers, 'validate', validate_mindar, [require_schema, validate_mindar_args])  # mindar validate
     make_subcommand(subparsers, 'submit', submit_mindar)  # mindar submit
     make_subcommand(subparsers, 'import', import_mindar, [require_schema, mindar_import_args])  # mindar import
     make_subcommand(subparsers, 'export', export_mindar, [export_mindar_args, require_schema])  # mindar export
@@ -103,11 +103,12 @@ def export_mindar_args(parser):
 def validate_mindar_args(parser):
     parser.add_argument('--files')
     parser.add_argument('--tables')
-    parser.add_argument('--schema')
     parser.add_argument('--worker-threads', default='1',
                         help='specifies the number of threads to use for exporting/validating csv''s', type=int)
     parser.add_argument('-w', '--warning', action='store_true', help='Returns validation warnings for list of files')
-    parser.add_argument('--download-dir', help='target directory for download')
+    parser.add_argument('--download-dir', default= 'If no value is specified, exported mindar tables are downloaded into the '
+                               'home directory of the user, in a new folder with the same name as the mindar schema',
+                        help='directory to store validation results')
 
 
 def require_schema(parser):
