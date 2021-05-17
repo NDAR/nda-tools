@@ -134,12 +134,6 @@ def default(args, config, mindar):
 def create_mindar(args, config, mindar):
     requires_mindar_password(args, True)
 
-    # if args.package:
-    #     print('Creating a miNDAR for package {}'.format(args.package))
-    # else:
-    #     print('Creating an empty miNDAR...')
-
-    # response = mindar.create_mindar(package_id=args.package, password=args.mindar_password, nickname=args.nickname)
     print('Creating an empty miNDAR, this might take some time...')
     response = mindar.create_mindar(password=args.mindar_password, nickname=args.nickname)
     print()
@@ -166,7 +160,6 @@ def delete_mindar(args, config, mindar):
     elif match[0]['status'] in {'miNDAR Deleted','miNDAR Delete In Progress'}:
         print("miNDAR {} already has a status of '{}' and cannot be deleted at this time.".format(args.schema, match[0]['status']))
         return
-
 
     print('Before deleting your miNDAR, please make sure there are no active connections or the delete operation will not succeed.'.format(args.schema))
 
@@ -203,7 +196,7 @@ def validate_mindar(args, config, mindar):
         if invalid_files:
             raise Exception('The following files were not found: {}'.format(','.join(invalid_files)))
     else:
-        download_dir = args.download_dir or '{}/{}'.format(os.path.expanduser('~'), args.schema)
+        download_dir = args.download_dir or os.path.normpath('{}/{}'.format(os.path.expanduser('~'), args.schema))
         if not args.tables:
             response = mindar.show_tables(args.schema)
             tables = [ds['shortName'].lower() for ds in response['dataStructures']]
@@ -266,7 +259,7 @@ def export_mindar(args, config, mindar):
         print('WARNING - Adding nda-header to exported files even though --add-nda-header argument was not specified, because it is required for validation')
         args.add_nda_header = True
 
-    download_dir = args.download_dir or '{}/{}'.format(os.path.expanduser('~'), args.schema)
+    download_dir = args.download_dir or os.path.normpath('{}/{}'.format(os.path.expanduser('~'), args.schema))
 
     verify_directory(download_dir)
 
@@ -587,7 +580,7 @@ def load_config(args):
     if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
         config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'), args.username, args.password, None, None)
     else:
-        config = ClientConfiguration('clientscripts/config/settings.cfg', args.username, args.password, None, None)
+        config = ClientConfiguration(os.path.normpath('clientscripts/config/settings.cfg'), args.username, args.password, None, None)
         config_mutated = True
 
         config.read_user_credentials()
