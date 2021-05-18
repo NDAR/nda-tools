@@ -32,8 +32,8 @@ def parse_args():
     make_subcommand(subparsers, 'delete', delete_mindar, [delete_mindar_args, require_schema])  # mindar delete
     make_subcommand(subparsers, 'show', show_mindar, [show_mindar_args])  # mindar show
     make_subcommand(subparsers, 'describe', describe_mindar, [describe_mindar_args, require_schema])  # mindar describe
-    make_subcommand(subparsers, 'validate', validate_mindar, [validate_mindar_args])  # mindar validate
     make_subcommand(subparsers, 'submit', submit_mindar, [require_schema, submit_mindar_args])  # mindar submit
+    make_subcommand(subparsers, 'validate', validate_mindar, [require_schema, validate_mindar_args])  # mindar validate
     make_subcommand(subparsers, 'import', import_mindar, [require_schema, mindar_import_args])  # mindar import
     make_subcommand(subparsers, 'export', export_mindar, [export_mindar_args, require_schema])  # mindar export
 
@@ -108,11 +108,12 @@ def export_mindar_args(parser):
 def validate_mindar_args(parser):
     parser.add_argument('--files')
     parser.add_argument('--tables')
-    parser.add_argument('--schema')
     parser.add_argument('--worker-threads', default='1',
                         help='specifies the number of threads to use for exporting/validating csv''s', type=int)
     parser.add_argument('-w', '--warning', action='store_true', help='Returns validation warnings for list of files')
-    parser.add_argument('--download-dir', help='target directory for download')
+    parser.add_argument('--download-dir', default= 'If no value is specified, exported mindar tables are downloaded into the '
+                               'home directory of the user, in a new folder with the same name as the mindar schema',
+                        help='directory to store validation results')
 
 
 def submit_mindar_args(parser):
@@ -163,12 +164,6 @@ def default(args, config, mindar):
 def create_mindar(args, config, mindar):
     requires_mindar_password(args, True)
 
-    # if args.package:
-    #     print('Creating a miNDAR for package {}'.format(args.package))
-    # else:
-    #     print('Creating an empty miNDAR...')
-
-    # response = mindar.create_mindar(package_id=args.package, password=args.mindar_password, nickname=args.nickname)
     print('Creating an empty miNDAR, this might take some time...')
     response = mindar.create_mindar(password=args.mindar_password, nickname=args.nickname)
     print()
@@ -195,7 +190,6 @@ def delete_mindar(args, config, mindar):
     elif match[0]['status'] in {'miNDAR Deleted','miNDAR Delete In Progress'}:
         print("miNDAR {} already has a status of '{}' and cannot be deleted at this time.".format(args.schema, match[0]['status']))
         return
-
 
     print('Before deleting your miNDAR, please make sure there are no active connections or the delete operation will not succeed.'.format(args.schema))
 
@@ -366,6 +360,8 @@ def export_mindar(args, config, mindar):
 
     download_dir = get_export_dir(args.download_dir, args.schema)
 
+    verify_directory(download_dir)
+
     files = export_mindar_helper(mindar, tables, args.schema, download_dir, args.include_id, args.worker_threads, args.add_nda_header)
     print('Export of {}/{} tables in schema {} finished at {}'.format(len(files), len(tables), args.schema, datetime.now()))
     if args.validate:
@@ -449,11 +445,7 @@ def import_mindar(args, config, mindar):
         chunk_num = 1
 
         for chunk in file_data:
-            if sys.version_info.major >= 3:
-                print('    Pushing Chunk #{}...'.format(chunk_num), end=" ", flush=True)
-            else:
-                print('    Pushing Chunk #{}... '.format(chunk_num)),
-                sys.stdout.flush()
+            sys.stdout.write('    Pushing Chunk #{}...'.format(chunk_num))
 
             try:
                 payload = ''
