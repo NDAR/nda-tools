@@ -1,12 +1,9 @@
 import enum
 from enum import Enum
-from copy import copy
 
-from NDATools.clientscripts.vtcmd import build_package
-from NDATools.clientscripts.vtcmd import submit_package
 from NDATools.MindarManager import *
 from NDATools.MindarHelpers import *
-from NDATools.clientscripts.vtcmd import validate_files
+from NDATools.clientscripts.vtcmd import *
 
 __all__ = ['MindarSubmission']
 __incorrect_type__ = 'Incorrect type for {}, was expecting {}'

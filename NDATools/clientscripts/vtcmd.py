@@ -7,7 +7,9 @@ from NDATools.Submission import Submission
 import argparse
 import logging
 import os
-import pkg_resources
+
+
+__all__ = ['build_package', 'validate_files', 'submit_package']
 
 
 def parse_args():

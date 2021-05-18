@@ -117,16 +117,17 @@ def validate_mindar_args(parser):
 
 
 def submit_mindar_args(parser):
-    parser.add_argument('-c', '--collection-id', type=int, dest='collectionID', action='store', help='The NDA collection ID', required=True)
-    parser.add_argument('--tables', help='MiNDAR tables, comma separated')
-    parser.add_argument('--worker-threads', dest='workerThreads', type=int, default=1, help='specifies the number of threads to use for exporting/validating csv''s')
-    parser.add_argument('--download-dir', help='target directory for download')
-    parser.add_argument('-l', '--list-dir', dest='listDir', type=str, nargs='+', action='store', help='Specifies the directories in which the associated files are files located.')
-    parser.add_argument('-m', '--manifest-path', dest='manifestPath', type=str, nargs='+', action='store', help='Specifies the directories in which the manifest files are located')
-    parser.add_argument('-s3', '--s3-bucket', dest='s3Bucket', type=str, action='store', help='Specifies the s3 bucket in which the associated files are files located.')
-    parser.add_argument('-pre', '--s3-prefix', dest='s3Prefix', type=str, action='store', default='', help='Specifies the s3 prefix in which the associated files are files located.')
+    parser.add_argument('collectionID', type=int, help='The NDA collection ID')
+    parser.add_argument('tables', help='MiNDAR tables, comma separated')
+    parser.add_argument('title', type=str, nargs='+', action='store', help='The title of the submission')
+    parser.add_argument('description', type=str, nargs='+', action='store', help='The description of the submission')
+    parser.add_argument('-wt', '--worker-threads', type=int, default=1, help='specifies the number of threads to use for exporting/validating csv''s')
+    parser.add_argument('-dl', '--download-dir', help='target directory for download')
+    parser.add_argument('-l', '--list-dir', type=str, nargs='+', action='store', help='Specifies the directories in which the associated files are files located.')
+    parser.add_argument('-m', '--manifest-path', dest='manifest_path', type=str, nargs='+', action='store', help='Specifies the directories in which the manifest files are located')
+    parser.add_argument('-s3', '--s3-bucket', type=str, action='store', help='Specifies the s3 bucket in which the associated files are files located.')
+    parser.add_argument('-pre', '--s3-prefix', type=str, action='store', help='Specifies the s3 prefix in which the associated files are files located.')
     parser.add_argument('-w', '--warning', action='store_true', help='Returns validation warnings for list of files')
-    parser.add_argument('-t', '--title', type=str, action='store', help='The title of the submission')
     parser.add_argument('-s', '--scope', type=str, action='store', help='Flag whether to validate using a custom scope. Must enter a custom scope')
     parser.add_argument('-r', '--resume', action='store_true', help='Restart an in-progress submission, resuming from the last successful part in a multi-part'
                              'upload. Must enter a valid submission ID.')
@@ -445,7 +446,7 @@ def import_mindar(args, config, mindar):
         chunk_num = 1
 
         for chunk in file_data:
-            sys.stdout.write('    Pushing Chunk #{}...'.format(chunk_num))
+            no_line_print('    Pushing Chunk #{}... ', chunk_num)
 
             try:
                 payload = ''

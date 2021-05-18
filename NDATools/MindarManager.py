@@ -68,6 +68,10 @@ class MindarManager:
         return self.__authenticated_request(self.__make_url('/{}/tables/{}/records'), path_params=[schema, table_name],
                                             content_type=ContentType.CSV, verb=Verb.POST, data=csv_data)
 
+    # TODO Update the version of the mindar web service that's running on avengers.
+    def update_mindar_submission_status(self):
+        pass
+
     # TODO Refactor me!
     def export_table_to_file(self, schema, table, root_dir='.', include_id=False, add_nda_header=False):
         start = datetime.now()

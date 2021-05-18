@@ -211,7 +211,6 @@ class Submission:
             if self.source_prefix == "":
                 self.source_prefix = None
 
-
     def found_all_files(self, directories=None, source_bucket=None, source_prefix=None, retry_allowed=False):
         def raise_error(error, l = []):
             m = '\n'.join([error] + list(set(l)))
