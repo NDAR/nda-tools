@@ -13,6 +13,7 @@ install_requires = ['boto3', 'botocore', 'tqdm', 'requests', 'mock', 'pytest']
 # Only include the backport libraries if the current version of python requires it
 if sys.version_info.major < 3:
     install_requires.append('funcsigs')
+    install_requires.append('python-dateutil==2.2')
 
 if sys.version_info < (3, 4):
     install_requires.append('enum34')
