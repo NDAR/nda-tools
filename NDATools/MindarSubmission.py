@@ -2,97 +2,14 @@ import enum
 from enum import Enum
 from copy import copy
 
+from NDATools.clientscripts.vtcmd import build_package
+from NDATools.clientscripts.vtcmd import submit_package
 from NDATools.MindarManager import *
 from NDATools.MindarHelpers import *
 from NDATools.clientscripts.vtcmd import validate_files
 
-
-__all__ = ['MindarSubmission', 'MindarSubmissionStep']
+__all__ = ['MindarSubmission']
 __incorrect_type__ = 'Incorrect type for {}, was expecting {}'
-
-
-def export(mindar, table, schema, download_dir, **kwargs):
-    print('    Exporting...')
-
-    download_dir = get_export_dir(download_dir, schema)
-
-    files = export_mindar_helper(mindar, [table], schema, download_dir, add_nda_header=True)
-
-    print('    Export complete.')
-
-    result = locals()
-    result['download_dir'] = download_dir
-    result['files'] = files
-
-    return result
-
-
-def validate(mindar, table, schema, files, warning, worker_threads, config, **kwargs):
-    print('    Validating...')
-
-    validation_uuid, associated_files = validate_files(file_list=files, warnings=warning, build_package=False,
-                                                       threads=worker_threads, config=config)
-
-    print('    Validation complete.')
-    result = locals()
-    result['validation_uuid'] = validation_uuid
-    result['associated_files'] = associated_files
-
-    return result
-
-
-def create_submission_package(mindar, table, schema, validation_uuid, **kwargs):
-    result = locals()
-
-    return result
-
-
-def create_submission(mindar, table, schema, submission_package, **kwargs):
-    result = locals()
-
-    return result
-
-
-class WrappedFunction:
-
-    def __init__(self, function):
-        self._function = function
-
-    def __call__(self, *args, **kwargs):
-        return self._function(*args, **kwargs)
-
-
-@enum.unique
-class MindarSubmissionStep(Enum):
-    SUBMISSION = (WrappedFunction(create_submission), ['mindar', 'table', 'schema', 'submission_package'])
-    SUBMISSION_PACKAGE = (WrappedFunction(create_submission_package), ['mindar', 'table', 'schema'], 'SUBMISSION')
-    VALIDATE = (WrappedFunction(validate), ['mindar', 'table', 'schema', 'download_dir'], 'SUBMISSION_PACKAGE')
-    EXPORT = (WrappedFunction(export), ['mindar', 'table', 'schema', 'download_dir'], 'VALIDATE')
-
-    def __new__(cls, wrapped_function, required_arguments, next_step=None):
-        obj = object.__new__(cls)
-        obj._value_ = wrapped_function
-        obj._args = required_arguments
-        obj._next = next_step
-
-        return obj
-
-    def __call__(self, **kwargs):
-        for required in self._args:
-            if required not in kwargs:
-                raise SyntaxError('Invocation of MindarSubmissionStep {} halted due to missing required kwarg: {}'
-                                  .format(self.name, required))
-
-        return unpack_kwargs(self.value(**kwargs))
-
-    def __str__(self):
-        return '{}'.format(self.name)
-
-    def has_next(self):
-        return self._next is not None
-
-    def next(self):
-        return MindarSubmissionStep[self._next]
 
 
 class MindarSubmission:
@@ -110,56 +27,105 @@ class MindarSubmission:
         if not isinstance(mindar_manager, MindarManager):
             raise ValueError(__incorrect_type__.format('mindar_manager', 'MindarManager'))
 
-        self._schema = schema
-        self._table = table
-        self._step = step
-        self._mindar = mindar_manager
-
-    def __call__(self, **kwargs):
-        if 'mindar' not in kwargs:
-            kwargs['mindar'] = self._mindar
-
-        if 'schema' not in kwargs:
-            kwargs['schema'] = self._schema
-
-        if 'table' not in kwargs:
-            kwargs['table'] = self._table
-
-        return self._step(**kwargs)
-
-    def __iter__(self):
-        return MindarSubmissionIterator(self)
+        self.schema = schema
+        self.table = table
+        self.step = step
+        self.mindar = mindar_manager
+        # export step
+        self.files = None
+        self.download_dir = None
+        # validation step
+        self.validation_uuid = None
+        self.associated_files = None
 
     def __str__(self):
-        return 'MindarSubmission[schema={}, table={}, step={}]'.format(self._schema, self._table, self._step)
+        return 'MindarSubmission[schema={}, table={}, step={}]'.format(self.schema, self.table, self.step)
 
     def set_step(self, step):
         if not isinstance(step, MindarSubmissionStep):
             raise ValueError(__incorrect_type__.format('step', 'MindarSubmissionStep'))
 
-        self._step = step
+        self.step = step
 
-    def get_step(self):
-        return self._step
+    def get_remaining_steps(self):
+        test = [s for s in MindarSubmissionStep if s.order >= self.step.order]
+        test.sort(key=lambda x: x.order)
+        return test
+
+    def process(self, args, config):
+        for s in self.get_remaining_steps():
+            s.get_submission_proc()(self, args, config)
+
+    def export(self, args, config):
+        print('Exporting...')
+
+        download_dir = get_export_dir(args.download_dir, args.schema)
+
+        self.files = export_mindar_helper(self.mindar, [self.table], self.schema, download_dir, add_nda_header=True)
+
+        if not self.files:
+            raise Exception()
+
+        print('Export complete.')
+
+    def validate(self, args, config):
+        print('Validating...')
+
+        validation_uuid, associated_files = validate_files(file_list=self.files, warnings=args.warning, build_package=False,
+                                                           threads=args.workerThreads, config=config)
+
+        if not validation_uuid:
+            raise Exception()
+
+        # TODO - update status here
+        print('Validation complete.')
+        self.validation_uuid = validation_uuid
+        self.associated_files = associated_files
+
+    def create_submission_package(self, args, config):
+        print('Starting Submission Package Step for miNDAR table {}...'.format(self.table))
+
+        package_results = build_package(self.validation_uuid, self.associated_files, config=config)
+        self.package_id = package_results[0]
+        self.full_file_path = package_results[1]
+
+        # TODO - update status here
+        print('Submission-package Step complete.')
 
 
-class MindarSubmissionIterator:
+    def create_submission(self, args, config):
+        print('Starting Submission Step for miNDAR table {}...'.format(self.table))
+        submit_package(package_id=self.package_id, full_file_path=self.full_file_path, associated_files=self.associated_files,
+                       threads=args.workerThreads, batch=args.batch, config=config)
+        # TODO - update status here
+        print('Starting Submission Step complete...')
 
-    def __init__(self, submission):
-        if not isinstance(submission, MindarSubmission):
-            raise ValueError(__incorrect_type__.format('submission', 'MindarSubmission'))
 
-        self._submission = submission
+    def initiate(self, args, config):
+        # TODO - optionally update status here
+        print('Starting Initiation step for miNDAR table {}...'.format(self.table))
 
-    def __next__(self):
-        if not self._submission:
-            raise StopIteration
 
-        result = copy(self._submission)
+@enum.unique
+class MindarSubmissionStep(Enum):
+    SUBMISSION_PACKAGE = (4, MindarSubmission.create_submission_package)
+    VALIDATE = (3, MindarSubmission.validate)
+    EXPORT = (2, MindarSubmission.export)
+    SUBMISSION = (5, MindarSubmission.create_submission)
+    INITIATE = (1, MindarSubmission.initiate)
 
-        if self._submission.get_step().has_next():
-            self._submission.set_step(self._submission.get_step().next())
-        else:
-            self._submission = None
+    def __init__(self, order, wrapped_function):
+        self.order = order
+        self.submission_proc = wrapped_function
 
-        return result
+    def __str__(self):
+        return '{}'.format(self.name)
+
+    def has_next(self):
+        return self._next is not None
+
+    def get_submission_proc(self):
+        return self.submission_proc
+
+    def get_order(self):
+        return self.order

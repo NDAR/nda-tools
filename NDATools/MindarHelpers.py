@@ -14,15 +14,7 @@ from NDATools.Configuration import ClientConfiguration
 
 __all__ = ['requires_mindar_password', 'get_export_dir', 'export_mindar_helper',
     'verify_no_tables_exist', 'verify_all_tables_exist', 'load_config', 'drop_table_helper', 'add_table_helper',
-    'filter_existing_tables', 'print_time_exit', 'unpack_kwargs']
-
-
-def unpack_kwargs(kwargs):
-    if 'kwargs' in kwargs:
-        kwargs.update(kwargs['kwargs'])
-        del kwargs['kwargs']
-
-    return kwargs
+    'filter_existing_tables', 'print_time_exit']
 
 
 def export_mindar_helper(mindar, tables, schema, download_dir, include_id=False, worker_threads=1, add_nda_header=False):
@@ -115,10 +107,16 @@ def print_time_exit(start_time):
 def load_config(args):
     config_mutated = False
 
+    if hasattr(args, 'accessKey'):
+        ak = args.accessKey
+    if hasattr(args, 'secretKey'):
+        sk= args.secretKey
+
+
     if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
-        config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'), args.username, args.password, None, None)
+        config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'), args.username, args.password, ak, sk)
     else:
-        config = ClientConfiguration('clientscripts/config/settings.cfg', args.username, args.password, None, None)
+        config = ClientConfiguration('clientscripts/config/settings.cfg', args.username, args.password, ak, sk)
         config_mutated = True
 
         config.read_user_credentials()

@@ -110,32 +110,7 @@ def configure(args):
         config.read_user_credentials()
         config.make_config()
 
-    if args.collectionID:
-        config.collection_id = args.collectionID
-    if args.alternateEndpoint:
-        config.endpoint_title = args.alternateEndpoint
-    if args.listDir:
-        config.directory_list = args.listDir
-    if args.manifestPath:
-        config.manifest_path = args.manifestPath
-    if args.s3Bucket:
-        config.source_bucket = args.s3Bucket
-    if args.s3Prefix:
-        config.source_prefix = args.s3Prefix
-    if args.title:
-        config.title = ' '.join(args.title)
-    if args.description:
-        config.description = ' '.join(args.description)
-    if args.scope:
-        config.scope = args.scope[0]
-    if args.validationAPI:
-        config.validation_api = args.validationAPI[0]
-    if args.JSON:
-        config.JSON = True
-    config.hideProgress = args.hideProgress
-    if args.skipLocalAssocFileCheck:
-        config.skip_local_file_check = True
-
+    config.update_with_args(args)
     return config
 
 
@@ -193,7 +168,7 @@ def validate_files(file_list, warnings, build_package, threads, config=None):
     # Test if no files passed validation, exit
     if not any(map(lambda x: not validation.uuid_dict[x]['errors'], validation.uuid_dict)):
         print('No files passed validation, please correct any errors and validate again.')
-        return
+        return None, None
     # If some files passed validation, show files with and without errors
     else:
         print('\nThe following files passed validation:')

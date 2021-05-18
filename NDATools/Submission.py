@@ -1,6 +1,7 @@
 from __future__ import with_statement
 from __future__ import absolute_import
 
+import json
 import re
 import sys
 import multiprocessing
@@ -577,7 +578,7 @@ class Submission:
                     source_key = key.split('/')[1:]
                     source_key = '/'.join(source_key)
                     self.source_key = '/'.join([self.source_prefix, source_key])
-                    self.fileobj = self.source_s3.Object(self.source_bucket, self.source_key).get()['Body']
+                    self.fileobj = self.source_s3.Object(self.source_bucket, self.source_key.lstrip('/')).get()['Body']
 
                     if mpu_exist:
                         u = UploadMultiParts(mpu_to_complete, self.full_file_path, bucket, prefix, self.config, credentials, file_size)

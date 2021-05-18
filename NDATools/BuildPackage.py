@@ -1,20 +1,17 @@
-from __future__ import with_statement
 from __future__ import absolute_import
+from __future__ import with_statement
 
-import re
+import json
 import sys
-import requests.packages.urllib3.util
-from tqdm import tqdm
-import boto3
+
 import botocore
-import signal
+import requests.packages.urllib3.util
 
 from NDATools.S3Authentication import S3Authentication
 
 if sys.version_info[0] < 3:
     input = raw_input
 import requests.packages.urllib3.util
-import signal
 from tqdm import tqdm
 from NDATools.Configuration import *
 from NDATools.Utils import *

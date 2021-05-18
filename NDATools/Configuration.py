@@ -132,3 +132,33 @@ class ClientConfiguration:
 
         if not self.aws_secret_key:
             self.aws_secret_key = getpass.getpass('Enter your aws_secret_key. If none, hit "Enter":')
+
+    def update_with_args(self, args):
+        if hasattr(args, 'collectionID') and args.collectionID:
+            self.collection_id = args.collectionID
+        if hasattr(args, 'alternateEndpoint') and args.alternateEndpoint:
+            self.endpoint_title = args.alternateEndpoint
+        if hasattr(args, 'listDir') and args.listDir:
+            self.directory_list = args.listDir
+        if hasattr(args, 'manifestPath') and args.manifestPath:
+            self.manifest_path = args.manifestPath
+        if hasattr(args, 's3Bucket') and args.s3Bucket:
+            self.source_bucket = args.s3Bucket
+        # default value of empty string
+        if hasattr(args, 's3Prefix'):
+            self.source_prefix = args.s3Prefix
+        if hasattr(args, 'title') and args.title:
+            self.title = ' '.join(args.title)
+        if hasattr(args, 'description') and args.description:
+            self.description = ' '.join(args.description)
+        if hasattr(args, 'scope') and args.scope:
+            self.scope = args.scope[0]
+        if hasattr(args, 'validationAPI') and args.validationAPI:
+            self.validation_api = args.validationAPI[0]
+        if hasattr(args, 'JSON') and args.JSON:
+            self.JSON = True
+        if hasattr(args, 'hideProgress') and args.hideProgress:
+            self.hideProgress = args.hideProgress
+        if hasattr(args, 'skipLocalAssocFileCheck') and args.skipLocalAssocFileCheck:
+            self.skip_local_file_check = True
+

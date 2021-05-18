@@ -9,11 +9,15 @@ import signal
 import re
 
 from datetime import datetime
+
+from NDATools.clientscripts.vtcmd import configure
 from NDATools.clientscripts.vtcmd import validate_files
 from NDATools.MindarManager import *
 from NDATools.MindarSubmission import *
+from NDATools.MindarSubmission import MindarSubmissionStep
 from NDATools.Utils import exit_client
 from NDATools.MindarHelpers import *
+from NDATools.Utils import get_stack_trace
 
 
 def parse_args():
@@ -112,20 +116,25 @@ def validate_mindar_args(parser):
 
 
 def submit_mindar_args(parser):
-    parser.add_argument('tables', help='MiNDAR tables, comma separated')
-    parser.add_argument('--worker-threads', type=int, default=1, help='specifies the number of threads to use for exporting/validating csv''s')
+    parser.add_argument('-c', '--collection-id', type=int, dest='collectionID', action='store', help='The NDA collection ID', required=True)
+    parser.add_argument('--tables', help='MiNDAR tables, comma separated')
+    parser.add_argument('--worker-threads', dest='workerThreads', type=int, default=1, help='specifies the number of threads to use for exporting/validating csv''s')
     parser.add_argument('--download-dir', help='target directory for download')
-    parser.add_argument('-l', '--list-dir', type=str, nargs='+', action='store', help='Specifies the directories in which the associated files are files located.')
-    parser.add_argument('-m', '--manifest-path', dest='manifest_path', type=str, nargs='+', action='store', help='Specifies the directories in which the manifest files are located')
-    parser.add_argument('-s3', '--s3-bucket', type=str, action='store', help='Specifies the s3 bucket in which the associated files are files located.')
-    parser.add_argument('-pre', '--s3-prefix', type=str, action='store', help='Specifies the s3 prefix in which the associated files are files located.')
+    parser.add_argument('-l', '--list-dir', dest='listDir', type=str, nargs='+', action='store', help='Specifies the directories in which the associated files are files located.')
+    parser.add_argument('-m', '--manifest-path', dest='manifestPath', type=str, nargs='+', action='store', help='Specifies the directories in which the manifest files are located')
+    parser.add_argument('-s3', '--s3-bucket', dest='s3Bucket', type=str, action='store', help='Specifies the s3 bucket in which the associated files are files located.')
+    parser.add_argument('-pre', '--s3-prefix', dest='s3Prefix', type=str, action='store', default='', help='Specifies the s3 prefix in which the associated files are files located.')
     parser.add_argument('-w', '--warning', action='store_true', help='Returns validation warnings for list of files')
-    parser.add_argument('-c', '--collection-id', type=int, action='store', help='The NDA collection ID')
-    parser.add_argument('-d', '--description', type=str, nargs='+', action='store', help='The description of the submission')
-    parser.add_argument('-t', '--title', type=str, nargs='+', action='store', help='The title of the submission')
+    parser.add_argument('-t', '--title', type=str, action='store', help='The title of the submission')
     parser.add_argument('-s', '--scope', type=str, action='store', help='Flag whether to validate using a custom scope. Must enter a custom scope')
     parser.add_argument('-r', '--resume', action='store_true', help='Restart an in-progress submission, resuming from the last successful part in a multi-part'
                              'upload. Must enter a valid submission ID.')
+    parser.add_argument('-bc', '--batch', metavar='<arg>', type=int, action='store', default='10000', help='Batch size')
+
+    # TODO - should these be required ?
+    parser.add_argument('-ak', '--accessKey', metavar='<arg>', type=str, action='store', help='AWS access key')
+
+    parser.add_argument('-sk', '--secretKey', metavar='<arg>', type=str, action='store', help='AWS secret key')
 
 
 def require_schema(parser):
@@ -248,6 +257,10 @@ def validate_mindar(args, config, mindar):
 
 
 def submit_mindar(args, config, mindar):
+    # do this here because the vtcmd was written in a way that expects certain properties to be set on config and not args
+    # and we will be invoking several methods from the vtcmd script from 'submit_mindar'
+    config.update_with_args(args)
+
     # need to support:
     # resume,
     # submit tables
@@ -292,25 +305,30 @@ def submit_mindar(args, config, mindar):
         tables = [ds['shortName'].lower() for ds in response['dataStructures']]
         tables.sort()
 
+    success_count = 0
     for table in tables:
-        submission = MindarSubmission(args.schema, table, MindarSubmissionStep.EXPORT, mindar)
-        print('Beginning submission process for: {}...'.format(table))
+        try:
+            submission = MindarSubmission(args.schema, table, MindarSubmissionStep.INITIATE, mindar)
+            print('Beginning submission process for: {}...'.format(table))
 
-        passed_args = {
-            'download_dir': args.download_dir,
-            'submission_package': None,
-            'warning': args.warning,
-            'worker_threads': args.worker_threads,
-            'config': config,
-            'validation_uuid': None,
-            'associated_files': None
-        }
+            # set default values for dataset title and description
+            if not config.title:
+                config.title = 'DATA ENCLAVE SUBMISSION {} - TABLE {}'.format(args.schema, table)
+            config.description = 'DATA ENCLAVE SUBMISSION {} - TABLE {}'.format(args.schema, table)
 
-        if args.resume:
-            pass  # Determine what state the mindar is in and then set the step & prime the args
+            if args.resume:
+                pass  # Determine what state the mindar is in and then set the step & prime the args
 
-        for step in submission:
-            passed_args = step(**passed_args)
+            submission.process(args, config)
+            success_count += 1
+
+        except Exception as e:
+            print(e)
+            print(get_stack_trace())
+            print('Aborting submission for {} due to error during previous step...'.format(table))
+
+
+    print('finished creating submissions for {} out of {} tables in the {} miNDAR'.format(success_count, len(tables), args.schema))
 
 
 def show_mindar(args, config, mindar):
