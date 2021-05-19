@@ -71,13 +71,15 @@ class MindarSubmission:
     def validate(self, args, config):
         print('Validating...')
 
-        validation_uuid, associated_files = validate_files(file_list=self.files, warnings=args.warning, build_package=False,
+        validation_uuid, associated_files = validate_files(file_list=self.files, warnings=args.warning,
+                                                           build_package=False,
                                                            threads=args.workerThreads, config=config)
 
         if not validation_uuid:
             raise Exception()
 
-        # TODO - update status here
+        print('Updating status in mindar submission table - setting validation_uuid = {}'.format(validation_uuid))
+        self.mindar.update_status(self.schema, self.table, validation_uuid=validation_uuid[0])
         print('Validation complete.')
         self.validation_uuid = validation_uuid
         self.associated_files = associated_files
@@ -88,23 +90,23 @@ class MindarSubmission:
         package_results = build_package(self.validation_uuid, self.associated_files, config=config)
         self.package_id = package_results[0]
         self.full_file_path = package_results[1]
+        print('Updating status in mindar submission table - setting submission_package_uuid = {}'.format(self.package_id))
 
-        # TODO - update status here
+        self.mindar.update_status(self.schema, self.table, submission_package_uuid=self.package_id)
         print('Submission-package Step complete.')
-
 
     def create_submission(self, args, config):
         print('Starting Submission Step for miNDAR table {}...'.format(self.table))
-        submit_package(package_id=self.package_id, full_file_path=self.full_file_path, associated_files=self.associated_files,
+        submission_id = submit_package(package_id=self.package_id, full_file_path=self.full_file_path,
+                       associated_files=self.associated_files,
                        threads=args.workerThreads, batch=args.batch, config=config)
-        # TODO - update status here
-        print('Starting Submission Step complete...')
+        print('Updating status in mindar submission table - setting submission-id = {}'.format(submission_id))
+        self.mindar.update_status(self.schema, self.table, submission_id=submission_id)
 
+        print('Submission Step complete...')
 
     def initiate(self, args, config):
-        # TODO - optionally update status here
-        print('Starting Initiation step for miNDAR table {}...'.format(self.table))
-
+        pass
 
 @enum.unique
 class MindarSubmissionStep(Enum):

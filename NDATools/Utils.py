@@ -173,8 +173,6 @@ def advanced_request(endpoint, verb=Verb.GET, content_type=ContentType.JSON, dat
 
         for name, value in query_params.items():
             appended_query_params.append(name + '=' + value)
-    elif not endpoint.endswith('/'):
-        endpoint += '/'
 
     if appended_query_params:
         endpoint += '?' + '&'.join(appended_query_params)

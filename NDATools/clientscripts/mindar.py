@@ -12,6 +12,7 @@ from datetime import datetime
 
 from NDATools.clientscripts.vtcmd import configure
 from NDATools.clientscripts.vtcmd import validate_files
+from NDATools.MindarHelpers import verify_directory
 from NDATools.MindarManager import *
 from NDATools.MindarSubmission import *
 from NDATools.MindarSubmission import MindarSubmissionStep
@@ -300,6 +301,8 @@ def submit_mindar(args, config, mindar):
         tables.sort()
 
     success_count = 0
+    existing_mindar_submission_statuses = mindar.get_mindar_submissions(args.schema)
+
     for table in tables:
         try:
             submission = MindarSubmission(args.schema, table, MindarSubmissionStep.INITIATE, mindar)
@@ -312,6 +315,7 @@ def submit_mindar(args, config, mindar):
 
             if args.resume:
                 pass  # Determine what state the mindar is in and then set the step & prime the args
+
 
             submission.process(args, config)
             success_count += 1

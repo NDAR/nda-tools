@@ -107,6 +107,7 @@ def print_time_exit(start_time):
 def load_config(args):
     config_mutated = False
 
+    ak = sk = None
     if hasattr(args, 'accessKey'):
         ak = args.accessKey
     if hasattr(args, 'secretKey'):

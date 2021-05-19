@@ -239,7 +239,7 @@ def submit_package(package_id, full_file_path, associated_files, threads, batch,
     if submission.status != Status.UPLOADING:
         print('\nYou have successfully completed uploading files for submission {} with status: {}'.format
               (submission.submission_id, submission.status))
-               #do we want to include this??
+    return submission.submission_id
 
 
 def main():
