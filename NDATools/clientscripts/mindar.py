@@ -103,9 +103,8 @@ def validate_mindar_args(parser):
     parser.add_argument('--worker-threads', default='1',
                         help='specifies the number of threads to use for exporting/validating csv''s', type=int)
     parser.add_argument('-w', '--warning', action='store_true', help='Returns validation warnings for list of files')
-    parser.add_argument('--download-dir', default= 'If no value is specified, exported mindar tables are downloaded into the '
-                               'home directory of the user, in a new folder with the same name as the mindar schema',
-                        help='directory to store validation results')
+    parser.add_argument('--download-dir', help= 'If no value is specified, exported mindar tables are downloaded into the '
+                               'home directory of the user, in a new folder with the same name as the mindar schema')
 
 
 def require_schema(parser):
@@ -178,12 +177,8 @@ def delete_mindar(args, config, mindar):
 
 
 def validate_mindar(args, config, mindar):
-    if args.tables or args.schema:
-        if not args.tables and args.schema:
-            raise Exception('Schema and table args must both be specified. Missing {} arg'.format(
-                'tables' if not args.tables else 'schema'))
-        elif args.files:
-            raise Exception('Schema/table arguments are incompatible with --files argument.')
+    if args.files and args.schema:
+        raise Exception('Schema argument are incompatible with --files argument. Please specify one or the other')
     if args.download_dir and args.files:
         print('Warning: download-dir argument was provided, but does not have any affect when used with --files arg')
 
