@@ -381,12 +381,14 @@ def import_mindar(args, config, mindar):
 
                 chunk_length = len(chunk)
 
+                # TODO: Scale down the memory usage of this by creating a MindarErroredRows object
+                # TODO: this object will store first row and then last row as well as a list of chunks it represents
                 if sys.version_info.major >= 3:
                     err = list(range(index, index + chunk_length))
                 else:
                     err = range(index, index + chunk_length)
 
-                errored.append(err)
+                errored.append((chunk_num, err))
 
                 if not args.error_continue:
                     raise e
@@ -395,19 +397,17 @@ def import_mindar(args, config, mindar):
 
             chunk_num += 1
 
+        # TODO: write some algo to process the errored data and to group the subsequent #s after eachother,
+        # TODO: e.g. Chunk 1 0-100, Chunk 2 101-200, Chunk 3 201-300 -> 0-300 (Chunks 1-3)
         if errored:
             print('{} import completed with errors!'.format(file_name))
             print('{} chunks produced errors, detailed report below: '.format(len(errored)))
 
-            chunk_num = 1
-
-            for err in errored:
+            for num, err in errored:
                 if err:
-                    print('Chunk {} - Impacting Row Numbers: {} - {}'.format(chunk_num, err[0], err[-1]))
+                    print('Chunk {} - Impacting Row Numbers: {} - {}'.format(num, err[0], err[-1]))
                 else:
                     print('Error reporting failed to properly estimate impacted row numbers, please report this.')
-
-                chunk_num += 1
         else:
             print('{} import successfully completed!'.format(file_name))
 
