@@ -5,13 +5,10 @@ from enum import Enum
 __all__ = ['MindarSubmission']
 __incorrect_type__ = 'Incorrect type for {}, was expecting {}'
 
-from NDATools.MindarManager import MindarManager
+from NDATools.MindarManager import *
 
-from NDATools.clientscripts.vtcmd import build_package
-from NDATools.clientscripts.vtcmd import submit_package
-from NDATools.clientscripts.vtcmd import validate_files
-from NDATools.MindarHelpers import export_mindar_helper
-from NDATools.MindarHelpers import get_export_dir
+from NDATools.clientscripts.vtcmd import *
+from NDATools.MindarHelpers import *
 
 
 class MindarSubmission:
@@ -39,6 +36,9 @@ class MindarSubmission:
         # validation step
         self.validation_uuid = None
         self.associated_files = None
+        # create submission package step
+        self.package_id = None
+        self.full_file_path = None
 
     def __str__(self):
         return 'MindarSubmission[schema={}, table={}, step={}]'.format(self.schema, self.table, self.step)
@@ -100,8 +100,9 @@ class MindarSubmission:
     def create_submission(self, args, config):
         print('Starting Submission Step for miNDAR table {}...'.format(self.table))
         submission_id = submit_package(package_id=self.package_id, full_file_path=self.full_file_path,
-                       associated_files=self.associated_files,
-                       threads=args.workerThreads, batch=args.batch, config=config)
+                                       associated_files=self.associated_files, threads=args.workerThreads,
+                                       batch=args.batch, config=config)
+
         print('Updating status in mindar submission table - setting submission-id = {}'.format(submission_id))
         self.mindar.update_status(self.schema, self.table, submission_id=submission_id)
 
@@ -109,6 +110,7 @@ class MindarSubmission:
 
     def initiate(self, args, config):
         pass
+
 
 @enum.unique
 class MindarSubmissionStep(Enum):
@@ -118,9 +120,9 @@ class MindarSubmissionStep(Enum):
     SUBMISSION = (5, MindarSubmission.create_submission)
     INITIATE = (1, MindarSubmission.initiate)
 
-    def __init__(self, order, wrapped_function):
+    def __init__(self, order, function):
         self.order = order
-        self.submission_proc = wrapped_function
+        self.submission_proc = function
 
     def __str__(self):
         return '{}'.format(self.name)

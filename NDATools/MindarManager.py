@@ -71,18 +71,22 @@ class MindarManager:
     def update_status(self, schema, table_name, validation_uuid=None, submission_package_uuid=None, submission_id=None):
         params = {}
         if validation_uuid:
-            params['validation_uuid']=validation_uuid
-        if submission_id:
-            params['submission_id']=submission_id
-        if submission_package_uuid:
-            params['submission_package_uuid']=submission_package_uuid
+            params['validation_uuid'] = validation_uuid
 
-        if len(params)!=1:
-            print('update_status Method must specify either validation-uuid, submission_package_uuid OR submission_id. No more than 1 '
-                  'value can be set for this method')
-            raise Exception()
-        return self.__authenticated_request(self.__make_url('/{}/tables/{}/records/bulkUpdate'), path_params=[schema, table_name],
-                                            content_type=ContentType.JSON, verb=Verb.POST, data=params)
+        if submission_id:
+            params['submission_id'] = submission_id
+
+        if submission_package_uuid:
+            params['submission_package_uuid'] = submission_package_uuid
+
+        if len(params) != 1:
+            raise Exception('update_status Method must specify either validation-uuid, '
+                            'submission_package_uuid OR submission_id. No more than 1 '
+                            'value can be set for this method')
+
+        return self.__authenticated_request(self.__make_url('/{}/tables/{}/records/bulkUpdate'),
+                                            path_params=[schema, table_name], content_type=ContentType.JSON,
+                                            verb=Verb.POST, data=params)
 
     def export_table_to_file(self, schema, table, root_dir='.', include_id=False, add_nda_header=False):
         start = datetime.now()

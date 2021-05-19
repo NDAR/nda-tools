@@ -6,7 +6,6 @@ import os
 import concurrent
 import getpass
 import time
-import sys
 
 from concurrent.futures._base import ALL_COMPLETED
 from concurrent.futures.thread import ThreadPoolExecutor
@@ -16,6 +15,7 @@ from NDATools.Configuration import ClientConfiguration
 __all__ = ['requires_mindar_password', 'get_export_dir', 'export_mindar_helper',
            'verify_no_tables_exist', 'verify_all_tables_exist', 'load_config', 'drop_table_helper', 'add_table_helper',
            'filter_existing_tables', 'print_time_exit', 'verify_directory']
+
 
 def export_mindar_helper(mindar, tables, schema, download_dir, include_id=False, worker_threads=1, add_nda_header=False):
     verify_directory(download_dir)

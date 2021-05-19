@@ -314,19 +314,17 @@ def submit_mindar(args, config, mindar):
             config.description = 'DATA ENCLAVE SUBMISSION {} - TABLE {}'.format(args.schema, table)
 
             if args.resume:
-                pass  # Determine what state the mindar is in and then set the step & prime the args
-
+                pass  # Determine what state the mindar is in and then set the step & prime the obj
 
             submission.process(args, config)
             success_count += 1
-
         except Exception as e:
             print(e)
             print(get_stack_trace())
             print('Aborting submission for {} due to error during previous step...'.format(table))
 
-
-    print('finished creating submissions for {} out of {} tables in the {} miNDAR'.format(success_count, len(tables), args.schema))
+    print('Finished creating submissions for {} out of {} tables in the {} miNDAR'
+          .format(success_count, len(tables), args.schema))
 
 
 def show_mindar(args, config, mindar):
