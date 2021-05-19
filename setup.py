@@ -1,18 +1,27 @@
 #!/usr/bin/env python
 
-from setuptools import find_packages, setup
 import NDATools
+import sys
+
+from setuptools import find_packages, setup
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
+install_requires = ['boto3', 'botocore', 'tqdm', 'requests', 'mock', 'pytest']
+
+# Only include the backport libraries if the current version of python requires it
+if sys.version_info.major < 3:
+    install_requires.append('funcsigs')
+    install_requires.append('python-dateutil==2.2')
+
+if sys.version_info < (3, 4):
+    install_requires.append('enum34')
 
 setup(
         name='nda_tools',
         description="NIMH Data Archive Python Client",
-        install_requires=['boto3', 'botocore', 'tqdm', 'requests', 'mock', 'pytest',
-                          # backport libraries for py2 compatability
-                          'enum34', 'funcsigs'],
+        install_requires=install_requires,
         version=NDATools.__version__,
         long_description=long_description,
         long_description_content_type="text/markdown",
