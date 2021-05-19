@@ -301,11 +301,50 @@ def submit_mindar(args, config, mindar):
         tables.sort()
 
     success_count = 0
-    existing_mindar_submission_statuses = mindar.get_mindar_submissions(args.schema)
+    print('Checking existing submissions for miNDAR...')
+    existing_submissions_json = mindar.get_mindar_submissions(args.schema)
+
+    submissions = {}
+
+    for submission in existing_submissions_json['submission']:
+        for table in submission['tables']:
+            table_name = table['short_name']
+            if table_name in tables:
+                if args.resume:
+                    mindar_submission = MindarSubmission(args.schema, table_name, MindarSubmissionStep.INITIATE, mindar)
+                    step = None
+
+                    if not step and not table['validation_uuid']:
+                        step = MindarSubmissionStep.INITIATE
+                    elif table['validation_uuid']:
+                        mindar_submission.validation_uuid = table['validation_uuid'][0]
+                        # TODO populate mindar_submission.associated_files
+
+                    if not step and not table['submission_package_id']:
+                        step = MindarSubmissionStep.VALIDATE
+                    elif table['submission_package_id']:
+                        mindar_submission.package_id = table['submission_package_id'][0]
+                        # TODO populate mindar_submission.full_file_path
+
+                    if step:
+                        mindar_submission.set_step(step)
+
+                    submissions[table_name] = mindar_submission
+                else:
+                    print('Table {} already has an existing submission! Removing from submission list.'
+                          .format(table_name))
+
+                    tables.remove(table_name)
+            else:
+                submissions[table_name] = MindarSubmission(args.schema, table_name, MindarSubmissionStep.INITIATE, mindar)
 
     for table in tables:
         try:
-            submission = MindarSubmission(args.schema, table, MindarSubmissionStep.INITIATE, mindar)
+            if table in submissions:
+                submission = submissions[table]
+            else:
+                submission = MindarSubmission(args.schema, table, MindarSubmissionStep.INITIATE, mindar)
+
             print('Beginning submission process for: {}...'.format(table))
 
             # set default values for dataset title and description
