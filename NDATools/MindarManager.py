@@ -85,8 +85,7 @@ class MindarManager:
                             'value can be set for this method')
 
         return self.__authenticated_request(self.__make_url('/{}/tables/{}/records/bulkUpdate'),
-                                            path_params=[schema, table_name], content_type=ContentType.JSON,
-                                            verb=Verb.POST, data=params)
+                                            path_params=[schema, table_name], verb=Verb.POST, data=params)
 
     def export_table_to_file(self, schema, table, root_dir='.', include_id=False, add_nda_header=False):
         start = datetime.now()
@@ -134,3 +133,5 @@ class MindarManager:
                 print('Export attempt took {}'.format(datetime.now() - start))
             raise e
 
+    def get_mindar_submissions(self, schema):
+        return self.__authenticated_request(self.__make_url('/{}/submissions/'), path_params=[schema])

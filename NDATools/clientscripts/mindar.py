@@ -301,9 +301,10 @@ def submit_mindar(args, config, mindar):
     existing_submissions_json = mindar.get_mindar_submissions(args.schema)
 
     submissions = {}
+    print(existing_submissions_json)
 
     # parse the existing submissions response
-    for submission in existing_submissions_json['submission']:
+    for submission in existing_submissions_json['submissions']:
         for table in submission['tables']:  # iterate on submitted tables
             table_name = table['short_name']
             if table_name in tables:  # make sure the current table is what the user wants to submit
@@ -334,6 +335,10 @@ def submit_mindar(args, config, mindar):
                           .format(table_name))
 
                     tables.remove(table_name)
+
+    if not tables:
+        print('No valid tables provided.')
+        exit_client(signal.SIGTERM)
 
     # Run submission logic
     for table in tables:
