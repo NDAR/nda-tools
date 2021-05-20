@@ -261,12 +261,12 @@ def export_mindar(args, config, mindar):
 
     files = export_mindar_helper(mindar, tables, args.schema, download_dir, args.include_id, args.worker_threads, args.add_nda_header)
 
-    tables_with_errors = set(tables) - set(map(lambda x: os.path.basename(x), files))
+    tables_with_errors = set(tables) - set(map(lambda x: os.path.basename(x).replace('.csv',''), files))
     if tables_with_errors:
-        tables = list(tables_with_errors)
-        tables.sort()
+        tables_with_errors = list(tables_with_errors)
+        tables_with_errors.sort()
         print()
-        print('An error occurred during export of the following tables:\n{}'.format('\n'.join(tables)))
+        print('An error occurred during export of the following tables:\n{}'.format('\n'.join(tables_with_errors)))
         print()
 
     print('Export of {}/{} tables in schema {} finished at {}'.format(len(files), len(tables), args.schema, datetime.now()))
