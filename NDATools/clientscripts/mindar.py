@@ -10,15 +10,11 @@ import re
 
 from datetime import datetime
 
-from NDATools.clientscripts.vtcmd import configure
-from NDATools.clientscripts.vtcmd import validate_files
-from NDATools.MindarHelpers import verify_directory
+from NDATools.clientscripts.vtcmd import *
 from NDATools.MindarManager import *
 from NDATools.MindarSubmission import *
-from NDATools.MindarSubmission import MindarSubmissionStep
-from NDATools.Utils import exit_client
 from NDATools.MindarHelpers import *
-from NDATools.Utils import get_stack_trace
+from NDATools.Utils import get_stack_trace, exit_client
 
 
 def parse_args():
@@ -306,25 +302,28 @@ def submit_mindar(args, config, mindar):
 
     submissions = {}
 
+    # parse the existing submissions response
     for submission in existing_submissions_json['submission']:
-        for table in submission['tables']:
+        for table in submission['tables']:  # iterate on submitted tables
             table_name = table['short_name']
-            if table_name in tables:
-                if args.resume:
+            if table_name in tables:  # make sure the current table is what the user wants to submit
+                if args.resume:  # If the user wants to resume we then build a MindarSubmission object with the correct step
                     mindar_submission = MindarSubmission(args.schema, table_name, MindarSubmissionStep.INITIATE, mindar)
                     step = None
 
+                    # Detect if the script should begin at the validation step
                     if not step and not table['validation_uuid']:
-                        step = MindarSubmissionStep.INITIATE
+                        step = MindarSubmissionStep.INITIATE  # Assumption made here, the step does not execute the current step
                     elif table['validation_uuid']:
                         mindar_submission.validation_uuid = table['validation_uuid'][0]
-                        # TODO populate mindar_submission.associated_files
+                        # TODO populate mindar_submission.associated_files without this associated files will not work
 
+                    # Detect if the script should begin at the submission package step
                     if not step and not table['submission_package_id']:
-                        step = MindarSubmissionStep.VALIDATE
+                        step = MindarSubmissionStep.VALIDATE  # Assumption made here, the step does not execute the current step
                     elif table['submission_package_id']:
                         mindar_submission.package_id = table['submission_package_id'][0]
-                        # TODO populate mindar_submission.full_file_path
+                        # TODO populate mindar_submission.full_file_path without this associated files will not work
 
                     if step:
                         mindar_submission.set_step(step)
@@ -335,14 +334,14 @@ def submit_mindar(args, config, mindar):
                           .format(table_name))
 
                     tables.remove(table_name)
-            else:
-                submissions[table_name] = MindarSubmission(args.schema, table_name, MindarSubmissionStep.INITIATE, mindar)
 
+    # Run submission logic
     for table in tables:
         try:
+            # Perform a lookup, if the table has a pre-existing submission constructed, use that
             if table in submissions:
                 submission = submissions[table]
-            else:
+            else:  # create a fresh submission object if we don't have a pre-prepared one
                 submission = MindarSubmission(args.schema, table, MindarSubmissionStep.INITIATE, mindar)
 
             print('Beginning submission process for: {}...'.format(table))
@@ -352,10 +351,7 @@ def submit_mindar(args, config, mindar):
                 config.title = 'DATA ENCLAVE SUBMISSION {} - TABLE {}'.format(args.schema, table)
             config.description = 'DATA ENCLAVE SUBMISSION {} - TABLE {}'.format(args.schema, table)
 
-            if args.resume:
-                pass  # Determine what state the mindar is in and then set the step & prime the obj
-
-            submission.process(args, config)
+            submission.process(args, config)  # Begin submission process
             success_count += 1
         except Exception as e:
             print(e)

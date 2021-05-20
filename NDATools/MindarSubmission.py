@@ -2,7 +2,7 @@ import enum
 from enum import Enum
 
 
-__all__ = ['MindarSubmission']
+__all__ = ['MindarSubmission', 'MindarSubmissionStep']
 __incorrect_type__ = 'Incorrect type for {}, was expecting {}'
 
 from NDATools.MindarManager import *
