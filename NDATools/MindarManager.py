@@ -107,4 +107,9 @@ class MindarManager:
                 print(get_stack_trace())
                 logging.error(get_stack_trace())
                 print('Export attempt took {}'.format(datetime.now() - start))
+
+            # Delete ds file if it exists, so that partial results aren't written to disk
+            if os.path.isfile(final_csv_dest):
+                os.remove(final_csv_dest)
+
             raise e

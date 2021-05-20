@@ -65,7 +65,7 @@ def create_mindar_args(parser):
 
 def add_table_args(parser):
     parser.add_argument('tables')
-    parser.add_argument('--schema', help='Schema to add tables to')
+    parser.add_argument('--schema', help='Schema to add tables to', required=True)
 
 
 def drop_table_args(parser):
@@ -197,11 +197,12 @@ def validate_mindar(args, config, mindar):
             tables = [ds['shortName'].lower() for ds in response['dataStructures']]
             tables.sort()
         else:
-            tables = list(map(lambda x: x.lower(), args.tables.split(',')))
+            tables = set(map(lambda x: x.lower(), args.tables.split(',')))
 
         verify_directory(download_dir)
 
         file_list = export_mindar_helper(mindar, tables, args.schema, download_dir, False, args.worker_threads, True)
+
         print('Export of {}/{} tables in schema {} finished at {}'.format(len(file_list), len(tables), args.schema,
                                                                           datetime.now()))
         successful_table_exports = set(map(lambda f: os.path.basename(f).replace('.csv',''), file_list))
@@ -259,7 +260,17 @@ def export_mindar(args, config, mindar):
     verify_directory(download_dir)
 
     files = export_mindar_helper(mindar, tables, args.schema, download_dir, args.include_id, args.worker_threads, args.add_nda_header)
+
+    tables_with_errors = set(tables) - set(map(lambda x: os.path.basename(x), files))
+    if tables_with_errors:
+        tables = list(tables_with_errors)
+        tables.sort()
+        print()
+        print('An error occurred during export of the following tables:\n{}'.format('\n'.join(tables)))
+        print()
+
     print('Export of {}/{} tables in schema {} finished at {}'.format(len(files), len(tables), args.schema, datetime.now()))
+
     if args.validate:
         validate_files(file_list=files, warnings=False, build_package=False, threads=args.worker_threads, config=config)
 
