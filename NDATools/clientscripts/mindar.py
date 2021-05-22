@@ -129,7 +129,6 @@ def submit_mindar_args(parser):
                              'upload. Must enter a valid submission ID.')
     parser.add_argument('-bc', '--batch', metavar='<arg>', type=int, action='store', default='10000', help='Batch size')
 
-    # TODO - should these be required ?
     parser.add_argument('-ak', '--accessKey', metavar='<arg>', type=str, action='store', help='AWS access key')
 
     parser.add_argument('-sk', '--secretKey', metavar='<arg>', type=str, action='store', help='AWS secret key')
@@ -347,7 +346,7 @@ def submit_mindar(args, config, mindar):
             if table in submissions:
                 submission = submissions[table]
             else:  # create a fresh submission object if we don't have a pre-prepared one
-                submission = MindarSubmission(args.schema, table, MindarSubmissionStep.INITIATE, mindar)
+            submission = MindarSubmission(args.schema, table, MindarSubmissionStep.INITIATE, mindar)
 
             print('Beginning submission process for: {}...'.format(table))
 

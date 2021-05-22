@@ -121,7 +121,7 @@ class Status:
     SYSERROR = 'SystemError'
 
 
-def resume_submission(submission_id, batch, config=None):
+def resume_submission(submission_id, batch, config):
     submission = Submission(id=submission_id, full_file_path=None, config=config, resume=True, batch_size=batch)
     submission.check_status()
     if submission.status == Status.UPLOADING:
@@ -132,11 +132,11 @@ def resume_submission(submission_id, batch, config=None):
         if submission.incomplete_files and submission.found_all_files(directories, source_bucket, source_prefix,
                                                                        retry_allowed=True):
             # if not config.skip_local_file_check:
-            submission.check_submitted_files()
+            submission.check_submitted_files(config)
             submission.complete_partial_uploads()
-            submission.submission_upload(hide_progress=config.hideProgress)
+            submission.submission_upload(hide_progress=config.hideProgress, config=config)
         else:
-           submission.submission_upload(hide_progress=config.hideProgress)
+           submission.submission_upload(hide_progress=config.hideProgress, config=config)
 
     else:
         print('Submission Completed with status {}'.format(submission.status))
@@ -229,7 +229,7 @@ def build_package(uuid, associated_files, config):
     return[package.package_id, package.full_file_path]
 
 
-def submit_package(package_id, full_file_path, associated_files, threads, batch, config=None):
+def submit_package(package_id, full_file_path, associated_files, threads, batch, config):
     submission = Submission(id=package_id, full_file_path=full_file_path, thread_num=threads, batch_size=batch, allow_exit=True, config=config)
     print('Requesting submission for package: {}'.format(submission.package_id))
     submission.submit()
@@ -237,7 +237,7 @@ def submit_package(package_id, full_file_path, associated_files, threads, batch,
         print('Submission ID: {}'.format(str(submission.submission_id)))
     if associated_files:
         print('Preparing to upload associated files.')
-        submission.submission_upload(hide_progress=config.hideProgress)
+        submission.submission_upload(hide_progress=config.hideProgress, config=config)
     if submission.status != Status.UPLOADING:
         print('\nYou have successfully completed uploading files for submission {} with status: {}'.format
               (submission.submission_id, submission.status))

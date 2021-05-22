@@ -106,13 +106,16 @@ class Submission:
         return [{'submissionFileId': file['id'], 'destination_uri': file['file_remote_path']} for file in response if
                 file['status'] != Status.COMPLETE]
 
-    def get_multipart_credentials(self, file_ids):
+    def get_multipart_credentials(self, file_ids, config):
         all_credentials = []
         batched_ids = [file_ids[i:i + self.batch_size] for i in range(0, len(file_ids), self.batch_size)]
 
         for ids in batched_ids:
+            s3_buck = config.source_bucket if hasattr(config,'source_bucket') else ''
+            s3_pre = config.source_prefix if hasattr(config, 'source_prefix') else ''
+            q_params = 's3SourceBucket={}&s3SourcePrefix={}'.format(s3_buck, s3_pre) if s3_buck else ''
             credentials_list, session = api_request(self, "POST", "/".join(
-                [self.api, self.submission_id, 'files/batchMultipartUploadCredentials']), data=json.dumps(ids))
+                [self.api, self.submission_id, 'files/batchMultipartUploadCredentials?{}'.format(q_params)]), data=json.dumps(ids))
             all_credentials = all_credentials + credentials_list['credentials']
             time.sleep(2)
 
@@ -158,7 +161,7 @@ class Submission:
             else:
                 raise Exception("{}\n{}".format('SubmissionError', message))
 
-    def check_submitted_files(self):
+    def check_submitted_files(self, config):
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id, 'files']))
 
         file_info = self.create_file_info_list(response)
@@ -185,7 +188,7 @@ class Submission:
         file_ids = [int(ids['submissionFileId']) for ids in file_info]
         new_ids = set(file_ids) & set(unsubmitted_ids)
 
-        self.credentials_list = self.get_multipart_credentials(list(new_ids))
+        self.credentials_list = self.get_multipart_credentials(list(new_ids), config)
 
         self.update_full_file_paths()
 
@@ -330,7 +333,7 @@ class Submission:
         for upload in multipart_uploads.incomplete_mpu:
             self.all_mpus.append(upload)
 
-    def submission_upload(self, hide_progress):
+    def submission_upload(self, hide_progress, config):
         with self.upload_queue.mutex:
             self.upload_queue.queue.clear()
         with self.progress_queue.mutex:
@@ -345,7 +348,7 @@ class Submission:
             if not self.resume:
                 file_id_info = self.create_file_info_list(response)
                 file_ids = [int(ids['submissionFileId']) for ids in file_id_info]
-                self.credentials_list = self.get_multipart_credentials(file_ids)
+                self.credentials_list = self.get_multipart_credentials(file_ids, config)
                 self.batch_update_status(status=Status.PROCESSING)
 
             if not hide_progress:
@@ -416,7 +419,7 @@ class Submission:
             else:
                 print('There was an error transferring some files, trying again')
                 if self.found_all_files and self.upload_tries < 5:
-                    self.submission_upload(hide_progress)
+                    self.submission_upload(hide_progress, config)
         if self.status != Status.UPLOADING and hide_progress:
             return
 
@@ -496,6 +499,36 @@ class Submission:
             def __call__(self, bytes_amount):
                 self.progress_queue.put(bytes_amount)
 
+        def attempt_bucket_to_bucket_copy(self, creds, bucket, key):
+            def callback(b):
+                self.progress_queue.put(b)
+            if not self.config.aws_access_key:
+
+                try:
+                    # attempt to perform a bucket to bucket transfer perform a bucket to bucket
+                    s3_resource = boto3.Session(aws_access_key_id=creds['access_key'],
+                                                aws_secret_access_key=creds['secret_key'],
+                                                aws_session_token=creds['session_token']
+                                                ).resource('s3')
+
+                    source_key = key.split('/')[1:]
+                    source_key = '/'.join(source_key)
+
+                    # create a source dictionary that specifies bucket name and key name of the object to be copied
+                    copy_source = {
+                        'Bucket': self.config.source_bucket,
+                        'Key': source_key if not self.config.source_prefix else '/'.join(
+                            [self.config.source_prefix, source_key])
+                    }
+                    bucket = s3_resource.Bucket(bucket)
+
+                    bucket.copy(copy_source, key,Callback=callback)  ## check if this uploads files > 5GB
+                except Exception as e:
+                    print (e)
+                    print(get_stack_trace())
+                    raise e
+
+
         def run(self):
             while True and not self.shutdown_flag.is_set():
                 if self.upload and self.upload_tries < 5:
@@ -568,7 +601,6 @@ class Submission:
                     NOTE: For best results and to be cost effective, it is best to perform this file transfer in an AWS 
                     EC2 instance.
                     """
-
                     tqdm.monitor_interval = 0
 
                     s3_config = Config(connect_timeout=240, read_timeout=240)
@@ -577,69 +609,74 @@ class Submission:
                     source_key = key.split('/')[1:]
                     source_key = '/'.join(source_key)
                     self.source_key = '/'.join([self.source_prefix, source_key])
-                    self.fileobj = self.source_s3.Object(self.source_bucket, self.source_key.lstrip('/')).get()['Body']
 
-                    if mpu_exist:
-                        u = UploadMultiParts(mpu_to_complete, self.full_file_path, bucket, prefix, self.config, credentials, file_size)
-                        u.get_parts_information()
-                        if not self.expired:
-                            self.progress_queue.put(u.completed_bytes)
-                        seq = 1
-
-                        for buffer in self.fileobj.iter_chunks(chunk_size=u.chunk_size):
-                            if seq in u.parts_completed:
-                                part = u.parts[seq - 1]
-                                u.check_md5(part, buffer)
-                            else:
-                                try:
-                                    u.upload_part(buffer, seq)
-                                    self.progress_queue.put(len(buffer))
-                                    # upload missing part
-                                except Exception as error:
-                                    e = str(error)
-                                    if "ExpiredToken" in e:
-                                        self.add_back_to_queue(bucket, prefix)
-                                        expired_error = True
-                                    else:
-                                        raise error
-                            seq += 1
-                        if not expired_error:
-                            u.complete()
+                    if not self.config.aws_access_key :
+                        self.attempt_bucket_to_bucket_copy(credentials, bucket, key)
                         self.progress_queue.put(None)
-
                     else:
+                        # Try downloading and then uploading
+                        self.fileobj = self.source_s3.Object(self.source_bucket, self.source_key.lstrip('/')).get()['Body']
+                        if mpu_exist:
+                            u = UploadMultiParts(mpu_to_complete, self.full_file_path, bucket, prefix, self.config, credentials, file_size)
+                            u.get_parts_information()
+                            if not self.expired:
+                                self.progress_queue.put(u.completed_bytes)
+                            seq = 1
 
-                        # set chunk size dynamically to based on file size
-                        if file_size > 9999:
-                            multipart_chunk_size = (file_size // 9999)
+                            for buffer in self.fileobj.iter_chunks(chunk_size=u.chunk_size):
+                                if seq in u.parts_completed:
+                                    part = u.parts[seq - 1]
+                                    u.check_md5(part, buffer)
+                                else:
+                                    try:
+                                        u.upload_part(buffer, seq)
+                                        self.progress_queue.put(len(buffer))
+                                        # upload missing part
+                                    except Exception as error:
+                                        e = str(error)
+                                        if "ExpiredToken" in e:
+                                            self.add_back_to_queue(bucket, prefix)
+                                            expired_error = True
+                                        else:
+                                            raise error
+                                seq += 1
+                            if not expired_error:
+                                u.complete()
+                            self.progress_queue.put(None)
+
                         else:
-                            multipart_chunk_size = file_size
-                        transfer_config = TransferConfig(multipart_threshold=100 * 1024 * 1024,
-                                                         multipart_chunksize=multipart_chunk_size)
 
-                        self.dest = S3Authentication.get_s3_client_with_config(credentials['access_key'],
-                                                                               credentials['secret_key'],
-                                                                               credentials['session_token'])
-                        self.dest_bucket = bucket
-                        self.dest_key = key
-                        self.temp_key = self.dest_key + '.temp'
-
-                        try:
-                            self.dest.upload_fileobj(
-                                self.fileobj,
-                                self.dest_bucket,
-                                self.dest_key,
-                                Callback=self.UpdateProgress(self.progress_queue),
-                                Config=transfer_config
-                            )
-                        except boto3.exceptions.S3UploadFailedError as error:
-                            e = str(error)
-                            if "ExpiredToken" in e:
-                                self.add_back_to_queue(bucket, prefix)
-                                self.credentials = S3Authentication(self.config)
+                            # set chunk size dynamically to based on file size
+                            if file_size > 9999:
+                                multipart_chunk_size = (file_size // 9999)
                             else:
-                                raise error
-                    self.progress_queue.put(None)
+                                multipart_chunk_size = file_size
+                            transfer_config = TransferConfig(multipart_threshold=100 * 1024 * 1024,
+                                                             multipart_chunksize=multipart_chunk_size)
+
+                            self.dest = S3Authentication.get_s3_client_with_config(credentials['access_key'],
+                                                                                   credentials['secret_key'],
+                                                                                   credentials['session_token'])
+                            self.dest_bucket = bucket
+                            self.dest_key = key
+                            self.temp_key = self.dest_key + '.temp'
+
+                            try:
+                                self.dest.upload_fileobj(
+                                    self.fileobj,
+                                    self.dest_bucket,
+                                    self.dest_key,
+                                    Callback=self.UpdateProgress(self.progress_queue),
+                                    Config=transfer_config
+                                )
+                            except boto3.exceptions.S3UploadFailedError as error:
+                                e = str(error)
+                                if "ExpiredToken" in e:
+                                    self.add_back_to_queue(bucket, prefix)
+                                    self.credentials = S3Authentication(self.config)
+                                else:
+                                    raise error
+                        self.progress_queue.put(None)
 
                 else:
                     """
@@ -714,3 +751,4 @@ class Submission:
                 self.upload_tries = 0
                 self.upload = None
                 self.upload_queue.task_done()
+
