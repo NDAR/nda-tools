@@ -309,27 +309,43 @@ def submit_mindar(args, config, mindar):
             if table_name in tables:  # make sure the current table is what the user wants to submit
                 mindar_submission = MindarSubmission(args.schema, table_name, MindarSubmissionStep.INITIATE, mindar)
                 step = None
+                mutated = False
 
                 # Detect if the script should begin at the validation step
-                if not step and not table['validation_uuid']:
-                    step = MindarSubmissionStep.INITIATE  # Assumption made here, the step does not execute the current step
-                elif table['validation_uuid']:
+                if not step and not table['validation_uuid'] and args.resume:
+                    print('{}: Beginning at validation step.'.format(table_name))
+                    step = MindarSubmissionStep.VALIDATE
+                elif table['validation_uuid'] and table['validation_uuid'][0]:
+                    print('{}: Found exiting validation_id...'.format(table_name))
                     mindar_submission.validation_uuid = table['validation_uuid'][0]
                     # TODO populate mindar_submission.associated_files without this associated files will not work
+                    mutated = True
 
                 # Detect if the script should begin at the submission package step
-                if not step and not table['submission_package_id']:
-                    step = MindarSubmissionStep.VALIDATE  # Assumption made here, the step does not execute the current step
-                elif table['submission_package_id']:
+                if not step and not table['submission_package_id'] and args.resume:
+                    print('{}: Beginning at submission package creation step.'.format(table_name))
+                    step = MindarSubmissionStep.SUBMISSION_PACKAGE
+                elif table['submission_package_id'] and table['submission_package_id'][0]:
+                    print('{}: Found exiting submission_package_id...'.format(table_name))
                     mindar_submission.package_id = table['submission_package_id'][0]
                     # TODO populate mindar_submission.full_file_path without this associated files will not work
+                    mutated = True
+
+                if not step and mutated and args.resume and not submission['submission_id']:
+                    print('{}: Beginning at submission creation step.'.format(table_name))
+                    step = MindarSubmissionStep.SUBMISSION
+                elif args.resume and submission['submission_id']:
+                    print('Table {} already has an existing submission! Removing from submission list.'
+                          .format(table_name))
+
+                    tables.remove(table_name)
 
                 if step:
                     mindar_submission.set_step(step)
 
                 if args.resume:  # If the user wants to resume we then build a MindarSubmission object with the correct step
                     submissions[table_name] = mindar_submission
-                elif step:
+                elif mutated:
                     print('Table {} already has an existing submission! Removing from submission list.'
                           .format(table_name))
 
