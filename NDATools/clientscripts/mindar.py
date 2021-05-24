@@ -1,4 +1,5 @@
 import argparse
+import itertools
 import tempfile
 import csv
 import time
@@ -109,7 +110,7 @@ def validate_mindar_args(parser):
                         help='specifies the number of threads to use for exporting/validating csv''s', type=int)
     parser.add_argument('-w', '--warning', action='store_true', help='Returns validation warnings for list of files')
     parser.add_argument('--download-dir', default= 'If no value is specified, exported mindar tables are downloaded into the '
-                               'home directory of the user, in a new folder with the same name as the mindar schema',
+                                'home directory of the user, in a new folder with the same name as the mindar schema',
                         help='directory to store validation results')
 
 
@@ -179,11 +180,11 @@ def create_mindar(args, config, mindar):
 
 def delete_mindar(args, config, mindar):
     response = mindar.show_mindars(True)
-    match = [r for r in response if r['schema']==args.schema.lower()]
+    match = [r for r in response if r['schema'] == args.schema.lower()]
     if not match:
         print('miNDAR {} was not found. Please check your arguments and/or credentials and try again'.format(args.schema))
         return
-    elif match[0]['status'] in {'miNDAR Deleted','miNDAR Delete In Progress'}:
+    elif match[0]['status'] in {'miNDAR Deleted', 'miNDAR Delete In Progress'}:
         print("miNDAR {} already has a status of '{}' and cannot be deleted at this time.".format(args.schema, match[0]['status']))
         return
 
@@ -233,7 +234,7 @@ def validate_mindar(args, config, mindar):
         file_list = export_mindar_helper(mindar, tables, args.schema, download_dir, False, args.worker_threads, True)
         print('Export of {}/{} tables in schema {} finished at {}'.format(len(file_list), len(tables), args.schema,
                                                                           datetime.now()))
-        successful_table_exports = set(map(lambda f: os.path.basename(f).replace('.csv',''), file_list))
+        successful_table_exports = set(map(lambda f: os.path.basename(f).replace('.csv', ''), file_list))
         for short_name in tables:
             if short_name not in successful_table_exports:
                 print('WARN - validation for table {} will be skipped because it was not successfully '
@@ -244,6 +245,23 @@ def validate_mindar(args, config, mindar):
         exit_client(signal.SIGTERM)
 
     validate_files(file_list=file_list, warnings=args.warning, build_package=False, threads=args.worker_threads, config=config)
+
+
+# The initial version of this tool expects 1 data-structure per submission.
+def validate_mindar_submission_state(mindar_submission_data, tables, is_resume):
+    tables_with_submissions = list(filter(lambda x: x['submission_id'] is not None, mindar_submission_data.values()))
+    submission_ids = [t[0] for t in itertools.groupby(tables_with_submissions, lambda x: x['submission_id']) if len(list(t[1])) > 1]
+
+    if len(submission_ids) > 0:
+        m = 'Detected submissions with multiple tables in this mindar. This version of the NDA-Tools client does ' \
+            'not currently support processing mindar submissions in this situation. Please contact NDA Help Desk for assistance'
+        raise Exception(m)
+
+
+    processed_tables = [t['short_name'] for t in mindar_submission_data.values() if t['short_name'] in tables and t['submission_id'] is not None]
+    if len(processed_tables) > 0 and not is_resume:
+        m = 'Submissions have already been started for table(s) {}. You must provide the --resume option in order to continue.'.format(','.join(processed_tables))
+        raise Exception(m)
 
 
 def submit_mindar(args, config, mindar):
@@ -263,10 +281,10 @@ def submit_mindar(args, config, mindar):
     # args.collectionID, args.description, args.title, args.scope, args.resume
 
     # TODO - add endpoint to mindar in order to get:
-      # submissions from schema, if they exist
-      # table(s) for each submission
-      # data-structure row ranges for each table
-      # submission-package-id(s) and validation-id(s) for each table
+    # submissions from schema, if they exist
+    # table(s) for each submission
+    # data-structure row ranges for each table
+    # submission-package-id(s) and validation-id(s) for each table
 
     # TODO - Add logic to client to error out if submission already exists for a particular mindar schmea + data-table (we can remove this restriction in the future)
     #
@@ -275,17 +293,17 @@ def submit_mindar(args, config, mindar):
 
     # Workflow ->
     # For each data-structure in tables:
-        # check if submission exists for mindar schema + structure. If it does, print error message and continue to next structure
-        # add records to mindar-submission table first, before trying to create a submission. Add them with a submission_status of processing or initializing
-        # export and validate
-        # update submission_status to 'validated', and set validation-id for each record in mindar-submission
-        # create submission package from validation uuid
-        # update submission_status to 'submission-package-created', and set submission-package-id for each record in mindar-submission
-        # create submission from package
-        # update submission_status to 'submitted', and set submission_id, dataset_id and collection_id for each record in mindar-submission
+    # check if submission exists for mindar schema + structure. If it does, print error message and continue to next structure
+    # add records to mindar-submission table first, before trying to create a submission. Add them with a submission_status of processing or initializing
+    # export and validate
+    # update submission_status to 'validated', and set validation-id for each record in mindar-submission
+    # create submission package from validation uuid
+    # update submission_status to 'submission-package-created', and set submission-package-id for each record in mindar-submission
+    # create submission from package
+    # update submission_status to 'submitted', and set submission_id, dataset_id and collection_id for each record in mindar-submission
 
-        # on Error:
-        #    print and log error message. Continue to next data-structure in tables
+    # on Error:
+    #    print and log error message. Continue to next data-structure in tables
 
     # TODO - add endpoint to update status of records in mindar-submission table
     if args.tables:
@@ -297,59 +315,8 @@ def submit_mindar(args, config, mindar):
 
     success_count = 0
     print('Checking existing submissions for miNDAR...')
-    existing_submissions_json = mindar.get_mindar_submissions(args.schema)
-
-    submissions = {}
-    print(existing_submissions_json)
-
-    # parse the existing submissions response
-    for submission in existing_submissions_json['submissions']:
-        for table in submission['tables']:  # iterate on submitted tables
-            table_name = table['short_name']
-            if table_name in tables:  # make sure the current table is what the user wants to submit
-                mindar_submission = MindarSubmission(args.schema, table_name, MindarSubmissionStep.INITIATE, mindar)
-                step = None
-                mutated = False
-
-                # Detect if the script should begin at the validation step
-                if not step and not table['validation_uuid'] and args.resume:
-                    print('{}: Beginning at validation step.'.format(table_name))
-                    step = MindarSubmissionStep.VALIDATE
-                elif table['validation_uuid'] and table['validation_uuid'][0]:
-                    print('{}: Found exiting validation_id...'.format(table_name))
-                    mindar_submission.validation_uuid = table['validation_uuid'][0]
-                    # TODO populate mindar_submission.associated_files without this associated files will not work
-                    mutated = True
-
-                # Detect if the script should begin at the submission package step
-                if not step and not table['submission_package_id'] and args.resume:
-                    print('{}: Beginning at submission package creation step.'.format(table_name))
-                    step = MindarSubmissionStep.SUBMISSION_PACKAGE
-                elif table['submission_package_id'] and table['submission_package_id'][0]:
-                    print('{}: Found exiting submission_package_id...'.format(table_name))
-                    mindar_submission.package_id = table['submission_package_id'][0]
-                    # TODO populate mindar_submission.full_file_path without this associated files will not work
-                    mutated = True
-
-                if not step and mutated and args.resume and not submission['submission_id']:
-                    print('{}: Beginning at submission creation step.'.format(table_name))
-                    step = MindarSubmissionStep.SUBMISSION
-                elif args.resume and submission['submission_id']:
-                    print('Table {} already has an existing submission! Removing from submission list.'
-                          .format(table_name))
-
-                    tables.remove(table_name)
-
-                if step:
-                    mindar_submission.set_step(step)
-
-                if args.resume:  # If the user wants to resume we then build a MindarSubmission object with the correct step
-                    submissions[table_name] = mindar_submission
-                elif mutated:
-                    print('Table {} already has an existing submission! Removing from submission list.'
-                          .format(table_name))
-
-                    tables.remove(table_name)
+    mindar_table_submission_data = mindar.get_mindar_submissions(args.schema)
+    validate_mindar_submission_state(mindar_table_submission_data, tables, args.resume)
 
     if not tables:
         print('No valid tables provided.')
@@ -358,11 +325,17 @@ def submit_mindar(args, config, mindar):
     # Run submission logic
     for table in tables:
         try:
-            # Perform a lookup, if the table has a pre-existing submission constructed, use that
-            if table in submissions:
-                submission = submissions[table]
-            else:  # create a fresh submission object if we don't have a pre-prepared one
             submission = MindarSubmission(args.schema, table, MindarSubmissionStep.INITIATE, mindar)
+            table_submission_data = mindar_table_submission_data[table]
+            if table_submission_data['validation_uuid'] and args.resume:
+                submission.validation_uuid = [table_submission_data['validation_uuid']] #has to be an array
+                submission.set_step(MindarSubmissionStep.SUBMISSION_PACKAGE)
+            if table_submission_data['submission_package_id'] and args.resume:
+                submission.package_id = table_submission_data['submission_package_id']
+                submission.set_step(MindarSubmissionStep.CREATE_SUBMISSION)
+            if table_submission_data['submission_id'] and args.resume:
+                submission.submission_id = table_submission_data['submission_id']
+                submission.set_step(MindarSubmissionStep.UPLOAD_ASSOCIATED_FILES)
 
             print('Beginning submission process for: {}...'.format(table))
 

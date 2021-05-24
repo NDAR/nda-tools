@@ -134,4 +134,37 @@ class MindarManager:
             raise e
 
     def get_mindar_submissions(self, schema):
-        return self.__authenticated_request(self.__make_url('/{}/submissions/'), path_params=[schema])
+        existing_mindar_submissions = self.__authenticated_request(self.__make_url('/{}/submissions/'),
+                                                                   path_params=[schema])
+        # transform the structure of data returned by the service so that it is easier to process (key each ds by short_name)
+        # This version of this tool expects at most 1 submission, submission-package and validation result per DS.
+        err_msg = 'Detected tables with multiple {} in this mindar. This version of the NDA-Tools client does ' \
+                  'not currently support processing mindar submissions in this situation. Please contact NDA Help Desk for assistance'
+
+        def transform(table, submission_id):
+
+            result = dict(table)
+
+            result['submission_id'] = submission_id
+
+            if len(table['validation_uuid']) > 1:
+                raise Exception(err_msg.format('validation results'))
+            else:
+                result['validation_uuid'] = table['validation_uuid'][0]
+
+            if len(table['submission_package_id']) > 1:
+                raise Exception(err_msg.format('submission packages'))
+            else:
+                result['submission_package_id'] = table['submission_package_id'][0]
+
+            return result
+
+        mindar_table_submission_data = {}
+        for submission in existing_mindar_submissions['submissions']:
+            for table in submission['tables']:
+                if table['short_name'] in mindar_table_submission_data:
+                    raise Exception(err_msg.format('submissions'))
+                else:
+                    mindar_table_submission_data[table['short_name']] = transform(table, submission['submission_id'])
+
+        return mindar_table_submission_data

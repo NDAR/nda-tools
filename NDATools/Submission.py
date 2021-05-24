@@ -75,7 +75,7 @@ class Submission:
         self.exit = allow_exit
         self.all_mpus = []
 
-    def submit(self):
+    def create_submission(self):
         response, session = api_request(self, "POST", "/".join([self.api, self.package_id]))
         if response:
             self.status = response['submission_status']
@@ -522,7 +522,7 @@ class Submission:
                     }
                     bucket = s3_resource.Bucket(bucket)
 
-                    bucket.copy(copy_source, key,Callback=callback)  ## check if this uploads files > 5GB
+                    bucket.copy(copy_source, key, Callback=callback)  ## check if this uploads files > 5GB
                 except Exception as e:
                     print (e)
                     print(get_stack_trace())

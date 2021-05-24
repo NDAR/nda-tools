@@ -5,6 +5,7 @@ from enum import Enum
 __all__ = ['MindarSubmission', 'MindarSubmissionStep']
 __incorrect_type__ = 'Incorrect type for {}, was expecting {}'
 
+from NDATools.clientscripts.vtcmd import resume_submission
 from NDATools.MindarManager import *
 
 from NDATools.clientscripts.vtcmd import *
@@ -12,6 +13,7 @@ from NDATools.MindarHelpers import *
 
 
 class MindarSubmission:
+
 
     def __init__(self, schema, table, step, mindar_manager):
         if not isinstance(schema, str):
@@ -39,6 +41,8 @@ class MindarSubmission:
         # create submission package step
         self.package_id = None
         self.full_file_path = None
+
+        self.submission_id = None
 
     def __str__(self):
         return 'MindarSubmission[schema={}, table={}, step={}]'.format(self.schema, self.table, self.step)
@@ -99,14 +103,18 @@ class MindarSubmission:
 
     def create_submission(self, args, config):
         print('Starting Submission Step for miNDAR table {}...'.format(self.table))
-        submission_id = submit_package(package_id=self.package_id, full_file_path=self.full_file_path,
-                                       associated_files=self.associated_files, threads=args.workerThreads,
-                                       batch=args.batch, config=config)
+        self.submission_id = submit_package(package_id=self.package_id, full_file_path=self.full_file_path,
+                                   associated_files=[], threads=args.workerThreads,
+                                   batch=args.batch, config=config)
 
-        print('Updating status in mindar submission table - setting submission-id = {}'.format(submission_id))
-        self.mindar.update_status(self.schema, self.table, submission_id=submission_id)
+        print('Updating status in mindar submission table - setting submission-id = {}'.format(self.submission_id))
+        self.mindar.update_status(self.schema, self.table, submission_id=self.submission_id)
 
         print('Submission Step complete...')
+
+    def upload_associated_files (self, args, config):
+        resume_submission(str(self.submission_id), batch=args.batch, config=config)
+
 
     def initiate(self, args, config):
         pass
@@ -117,7 +125,8 @@ class MindarSubmissionStep(Enum):
     SUBMISSION_PACKAGE = (4, MindarSubmission.create_submission_package)
     VALIDATE = (3, MindarSubmission.validate)
     EXPORT = (2, MindarSubmission.export)
-    SUBMISSION = (5, MindarSubmission.create_submission)
+    CREATE_SUBMISSION = (5, MindarSubmission.create_submission)
+    UPLOAD_ASSOCIATED_FILES = (6, MindarSubmission.upload_associated_files)
     INITIATE = (1, MindarSubmission.initiate)
 
     def __init__(self, order, function):

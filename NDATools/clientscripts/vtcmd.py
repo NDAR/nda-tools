@@ -232,7 +232,7 @@ def build_package(uuid, associated_files, config):
 def submit_package(package_id, full_file_path, associated_files, threads, batch, config):
     submission = Submission(id=package_id, full_file_path=full_file_path, thread_num=threads, batch_size=batch, allow_exit=True, config=config)
     print('Requesting submission for package: {}'.format(submission.package_id))
-    submission.submit()
+    submission.create_submission()
     if submission.submission_id:
         print('Submission ID: {}'.format(str(submission.submission_id)))
     if associated_files:
