@@ -1,22 +1,21 @@
-from __future__ import with_statement
 from __future__ import absolute_import
+from __future__ import with_statement
+
+from enum import Enum
+import json as json_lib
+import logging
+import os
 import re
 import signal
 import sys
-import getpass
-import time
 import threading
+import time
 import traceback
 
 import requests
 from requests.adapters import HTTPAdapter
 import requests.packages.urllib3.util
-import json as json_lib
-import signal
-import os
-import logging
 
-from enum import Enum
 try:
     from inspect import signature
 except:
@@ -38,15 +37,11 @@ print('Opening log: {}'.format(log_file))
 logging.basicConfig(filename=log_file, level=logging.INFO, format="%(asctime)s:%(levelname)s:%(message)s")
 
 if sys.version_info[0] < 3:
-    import ConfigParser as configparser
 
     input = raw_input
     import thread
 else:
-    import configparser
     import _thread as thread
-
-import xml.etree.ElementTree as ET
 
 
 class Protocol(object):
@@ -260,7 +255,7 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None):
         data = json_lib.dumps(json)
 
     retry_request = requests.packages.urllib3.util.retry.Retry(
-        total=7,
+        total=3,
         read=20,
         connect=20,
         backoff_factor=3,
