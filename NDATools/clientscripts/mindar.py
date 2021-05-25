@@ -326,16 +326,17 @@ def submit_mindar(args, config, mindar):
     for table in tables:
         try:
             submission = MindarSubmission(args.schema, table, MindarSubmissionStep.INITIATE, mindar)
-            table_submission_data = mindar_table_submission_data[table]
-            if table_submission_data['validation_uuid'] and args.resume:
-                submission.validation_uuid = [table_submission_data['validation_uuid']] #has to be an array
-                submission.set_step(MindarSubmissionStep.SUBMISSION_PACKAGE)
-            if table_submission_data['submission_package_id'] and args.resume:
-                submission.package_id = table_submission_data['submission_package_id']
-                submission.set_step(MindarSubmissionStep.CREATE_SUBMISSION)
-            if table_submission_data['submission_id'] and args.resume:
-                submission.submission_id = table_submission_data['submission_id']
-                submission.set_step(MindarSubmissionStep.UPLOAD_ASSOCIATED_FILES)
+            if table in mindar_table_submission_data and args.resume:
+                table_submission_data = mindar_table_submission_data[table]
+                if table_submission_data['validation_uuid'] :
+                    submission.validation_uuid = [table_submission_data['validation_uuid']] #has to be an array
+                    submission.set_step(MindarSubmissionStep.SUBMISSION_PACKAGE)
+                if table_submission_data['submission_package_id']:
+                    submission.package_id = table_submission_data['submission_package_id']
+                    submission.set_step(MindarSubmissionStep.CREATE_SUBMISSION)
+                if table_submission_data['submission_id']:
+                    submission.submission_id = table_submission_data['submission_id']
+                    submission.set_step(MindarSubmissionStep.UPLOAD_ASSOCIATED_FILES)
 
             print('Beginning submission process for: {}...'.format(table))
 
