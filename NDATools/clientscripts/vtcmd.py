@@ -9,7 +9,7 @@ import logging
 import os
 
 
-__all__ = ['build_package', 'validate_files', 'submit_package']
+__all__ = ['build_package', 'validate_files', 'submit_package', 'resume_submission']
 
 
 def parse_args():

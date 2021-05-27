@@ -5,15 +5,12 @@ from enum import Enum
 __all__ = ['MindarSubmission', 'MindarSubmissionStep']
 __incorrect_type__ = 'Incorrect type for {}, was expecting {}'
 
-from NDATools.clientscripts.vtcmd import resume_submission
-from NDATools.MindarManager import *
-
 from NDATools.clientscripts.vtcmd import *
+from NDATools.MindarManager import *
 from NDATools.MindarHelpers import *
 
 
 class MindarSubmission:
-
 
     def __init__(self, schema, table, step, mindar_manager):
         if not isinstance(schema, str):
@@ -110,13 +107,11 @@ class MindarSubmission:
         print('Updating status in mindar submission table - setting submission-id = {}'.format(self.submission_id))
         self.mindar.update_status(self.schema, self.table, submission_id=self.submission_id)
 
-
-    def upload_associated_files (self, args, config):
+    def upload_associated_files(self, args, config):
         resume_submission(str(self.submission_id), batch=args.batch, config=config)
 
         print('Submission Complete for table {}...'.format(self.table))
         print()
-
 
     def initiate(self, args, config):
         pass

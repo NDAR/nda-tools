@@ -15,6 +15,7 @@ from NDATools.clientscripts.vtcmd import *
 from NDATools.MindarManager import *
 from NDATools.MindarSubmission import *
 from NDATools.MindarHelpers import *
+from NDATools.Submission import *
 from NDATools.Utils import get_stack_trace, exit_client
 
 
@@ -322,21 +323,31 @@ def submit_mindar(args, config, mindar):
         print('No valid tables provided.')
         exit_client(signal.SIGTERM)
 
+    complete_statuses = [Status.COMPLETE, Status.SUBMITTED_PROTOTYPE, Status.UPLOAD_COMPLETE]
+
     # Run submission logic
     for table in tables:
         try:
-            submission = MindarSubmission(args.schema, table, MindarSubmissionStep.INITIATE, mindar)
+            mindar_submission = MindarSubmission(args.schema, table, MindarSubmissionStep.INITIATE, mindar)
             if table in mindar_table_submission_data and args.resume:
                 table_submission_data = mindar_table_submission_data[table]
-                if table_submission_data['validation_uuid'] :
-                    submission.validation_uuid = [table_submission_data['validation_uuid']] #has to be an array
-                    submission.set_step(MindarSubmissionStep.SUBMISSION_PACKAGE)
+                if table_submission_data['validation_uuid']:
+                    mindar_submission.validation_uuid = [table_submission_data['validation_uuid']]  # has to be an array
+                    mindar_submission.set_step(MindarSubmissionStep.SUBMISSION_PACKAGE)
                 if table_submission_data['submission_package_id']:
-                    submission.package_id = table_submission_data['submission_package_id']
-                    submission.set_step(MindarSubmissionStep.CREATE_SUBMISSION)
+                    mindar_submission.package_id = table_submission_data['submission_package_id']
+                    mindar_submission.set_step(MindarSubmissionStep.CREATE_SUBMISSION)
                 if table_submission_data['submission_id']:
-                    submission.submission_id = table_submission_data['submission_id']
-                    submission.set_step(MindarSubmissionStep.UPLOAD_ASSOCIATED_FILES)
+                    mindar_submission.submission_id = table_submission_data['submission_id']
+                    mindar_submission.set_step(MindarSubmissionStep.UPLOAD_ASSOCIATED_FILES)
+                if mindar_submission.submission_id:
+                    submission = Submission(id=mindar_submission.submission_id, full_file_path=None, config=config, resume=True)
+                    submission.check_status()
+
+                    if submission.status in complete_statuses:
+                        print("Skipping submission for {}, already completed.".format(table))
+                        success_count += 1
+                        continue
 
             print('Beginning submission process for: {}...'.format(table))
 
@@ -345,7 +356,7 @@ def submit_mindar(args, config, mindar):
                 config.title = 'DATA ENCLAVE SUBMISSION {} - TABLE {}'.format(args.schema, table)
             config.description = 'DATA ENCLAVE SUBMISSION {} - TABLE {}'.format(args.schema, table)
 
-            submission.process(args, config)  # Begin submission process
+            mindar_submission.process(args, config)  # Begin submission process
             success_count += 1
         except Exception as e:
             print(e)

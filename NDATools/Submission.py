@@ -19,17 +19,26 @@ else:
     import queue
 from tqdm import tqdm
 from NDATools.Configuration import *
-from NDATools.DataManager import *
 from NDATools.MultiPartUploads import *
 from NDATools.TokenGenerator import *
 
 
+__all__ = ['Status', 'Submission']
+
+
 class Status:
     UPLOADING = 'Uploading'
+    SUBMITTED = 'Submitted'
+    PROCESSING = 'Processing'
+    LOADERROR = 'Error on Data Load'
+    UPLOAD_COMPLETE = 'Upload Completed'
+    INVESTIGATOR_APPROVED = 'Investigator Approved'
+    DAC_APPROVED = 'DAC Approved'
+    SUBMITTED_PROTOTYPE = 'Submitted_Prototype'
     SYSERROR = 'SystemError'
     COMPLETE = 'Complete'
     ERROR = 'Error'
-    PROCESSING = 'In Progress'
+    IN_PROGRESS = 'In Progress'
     READY = 'Ready'
 
 
@@ -89,12 +98,12 @@ class Submission:
                 raise Exception("{}\n{}".format('SubmissionError', message))
 
     def check_status(self):
-        response, session = api_request(self, "GET", "/".join([self.api, self.submission_id]))
+        response, session = api_request(self, "GET", "/".join([self.api, str(self.submission_id)]))
 
         if response:
             self.status = response['submission_status']
         else:
-            message='An error occurred while checking submission {} status.'.format(self.submission_id)
+            message = 'An error occurred while checking submission {} status.'.format(self.submission_id)
             if self.exit:
                 exit_client(signal=signal.SIGTERM,
                             message=message)
@@ -102,7 +111,6 @@ class Submission:
                 raise Exception("{}\n{}".format('StatusError', message))
 
     def create_file_info_list(self, response):
-
         return [{'submissionFileId': file['id'], 'destination_uri': file['file_remote_path']} for file in response if
                 file['status'] != Status.COMPLETE]
 
@@ -349,7 +357,7 @@ class Submission:
                 file_id_info = self.create_file_info_list(response)
                 file_ids = [int(ids['submissionFileId']) for ids in file_id_info]
                 self.credentials_list = self.get_multipart_credentials(file_ids, config)
-                self.batch_update_status(status=Status.PROCESSING)
+                self.batch_update_status(status=Status.IN_PROGRESS)
 
             if not hide_progress:
                 self.total_progress = tqdm(total=self.total_upload_size,
