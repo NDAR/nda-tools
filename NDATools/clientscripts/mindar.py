@@ -334,12 +334,15 @@ def submit_mindar(args, config, mindar):
                 if table_submission_data['validation_uuid']:
                     mindar_submission.validation_uuid = [table_submission_data['validation_uuid']]  # has to be an array
                     mindar_submission.set_step(MindarSubmissionStep.SUBMISSION_PACKAGE)
+
                 if table_submission_data['submission_package_id']:
                     mindar_submission.package_id = table_submission_data['submission_package_id']
                     mindar_submission.set_step(MindarSubmissionStep.CREATE_SUBMISSION)
+
                 if table_submission_data['submission_id']:
                     mindar_submission.submission_id = table_submission_data['submission_id']
                     mindar_submission.set_step(MindarSubmissionStep.UPLOAD_ASSOCIATED_FILES)
+
                 if mindar_submission.submission_id:
                     submission = Submission(id=mindar_submission.submission_id, full_file_path=None, config=config, resume=True)
                     submission.check_status()
@@ -348,6 +351,17 @@ def submit_mindar(args, config, mindar):
                         print("Skipping submission for {}, already completed.".format(table))
                         success_count += 1
                         continue
+
+                # This is extremely hacky and should only be executed *after* the submission would be potentially
+                # skipped due to completion so that it doesn't accidentally get run.
+                if mindar_submission.get_step() == MindarSubmissionStep.SUBMISSION_PACKAGE:
+                    print('Determined {} needs associated files, re-running export & validation...'.format(table))
+                    mindar_submission.export(args, config)
+                    validation_uuid, associated_files = validate_files(file_list=mindar_submission.files,
+                                                                       warnings=args.warning, build_package=False,
+                                                                       threads=args.workerThreads, config=config)
+                    print('Assigning associated files...')
+                    mindar_submission.associated_files = associated_files
 
             print('Beginning submission process for: {}...'.format(table))
 

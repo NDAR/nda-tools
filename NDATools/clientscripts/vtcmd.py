@@ -198,7 +198,7 @@ def validate_files(file_list, warnings, build_package, threads, config=None):
     return [validation.uuid, validation.associated_files]
 
 
-def build_package(uuid, associated_files, config):
+def build_package(uuid, associated_files, config, download=True):
     if not config.title:
         config.title = input('Enter title for dataset name:')
     if not config.description:
@@ -221,12 +221,13 @@ def build_package(uuid, associated_files, config):
     print('expiration date: {}'.format(package.expiration_date))
     print('\nPackage finished building.\n')
 
-    print('Downloading submission package.')
-    package.download_package(hide_progress=config.hideProgress)
-    print('\nA copy of your submission package has been saved to: {}'.
-          format(os.path.join(package.package_folder, package.config.submission_packages)))
+    if not download:
+        print('Downloading submission package.')
+        package.download_package(hide_progress=config.hideProgress)
+        print('\nA copy of your submission package has been saved to: {}'.
+              format(os.path.join(package.package_folder, package.config.submission_packages)))
 
-    return[package.package_id, package.full_file_path]
+    return [package.package_id, package.full_file_path]
 
 
 def submit_package(package_id, full_file_path, associated_files, threads, batch, config):

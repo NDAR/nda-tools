@@ -3,6 +3,7 @@ import re
 import os
 import logging
 
+from tqdm import tqdm
 from datetime import datetime
 from NDATools.Utils import advanced_request, Verb, ContentType, get_stack_trace
 
@@ -108,13 +109,18 @@ class MindarManager:
                             invalid_structure = True
 
                         r.raise_for_status()
+
                     if add_nda_header:
                         version = re.search(r'^.*?(\d+)$', table).group(1)
                         name = table.rstrip(version)
                         f.write('{},{}\n'.format(name, version).encode("UTF-8"))
-                    for content in r.iter_content(chunk_size=None):
-                        if content:
-                            f.write(content)
+
+                    with tqdm(ascii=os.name == 'nt', unit='bytes',
+                              desc='Exporting...', dynamic_ncols=True, unit_scale=True) as progress_bar:
+                        for content in r.iter_content(chunk_size=None):
+                            if content:
+                                f.write(content)
+                                progress_bar.update(len(content))
 
                 f.flush()
                 print('Done exporting table {} to {} at {}'.format(table, final_csv_dest, datetime.now()))

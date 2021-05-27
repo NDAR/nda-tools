@@ -90,7 +90,7 @@ class MindarSubmission:
     def create_submission_package(self, args, config):
         print('Starting Submission Package Step for miNDAR table {}...'.format(self.table))
 
-        package_results = build_package(self.validation_uuid, self.associated_files, config=config)
+        package_results = build_package(self.validation_uuid, self.associated_files, config=config, download=False)
         self.package_id = package_results[0]
         self.full_file_path = package_results[1]
         print('Updating status in mindar submission table - setting submission_package_uuid = {}'.format(self.package_id))
@@ -115,6 +115,9 @@ class MindarSubmission:
 
     def initiate(self, args, config):
         pass
+
+    def get_step(self):
+        return self.step
 
 
 @enum.unique

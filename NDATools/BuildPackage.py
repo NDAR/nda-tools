@@ -181,7 +181,7 @@ class SubmissionPackage:
         no_access_buckets = []
         if self.source_bucket:
             s3_client = self.credentials.get_s3_client()
-            for file in self.no_match[:]:
+            for file in tqdm(self.no_match[:]):
                 key = file
                 if self.source_prefix:
                     key = '/'.join([self.source_prefix, file])
