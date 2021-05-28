@@ -221,7 +221,7 @@ def build_package(uuid, associated_files, config, download=True):
     print('expiration date: {}'.format(package.expiration_date))
     print('\nPackage finished building.\n')
 
-    if not download:
+    if download:
         print('Downloading submission package.')
         package.download_package(hide_progress=config.hideProgress)
         print('\nA copy of your submission package has been saved to: {}'.

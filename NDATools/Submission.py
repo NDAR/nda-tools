@@ -1,6 +1,10 @@
 from __future__ import with_statement
 from __future__ import absolute_import
 
+import concurrent
+from concurrent.futures._base import ALL_COMPLETED
+from concurrent.futures.thread import ThreadPoolExecutor
+from datetime import datetime
 import json
 import re
 import sys
@@ -248,27 +252,31 @@ class Submission:
                               self.config.skip_local_file_check)
 
         # files in s3
-        no_access_buckets = []
+        no_access_buckets = set()
         if self.source_bucket:
             s3_client = self.credentials.get_s3_client()
-            for file in self.no_match[:]:
-                key = file
-                if self.source_prefix:
-                    key = '/'.join([self.source_prefix, file])
-                file_name = '/'.join(['s3:/', self.source_bucket, key])
-                try:
-                    response = s3_client.head_object(Bucket=self.source_bucket, Key=key)
-                    self.full_file_path[file] = (file_name, int(response['ContentLength']))
-                    self.no_match.remove(file)
-                except botocore.exceptions.ClientError as e:
-                    # If a client error is thrown, then check that it was a 404 error.
-                    # If it was a 404 error, then the bucket does not exist.
-                    error_code = int(e.response['Error']['Code'])
-                    if error_code == 404:
-                        pass
-                    if error_code == 403:
-                        no_access_buckets.append(self.source_bucket)
-                        pass
+            file_number = len(self.no_match[:])
+            print('checking for {} files @ {}....'.format(file_number, datetime.now()))
+
+            progress_bar = tqdm(ascii=os.name == 'nt', total=len(self.no_match), desc='Checking Files in S3...',
+                                dynamic_ncols=True, unit_scale=True, unit='files')
+
+            def add_result(f):
+                progress_bar.update(1)
+                if not f.exception():
+                    result = f.result()
+                    if result:
+                        no_access_buckets.append(result)
+
+            tasks = []
+            with ThreadPoolExecutor(max_workers=self.thread_num) as executor:
+                for index, file in enumerate(self.no_match[:]):
+                    t = executor.submit(self.check_file_exists_in_s3, file, s3_client)
+                    tasks.append(t)
+                    t.add_done_callback(add_result)
+
+            concurrent.futures.wait(tasks, timeout=None, return_when=ALL_COMPLETED)
+            progress_bar.close()
 
         if self.no_match:
             if no_access_buckets:
@@ -315,6 +323,25 @@ class Submission:
             return len(self.directory_list) > 0
         except TypeError:
             return len(self.source_bucket) > 0
+
+    def check_file_exists_in_s3(self, file, s3_client):
+        key = file
+        if self.source_prefix:
+            key = '/'.join([self.source_prefix, file])
+        file_name = '/'.join(['s3:/', self.source_bucket, key])
+        try:
+            response = s3_client.head_object(Bucket=self.source_bucket, Key=key)
+            self.full_file_path[file] = (file_name, int(response['ContentLength']))
+            self.no_match.remove(file)
+        except botocore.exceptions.ClientError as e:
+            # If a client error is thrown, then check that it was a 404 error.
+            # If it was a 404 error, then the bucket does not exist.
+            error_code = int(e.response['Error']['Code'])
+            if error_code == 404:
+                pass
+            if error_code == 403:
+                return self.source_bucket
+                pass
 
     def batch_update_status(self, status=Status.COMPLETE):
         list_data = self.generate_data_for_request(status)

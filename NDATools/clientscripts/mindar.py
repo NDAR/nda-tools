@@ -344,7 +344,8 @@ def submit_mindar(args, config, mindar):
                     mindar_submission.set_step(MindarSubmissionStep.UPLOAD_ASSOCIATED_FILES)
 
                 if mindar_submission.submission_id:
-                    submission = Submission(id=mindar_submission.submission_id, full_file_path=None, config=config, resume=True)
+                    submission = Submission(id=mindar_submission.submission_id, full_file_path=None,
+                                            thread_num=args.workerThreads, config=config, resume=True)
                     submission.check_status()
 
                     if submission.status in complete_statuses:
