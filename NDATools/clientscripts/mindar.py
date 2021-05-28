@@ -38,9 +38,9 @@ def parse_args():
 
     table_parser = make_subcommand(subparsers, 'tables', default)  # mindar table
     table_subparser = table_parser.add_subparsers(dest='table_subparser_name')
-    make_subcommand(table_subparser, 'add', add_table, [add_table_args])  # mindar table add
-    make_subcommand(table_subparser, 'drop', drop_table, [drop_table_args])  # mindar table drop
-    make_subcommand(table_subparser, 'reset', reset_table, [reset_table_args])  # mindar table reset
+    make_subcommand(table_subparser, 'add', add_table, [require_schema, add_table_args])  # mindar table add
+    make_subcommand(table_subparser, 'drop', drop_table, [require_schema, drop_table_args])  # mindar table drop
+    make_subcommand(table_subparser, 'reset', reset_table, [require_schema, reset_table_args])  # mindar table reset
 
     return parser.parse_args()
 
@@ -72,17 +72,14 @@ def create_mindar_args(parser):
 
 def add_table_args(parser):
     parser.add_argument('tables')
-    parser.add_argument('--schema', help='Schema to add tables to')
 
 
 def drop_table_args(parser):
     parser.add_argument('tables')
-    parser.add_argument('--schema', help='Schema to drop tables from')
 
 
 def reset_table_args(parser):
     parser.add_argument('tables')
-    parser.add_argument('--schema', help='Schema with affected tables')
     parser.add_argument('-f', '--force', dest='force_delete', action='store_true')
 
 
