@@ -1,8 +1,7 @@
-from __future__ import with_statement
 from __future__ import absolute_import
-import sys
+from __future__ import with_statement
 
-from NDATools.S3Authentication import S3Authentication
+import sys
 
 IS_PY2 = sys.version_info < (3, 0)
 
@@ -13,19 +12,15 @@ else:
     from queue import Queue
 import csv
 from threading import Thread
-import boto3
 import botocore
-import datetime
-from boto3.s3.transfer import S3Transfer
 import multiprocessing
 
-from NDATools.TokenGenerator import *
 from NDATools.Utils import *
-
 
 
 class Worker(Thread):
     """ Thread executing tasks from a given tasks queue """
+
     def __init__(self, tasks):
         Thread.__init__(self)
         self.tasks = tasks
@@ -47,6 +42,7 @@ class Worker(Thread):
 
 class ThreadPool:
     """ Pool of threads consuming tasks from a queue """
+
     def __init__(self, num_threads):
         self.tasks = Queue(num_threads)
         for _ in range(num_threads):
@@ -73,7 +69,9 @@ class Download(Protocol):
             self.config = config
         else:
             self.config = ClientConfiguration()
-        self.url = self.config.datamanager_api
+        self.url = self.config.datamanager_api  # todo: delete me
+        self.package_url = self.config.package_api
+        self.datadictionary_url = self.config.datadictionary_api
         self.username = config.username
         self.password = config.password
         self.directory = directory
@@ -86,6 +84,8 @@ class Download(Protocol):
         self.associated_files = False
         self.dsList = []
         self.verbose = verbose
+        self.s3_links = {}
+        self.package_file_id_list = set()
 
     @staticmethod
     def get_protocol(cls):
@@ -95,177 +95,250 @@ class Download(Protocol):
         if self.verbose:
             print(' '.join(list(args)))
 
-    def useDataManager(self):
+    def get_presigned_urls(self):
         """ Download package files (not associated files) """
+        auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
+        headers = {'content-type': 'application/json'}
+        url = self.package_url + '/{}/files?page=1&size=all'.format(self.package)
+        response = json.loads(requests.get(url, headers, auth=auth).text)
 
-        payload = ('<?xml version="1.0" ?>\n' +
-                   '<S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/">\n' +
-                   '<S:Body> <ns3:QueryPackageFileElement\n' +
-                   'xmlns:ns4="http://dataManagerService"\n' +
-                   'xmlns:ns3="http://gov/nih/ndar/ws/datamanager/server/bean/jaxb"\n' +
-                   'xmlns:ns2="http://dataManager/transfer/model">\n' +
-                   '<packageId>' + self.package + '</packageId>\n' +
-                   '<associated>true</associated>\n' +
-                   '</ns3:QueryPackageFileElement>\n' +
-                   '</S:Body>\n' +
-                   '</S:Envelope>')
+        for element in response['results']:
+            associated = element['associatedFile']
+            # if not associated:  # Does not loaded associated files
+            alias = element['download_alias']
+            package_file_id = element['package_file_id']
+            self.package_file_id_list.add(package_file_id)
+            self.local_file_names[package_file_id] = alias
 
-        response, session = api_request(self, "POST", self.url, data=payload)
+        logging.debug("Generating download links...")
+        self.__chunk_file_id_list()
 
-        root = ET.fromstring(response.text)
-        packageFiles = root.findall(".//queryPackageFiles")
-        for element in packageFiles:
-            associated = element.findall(".//isAssociated")
-            path = element.findall(".//path")
-            alias = element.findall(".//alias")
-            for a in associated:
-                if a.text == 'false':
-                    for p in path:
-                        file = 's3:/' + p.text
-                        self.path_list.add(file)
-                    for al in alias:
-                        alias_path = al.text
-
-                    self.local_file_names[file] = alias_path
+    def __chunk_file_id_list(self):
+        """
+        Chunk requests due to max batch size 0f 50,000. Subsequently calls __post_for_s3_links to get presigned urls.
+        """
+        self.package_file_id_list = list(self.package_file_id_list)  # Convert set to list
+        auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
+        headers = {'content-type': 'application/json'}
+        max_batch_size = 50000
+        if len(self.package_file_id_list) > max_batch_size:
+            chunks = [self.package_file_id_list[i:i + max_batch_size] for i in
+                      range(0, len(self.package_file_id_list), max_batch_size)]
+            for chunk in chunks:
+                self.__post_for_s3_links(chunk, auth, headers)
+        else:
+            self.__post_for_s3_links(self.package_file_id_list, auth, headers)
 
         self.verbose_print('Downloading package files for package {}.'.format(self.package))
 
-    def searchForDataStructure(self, resume, dir):
-        """ Download associated files listed in data structures """
+    def __post_for_s3_links(self, id_list, auth, headers):
+        """
+        Stores key-value pairs of (key: package_file_id, value: presigned URL)
+        :param id_list: List of package file IDs with max size of 50,000
+        """
+        url = self.package_url + '/{}/files/batchGeneratePresignedUrls'.format(self.package)
+        response = json.loads(requests.post(url, headers=headers, json=id_list, auth=auth).text)
 
-        all_paths = self.path_list
-        self.path_list = set()
+        for element in response['presignedUrls']:
+            download_url = element['downloadURL']
+            package_file_id = element['package_file_id']
+            self.s3_links[package_file_id] = download_url
 
-        for path in all_paths:
-            if 'Package_{}'.format(self.package) in path:
-                file = path.split('/')[-1]
-                shortName = file.split('.')[0]
-                try:
-                    ddr = requests.request("GET", "https://ndar.nih.gov/api/datadictionary/v2/datastructure/{}".format(
-                        shortName))
-                    ddr.raise_for_status()
-                    dataStructureFile = path.split('gpop/')[1]
-                    dataStructureFile = os.path.join(self.directory, dataStructureFile)
-                    self.dataStructure = dataStructureFile
-                    self.useDataStructure()
-                    self.get_tokens()
-                    self.start_workers(resume, prev_directory=dir)
-                except requests.exceptions.HTTPError as e:
-                    if e.response.status_code == 404:
-                        continue
-
-    def useDataStructure(self, data_structure):
+    def use_s3_links_file(self):
+        """
+        Reads a text file line by line, collects all S3 URLs, and requests the package file ids
+        from the package service for those files.
+        """
         try:
-            with open(self.dataStructure, 'r', encoding='utf-8') as tsv_file:
-                tsv = csv.reader(tsv_file, delimiter="\t")
-                if data_structure:
-                    ds = next(tsv)[1].split("_")[0]
-                for row in tsv:
-                    for element in row:
-                        if element.startswith('s3://'):
-                            self.path_list.add(element)
-                            if data_structure:
-                                e= element.split('/')
-                                path = "".join(e[4:])
-                                path = "/".join([ds, path])
-                                self.local_file_names[element] = path
-
+            with open(self.dataStructure, 'r', encoding='utf-8') as s3_links_file:
+                for line in s3_links_file:
+                    if line.startswith('s3://'):
+                        self.path_list.add(line.strip())
+            self.get_package_file_ids()
         except IOError as e:
             self.verbose_print(
                 '{} not found. Please enter the correct path to your file and try again.'.format(self.dataStructure))
             raise e
 
-    def get_links(self, links, files, filters=None):
+    def use_data_structure(self):
+        """
+        Downloads a data structure file from the package, the data_structure_manifest file,
+        parses both files to identify all associated files for the data structure, and then
+        requests the package file ids for those files from the package service
+        """
+        data_structure_name = self.dataStructure.split('/')[-1].split('.txt')[0]
+        auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
+        headers = {'content-type': 'application/json'}
+        url = self.package_url + '/{}/files?page=1&size=all'.format(self.package)
+        response = json.loads(requests.get(url, headers, auth=auth).text)
+        has_data_structure = False
+        has_data_structure_manifest = False
+        for element in response['results']:
+            if data_structure_name == element['download_alias'].split('.txt')[0]:
+                pfi = list()
+                pfi.append(element['package_file_id'])
+                self.__post_for_s3_links(pfi, auth, headers)
+                self.local_file_names[element['package_file_id']] = element['download_alias']
+                self.download_from_s3link(element['package_file_id'], True, self.directory)
+                has_data_structure = True
+            if element['download_alias'] == 'datastructure_manifest.txt':
+                pfi = list()
+                pfi.append(element['package_file_id'])
+                self.__post_for_s3_links(pfi, auth, headers)
+                self.local_file_names[element['package_file_id']] = element['download_alias']
+                self.download_from_s3link(element['package_file_id'], True, self.directory)
+                has_data_structure_manifest = True
+            if has_data_structure_manifest and has_data_structure:
+                break
+        if not has_data_structure:
+            print('{} data structure is not included in the package'.format(self.dataStructure))
+            sys.exit(1)
 
+        def __get_manifest_and_file_elements(data_structure_name):
+
+            file_elements = []
+            manifest_elements = []
+
+            # Parse the data dictionary api results and create a list of file elements and manifest elements.
+            for el in requests.get(self.datadictionary_url+'/{}'.format(data_structure_name)).json()['dataElements']:
+                if el['type'] == 'File':
+                    file_elements.append(el['name'])
+                elif el['type'] == 'Manifest':
+                    manifest_elements.append(el['name'])
+            return file_elements, manifest_elements
+
+        file_elements, manifest_elements = __get_manifest_and_file_elements(data_structure_name)
+        manifest_names = {}
+
+        data_structure_file_links = set()
+        data_structure_manifest_file_links = set()
+
+        with open(os.path.normpath(os.path.join(self.directory, data_structure_name + '.txt'))) as data_structure_file:
+            reader = csv.DictReader(data_structure_file, dialect='excel-tab')
+
+            for row in reader:
+                for file_element in file_elements:
+                    if file_element in row and row[file_element] is not None:
+                        data_structure_file_links.add(row[file_element])
+                for manifest_element in manifest_elements:
+                    if manifest_element in row and row[manifest_element] is not None:
+                        if row['dataset_id'] in manifest_names:
+                            manifest_names[row['dataset_id']].append(row[manifest_element])
+                        else:
+                            manifest_names.update({row['dataset_id']: [row[manifest_element]]})
+        if manifest_names:
+            with open(os.path.normpath(os.path.join(self.directory, 'datastructure_manifest.txt'))) as \
+                    data_structure_manifest:
+                reader = csv.DictReader(data_structure_manifest, dialect='excel-tab')
+                for row in reader:
+                    if row['dataset_id'] in manifest_names:
+                        if row['manifest_name'] in manifest_names[row['dataset_id']]:
+                            data_structure_manifest_file_links.add(row['associated_file'])
+
+        self.path_list.update(data_structure_file_links)
+        self.path_list.update(data_structure_manifest_file_links)
+        if len(self.path_list) > 0:
+            self.get_package_file_ids()
+
+    def get_package_file_ids(self):
+        self.verbose_print('Requesting files from package: {}'.format(self.package))
+        auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
+        url = self.package_url + '/{}/files'.format(self.package)
+        try:
+            for package_file in requests.post(url, auth=auth, json=list(self.path_list)).json():
+                self.package_file_id_list.add(package_file['package_file_id'])
+                self.local_file_names[package_file['package_file_id']] = package_file['download_alias']
+        except ValueError:
+            print('One or more S3 URLs cannot be found in the package.')
+            print('Check if associated files were included, when you created your data package.')
+            sys.exit(1)
+        self.__chunk_file_id_list()
+
+    def get_links(self, links, files, package, filters=None):
+        self.package = package
         if links == 'datastructure':
-            self.dataStructure = files[0]
-            self.useDataStructure(data_structure=True)
-
+            self.verbose_print('Downloading S3 links from a data structure (i.e., image03): {}'.format(files))
+            self.dataStructure = files
+            self.use_data_structure()
         elif links == 'text':
-            self.dataStructure = files[0]
-            self.useDataStructure(data_structure=False)
-
+            self.verbose_print('Downloading S3 links from text file: {}'.format(files))
+            self.dataStructure = files
+            self.use_s3_links_file()
         elif links == 'package':
-            self.package = files[0]
-            self.useDataManager()
-
+            self.verbose_print('Downloading all files from package with id: {}'.format(package))
+            self.get_presigned_urls()
         else:
             self.path_list = files
+            self.get_package_file_ids()
 
-    def check_time(self):
-        now_time = datetime.datetime.now()
-        if now_time >= self.refresh_time:
-            self.get_tokens()
+    def download_from_s3link(self, package_file_id, resume, prev_directory):
 
-    def get_tokens(self):
-        start_time = datetime.datetime.now()
-        generator = NDATokenGenerator(self.url)
-        self.token = generator.generate_token(self.username, self.password)
-        self.refresh_time = start_time + datetime.timedelta(hours=23, minutes=00)
-        self.access_key = self.token.access_key
-        self.secret_key = self.token.secret_key
-        self.session = self.token.session
-
-    def download_path(self, path, resume, prev_directory):
-        filename = path.split('/')
-        self.filename = filename[3:]
-        key = '/'.join(self.filename)
-        bucket = filename[2]
-
-        if self.local_file_names:
-            dir = (self.local_file_names[path]).split('/')
-            self.newdir = dir[:-1]
-            alias = self.local_file_names[path]
-        else:
-            self.newdir = filename[3:-1]
-            alias = key
-
-        self.newdir = '/'.join(self.newdir)
-        self.newdir = os.path.join(self.directory, self.newdir)
-        local_filename = os.path.join(self.directory, alias)
-
-        downloaded = False
-
-        # check previous downloads
-        if resume:
-            prev_local_filename = os.path.join(prev_directory, key)
-            if os.path.isfile(prev_local_filename):
-                downloaded = True
-
-        if not downloaded:
+        # use this instead of exists_ok in order to work with python v.2
+        def mk_dir_ignore_err(dir):
             try:
-                os.makedirs(self.newdir)
+                os.makedirs(os.path.normpath(dir))
             except OSError as e:
+                # Raise exception for any errors other than FileExists error
+                # Using OSError over FileExistsError for version compatibility
+                if e.errno != 17:
+                    raise
                 pass
 
-            # check tokens
-            self.check_time()
+        s3_link = self.s3_links[package_file_id]
+        alias = self.local_file_names[package_file_id]
+        completed_download = os.path.normpath(os.path.join(self.directory, alias))
+        partial_download = os.path.normpath(
+            os.path.join(prev_directory, alias + '.partial'))
+        downloaded = False
+        resume_header = None
 
-            s3transfer = S3Transfer(S3Authentication.get_s3_client_with_config(self.access_key,
-                                                                               self.secret_key,
-                                                                               self.session))
+        if os.path.isfile(completed_download):
+            return
 
+        if os.path.isfile(partial_download):
+            downloaded = True
+            downloaded_size = os.path.getsize(partial_download)
+            resume_header = {'Range': 'bytes={}-'.format(downloaded_size)}
+            download_file = open(partial_download, "ab")
+            self.verbose_print('Resuming download: {}'.
+                               format(partial_download))
+        if not downloaded:
+            mk_dir_ignore_err(os.path.dirname(partial_download))
+            download_file = open(partial_download, "wb")
+            self.verbose_print('Starting download: {}'.format(partial_download))
+
+        try:
+            s = requests.session()
+            if resume_header:
+                s.headers.update(resume_header)
+            with s.get(s3_link, stream=True) as response:
+                for chunk in response.iter_content(chunk_size=512 * 1024):
+                    if chunk:
+                        download_file.write(chunk)
+            download_file.close()
             try:
-                s3transfer.download_file(bucket, key, local_filename)
-                self.verbose_print('downloaded: {}'.format(path))
-
-            except botocore.exceptions.ClientError as e:
-                # If a client error is thrown, then check that it was a 404 error.
-                # If it was a 404 error, then the bucket does not exist.
-                error_code = int(e.response['Error']['Code'])
-                if error_code == 404:
-                    message = 'This path is incorrect: {}. Please try again.'.format(path)
-                    self.verbose_print(message)
-                    raise Exception(e)
-
-                if error_code == 403:
-                    message = '\nThis is a private bucket. Please contact NDAR for help: {}'.format(path)
-                    self.verbose_print(message)
-                    raise Exception(e)
+                os.rename(partial_download, completed_download)
+            except WindowsError:
+                os.remove(completed_download)
+                os.rename(partial_download, completed_download)
+            self.verbose_print('Completed download {}'.format(completed_download))
+        # except botocore.exceptions.ClientError as e:
+        except Exception as e:
+            # If a client error is thrown, then check that it was a 404 error.
+            # If it was a 404 error, then the bucket does not exist.
+            error_code = int(e.response['Error']['Code'])
+            if error_code == 404:
+                message = 'This path is incorrect: {}. Please try again.'.format(s3_link)
+                self.verbose_print(message)
+                raise Exception(e)
+            if error_code == 403:
+                message = '\nThis is a private bucket. Please contact NDAR for help: {}'.format(s3_link)
+                self.verbose_print(message)
+                raise Exception(e)
 
     def start_workers(self, resume, prev_directory, thread_num=None):
         def download(path):
-            self.download_path(path, resume, prev_directory)
+            self.download_from_s3link(path, resume, prev_directory)
 
         # Instantiate a thread pool with i worker threads
         self.thread_num = max([1, multiprocessing.cpu_count() - 1])
@@ -275,5 +348,5 @@ class Download(Protocol):
         pool = ThreadPool(self.thread_num)
 
         # Add the jobs in bulk to the thread pool
-        pool.map(download, self.path_list)
+        pool.map(download, self.package_file_id_list)
         pool.wait_completion()

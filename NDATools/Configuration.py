@@ -14,12 +14,15 @@ from pkg_resources import resource_filename
 
 
 class ClientConfiguration:
+
     def __init__(self, settings_file, username=None, password=None, access_key=None, secret_key=None):
         self.config = configparser.ConfigParser()
         if settings_file == os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'):
             config_location = settings_file
+            self._check_and_fix_missing_options(config_location)
         else:
             config_location = resource_filename(__name__, settings_file)
+
         self.config.read(config_location)
 
         self.validation_api = self.config.get("Endpoints", "validation")
@@ -27,19 +30,13 @@ class ClientConfiguration:
         self.submission_api = self.config.get("Endpoints", "submission")
         self.validationtool_api = self.config.get("Endpoints", "validationtool")
         self.datamanager_api = self.config.get("Endpoints", "data_manager")
+        self.package_api = self.config.get("Endpoints", "package")
+        self.datadictionary_api = self.config.get("Endpoints", "datadictionary")
         self.validation_results = self.config.get("Files", "validation_results")
         self.submission_packages = self.config.get("Files", "submission_packages")
         self.aws_access_key = self.config.get("User", "access_key")
         self.aws_secret_key = self.config.get("User", "secret_key")
-        self.aws_session_token = ""
-        if not self.config.has_option("User", "session_token"):
-            fixed_config = configparser.RawConfigParser()
-            fixed_config.read(config_location)
-            fixed_config.set("User", "session_token", "")
-            with open(config_location, 'w') as configfile:
-                fixed_config.write(configfile)
-        else:
-            self.aws_session_token = self.config.get("User", "session_token")
+        self.aws_session_token = self.config.get('User', 'session_token')
         self.username = self.config.get("User", "username")
         self.password = self.config.get("User", "password")
 
@@ -64,6 +61,24 @@ class ClientConfiguration:
         self.hideProgress = False
         self.skip_local_file_check = False
 
+    def _check_and_fix_missing_options(self, config_location):
+        default_config = configparser.ConfigParser()
+        default_file_path = resource_filename(__name__, 'clientscripts/config/settings.cfg')
+        default_config.read(default_file_path)
+        default_settings = dict(default_config._sections)
+        self.config.read(config_location)
+        user_settings = dict(self.config._sections)
+
+        for section in default_settings:
+            for option in default_settings[section]:
+                if option not in user_settings[section]:
+                    print('[{}][{}] is missing'.format(section, option))
+                    with open(config_location, 'w') as configfile:
+
+                        self.config.set(section, option, default_settings[section][option])
+                        with open(config_location, 'w') as configfile:
+                            self.config.write(configfile)
+
     def make_config(self):
         file_path = os.path.join(os.path.expanduser('~'), '.NDATools')
         if not os.path.exists(file_path):
@@ -74,10 +89,12 @@ class ClientConfiguration:
 
         copy_config.add_section("Endpoints")
         copy_config.set("Endpoints", "data_manager", self.datamanager_api)
+        copy_config.set("Endpoints", "package", self.package_api)
         copy_config.set("Endpoints", "validation", self.validation_api)
         copy_config.set("Endpoints", "submission_package", self.submission_package_api)
         copy_config.set("Endpoints", "submission", self.submission_api)
         copy_config.set("Endpoints", "validationtool", self.validationtool_api)
+        copy_config.set("Endpoints", "datadictionary", self.datadictionary_api)
 
         copy_config.add_section("Files")
         copy_config.set("Files", "validation_results", self.validation_results)
