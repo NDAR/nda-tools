@@ -1,5 +1,8 @@
 
 # CHANGELOG
+## 0.2.5 - 2021-06-03
+* [`nda-tools`] Replaced calls to legacy Download Manager with calls to new package service.
+
 ## 0.2.4 - 2021-03-22
 * [`nda-tools`] Update password hashing to authenticate with NDA webservice endpoints.
 
