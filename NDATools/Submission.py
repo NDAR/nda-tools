@@ -147,13 +147,13 @@ class Submission:
         for cred in id_list:
             file = cred['destination_uri'].split('/')
             file = '/'.join(file[4:])
+            size = self.file_sizes[file][1]
             update = {
                 "id": str(cred['submissionFileId']),
+                "size": size,
                 "md5sum": "None",
                 "status": status
             }
-            if file in self.file_sizes:
-                update['size']=self.file_sizes[file][1]
 
             batch_status_update.append(update)
 
@@ -162,7 +162,7 @@ class Submission:
 
     @property
     def incomplete_files(self):
-        print('Retrieving incomplete files...')
+        logging.debug('Retrieving incomplete files...')
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id, 'files']))
         self.file_sizes = {}
         self.associated_files = []
@@ -264,7 +264,8 @@ class Submission:
         no_access_buckets = set()
         if self.source_bucket:
             s3_client = progress_bar = None
-
+            # Even if we are skipping the s3 file check, we still need to run 'check_file_exists_in_s3' since this
+            # will populate the self.file_sizes variable, which is necessary for the rest of the program to run without errors
             if not self.config.skip_s3_file_check:
                 if not self.config.aws_access_key:
                     self.credentials_list = self.get_multipart_credentials(self.file_ids)
@@ -272,7 +273,7 @@ class Submission:
                     s3_client = self.credentials.get_s3_client()
 
                 file_number = len(self.no_match[:])
-                print('checking for {} files @ {}....'.format(file_number, datetime.now()))
+                print('Checking for existence of {} files in s3 @ {}....'.format(file_number, datetime.now()))
 
                 progress_bar = tqdm(ascii=os.name == 'nt', total=len(self.no_match), desc='Checking Files in S3...',
                                     dynamic_ncols=True, unit_scale=True, unit='files')
@@ -452,9 +453,7 @@ class Submission:
                 while any(map(lambda w: w.is_alive(), workers)):
                     if not hide_progress:
                         for progress in iter(self.progress_queue.get, None):
-                            if not self.total_progress.total:
-                                self.total_progress.update(progress)
-                            elif (self.total_progress.n < self.total_progress.total
+                            if (self.total_progress.n < self.total_progress.total
                                   and progress <= (self.total_progress.total - self.total_progress.n)):
                                 self.total_progress.update(progress)
                     time.sleep(0.1)
@@ -554,23 +553,9 @@ class Submission:
             return credentials
 
         def add_back_to_queue(self, bucket, prefix):
-            # If expired token:
-            #  1. Add to upload_queue so it is picked up by another thread again
-            self.upload_queue.put([self.upload, True])  # need to figure out how to test this and if it is the best way to retry a single file upload
+            # If expired token add to upload_queue so it is picked up by another thread again
+            self.upload_queue.put([self.upload, True])
 
-            # self.upload_queue.put(["STOP", False])  # need to add the sentinel value again
-
-            # # 2. Add a function to get new credentials and update self.credentials_list AND
-            # # 3. In upload.config, edit it so it knows we need new credentials
-            # new_credentials = self.update_tokens()
-            # print('new_credentials: {}'.format(str(new_credentials)))
-            # # 4. Check if file has mpu, add to self.mpu
-            # if not self.is_s3_to_s3_copy():
-            #     multipart_uploads = MultiPartsUpload(bucket, prefix, self.config, new_credentials['access_key'],
-            #                                          new_credentials['secret_key'], new_credentials['session_token'])
-            #     multipart_uploads.get_multipart_uploads()
-            #
-            #     self.all_mpus = multipart_uploads.incomplete_mpu
 
         class UpdateProgress(object):
 
@@ -604,16 +589,13 @@ class Submission:
                     'Key': source_key if not self.config.source_prefix else '/'.join(
                         [self.config.source_prefix, source_key])
                 }
-                #bucket = s3_resource.Bucket(bucket)
-
-                #bucket.copy(copy_source, key, Callback=callback)  ## check if this uploads files > 5GB
                 s3_resource.meta.client.copy(copy_source, bucket, key, Callback=callback)
                 if not self.file_sizes[local_path][1]:
                     self.file_sizes[local_path] = (self.file_sizes[local_path][0], sum(bytes_added))
                 self.progress_queue.put(1)
             except Exception as e:
-                print('error during s3-to-s3 copy: {}'.format(e))
-                print(get_stack_trace())
+                logging.debug('error during s3-to-s3 copy: {}'.format(e))
+                logging.debug(get_stack_trace())
                 raise e
 
         def run(self):
@@ -621,9 +603,7 @@ class Submission:
                 if self.upload and self.upload_tries < 5:
                     self.upload_tries += 1
                 else:
-                    print('getting from queue')
                     upload = self.upload_queue.get()
-                    print('retrieved from queue')
 
                 self.upload = upload[0]
                 self.expired = upload[1]
@@ -637,18 +617,15 @@ class Submission:
                         self.upload_tries = 0
                         self.upload = None
                         self.upload_queue.task_done()
-                        print('getting from queue2')
                         upload = self.upload_queue.get()
-                        print('retrived from queue2')
                         self.upload = upload[0]
                         self.expired = upload[1]
 
                 if self.expired:
-                    # 2. Add a function to get new credentials and update self.credentials_list AND
-                    # 3. In upload.config, edit it so it knows we need new credentials
+                    # If expired get new credentials and update self.credentials_list
                     new_credentials = self.update_tokens()
-                    print('new_credentials: {}'.format(str(new_credentials)))
-                    # 4. Check if file has mpu, add to self.mpu
+                    logging.debug('new_credentials: {}'.format(str(new_credentials)))
+                    # Check if file has mpu, add to self.mpu
                     if not self.is_s3_to_s3_copy():
                         multipart_uploads = MultiPartsUpload(bucket, prefix, self.config, new_credentials['access_key'],
                                                              new_credentials['secret_key'],
@@ -721,11 +698,11 @@ class Submission:
                         except Exception as error:
                             e = str(error)
                             if "ExpiredToken" in e or 'Bad Request' in e:
-                                print('expired creds: {}'.format(str(credentials)))
+                                logging.debug('expired creds: {}'.format(str(credentials)))
                                 self.add_back_to_queue(bucket, prefix)
                                 expired_error = True
                             else:
-                                print('error creds: {}'.format(str(credentials)))
+                                logging.debug('error creds: {}'.format(str(credentials)))
                                 raise error
                         self.progress_queue.put(None)
                     else:
@@ -866,4 +843,4 @@ class Submission:
                 self.upload_tries = 0
                 self.upload = None
                 self.upload_queue.task_done()
-            print ('Run Method Finished')
+            logging.debug('Run Method Finished')

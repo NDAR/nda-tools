@@ -19,11 +19,9 @@ def parse_args():
                     'Please note, the maximum transfer limit of data is 5TB at one time.',
         usage='%(prog)s <S3_path_list>')
 
-    # parser.add_argument('paths', metavar='<S3_path_list>', type=str, nargs='+', action='store',
     parser.add_argument('paths', metavar='<S3_path_list>', type=str, nargs='*', action='store',
                         help='Will download all S3 files to your local drive')
 
-    # parser.add_argument('-dp', '--package', action='store_true', required=True,
     parser.add_argument('-dp', '--package', metavar='<arg>', type=str, action='store',
                         help='Flags to download all S3 files in package. Required.')
 
