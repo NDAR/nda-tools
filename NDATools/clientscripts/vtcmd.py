@@ -7,7 +7,9 @@ from NDATools.Submission import Submission
 import argparse
 import logging
 import os
-import pkg_resources
+
+
+__all__ = ['build_package', 'validate_files', 'submit_package', 'resume_submission']
 
 
 def parse_args():
@@ -110,32 +112,7 @@ def configure(args):
         config.read_user_credentials()
         config.make_config()
 
-    if args.collectionID:
-        config.collection_id = args.collectionID
-    if args.alternateEndpoint:
-        config.endpoint_title = args.alternateEndpoint
-    if args.listDir:
-        config.directory_list = args.listDir
-    if args.manifestPath:
-        config.manifest_path = args.manifestPath
-    if args.s3Bucket:
-        config.source_bucket = args.s3Bucket
-    if args.s3Prefix:
-        config.source_prefix = args.s3Prefix
-    if args.title:
-        config.title = ' '.join(args.title)
-    if args.description:
-        config.description = ' '.join(args.description)
-    if args.scope:
-        config.scope = args.scope[0]
-    if args.validationAPI:
-        config.validation_api = args.validationAPI[0]
-    if args.JSON:
-        config.JSON = True
-    config.hideProgress = args.hideProgress
-    if args.skipLocalAssocFileCheck:
-        config.skip_local_file_check = True
-
+    config.update_with_args(args)
     return config
 
 
@@ -144,8 +121,8 @@ class Status:
     SYSERROR = 'SystemError'
 
 
-def resume_submission(submission_id, batch, config=None):
-    submission = Submission(id=submission_id, full_file_path=None, config=config, resume=True, batch_size=batch)
+def resume_submission(submission_id, batch, config, thread_num=None):
+    submission = Submission(id=submission_id, full_file_path=None, submission_config=config, resume=True, thread_num=thread_num, batch_size=batch)
     submission.check_status()
     if submission.status == Status.UPLOADING:
         directories = config.directory_list
@@ -193,7 +170,7 @@ def validate_files(file_list, warnings, build_package, threads, config=None):
     # Test if no files passed validation, exit
     if not any(map(lambda x: not validation.uuid_dict[x]['errors'], validation.uuid_dict)):
         print('No files passed validation, please correct any errors and validate again.')
-        return
+        return None, None
     # If some files passed validation, show files with and without errors
     else:
         print('\nThe following files passed validation:')
@@ -218,10 +195,10 @@ def validate_files(file_list, warnings, build_package, threads, config=None):
             else:
                 print('Your answer <{}> was not recognized, please enter yes or no.'.format(str(proceed)))
                 continue
-    return([validation.uuid, validation.associated_files])
+    return [validation.uuid, validation.associated_files]
 
 
-def build_package(uuid, associated_files, config):
+def build_package(uuid, associated_files, config, download=True):
     if not config.title:
         config.title = input('Enter title for dataset name:')
     if not config.description:
@@ -244,18 +221,19 @@ def build_package(uuid, associated_files, config):
     print('expiration date: {}'.format(package.expiration_date))
     print('\nPackage finished building.\n')
 
-    print('Downloading submission package.')
-    package.download_package(hide_progress=config.hideProgress)
-    print('\nA copy of your submission package has been saved to: {}'.
-          format(os.path.join(package.package_folder, package.config.submission_packages)))
+    if download:
+        print('Downloading submission package.')
+        package.download_package(hide_progress=config.hideProgress)
+        print('\nA copy of your submission package has been saved to: {}'.
+              format(os.path.join(package.package_folder, package.config.submission_packages)))
 
-    return[package.package_id, package.full_file_path]
+    return [package.package_id, package.full_file_path]
 
 
-def submit_package(package_id, full_file_path, associated_files, threads, batch, config=None):
-    submission = Submission(id=package_id, full_file_path=full_file_path, thread_num=threads, batch_size=batch, allow_exit=True, config=config)
+def submit_package(package_id, full_file_path, associated_files, threads, batch, config):
+    submission = Submission(id=package_id, full_file_path=full_file_path, thread_num=threads, batch_size=batch, allow_exit=True, submission_config=config)
     print('Requesting submission for package: {}'.format(submission.package_id))
-    submission.submit()
+    submission.create_submission()
     if submission.submission_id:
         print('Submission ID: {}'.format(str(submission.submission_id)))
     if associated_files:
@@ -264,7 +242,7 @@ def submit_package(package_id, full_file_path, associated_files, threads, batch,
     if submission.status != Status.UPLOADING:
         print('\nYou have successfully completed uploading files for submission {} with status: {}'.format
               (submission.submission_id, submission.status))
-               #do we want to include this??
+    return submission.submission_id
 
 
 def main():

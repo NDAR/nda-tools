@@ -1,5 +1,7 @@
 from __future__ import with_statement
 from __future__ import absolute_import
+
+import json
 import sys
 import csv
 import multiprocessing
@@ -19,7 +21,7 @@ class Validation:
     def __init__(self, file_list, config, hide_progress, allow_exit=False, thread_num=None):
         self.config = config
         self.hide_progress = hide_progress
-        self.api = self.config.validation_api.strip('/')
+        self.api = self.config.validation_api
         self.thread_num = max([1, multiprocessing.cpu_count() - 1])
         if thread_num:
             self.thread_num = thread_num
@@ -133,7 +135,7 @@ class Validation:
                 else:
                     for error, value in response['errors'].items():
                         for v in value:
-                            column = v['columnName']
+                            column = v['columnName'] if 'columnName' in v else ' '
                             message = v['message']
                             try:
                                 record = v['recordNumber']
@@ -317,39 +319,47 @@ class Validation:
             return cls.CSV
 
         def run(self):
-            while True and not self.shutdown_flag.is_set():
-                polling = 0
-                file_name = self.file_queue.get()
-                if file_name == "STOP":
-                    self.file_queue.put("STOP")
-                    self.shutdown_flag.set()
-                    break
-                try:
-                    file = open(file_name, 'r')
-                except IOError:
-                    message = 'This file does not exist in current directory: {}'.format(file_name)
-                    if self.progress_bar:
-                        self.progress_bar.close()
-                    if self.exit:
-                        exit_client(signal=signal.SIGTERM, message=message)
-                    else:
-                        error = " ".join(['FileNotFound:', message])
-                        raise Exception(error)
+            try:
+                while True and not self.shutdown_flag.is_set():
+                    polling = 0
+                    file_name = self.file_queue.get()
+                    if file_name == "STOP":
+                        self.file_queue.put("STOP")
+                        self.shutdown_flag.set()
+                        break
+                    try:
+                        file = open(file_name, 'r')
+                    except IOError:
+                        message = 'This file does not exist in current directory: {}'.format(file_name)
+                        if self.progress_bar:
+                            self.progress_bar.close()
+                        if self.exit:
+                            exit_client(signal=signal.SIGTERM, message=message)
+                        else:
+                            error = " ".join(['FileNotFound:', message])
+                            raise Exception(error)
 
-                data = file.read()
+                    data = file.read()
 
-                response, session = api_request(self, "POST", self.api_scope, data)
-                while response and not response['done']:
-                    response, session = api_request(self, "GET", "/".join([self.api, response['id']]), session=session)
-                    time.sleep(0.1)
-                    polling += 1
-                    if polling == 50:
-                        polling = 0
-                if response:
-                    response, session = api_request(self, "GET", "/".join([self.api, response['id']]), session=session)
-                    self.result_queue.put((response, file_name))
-                    if self.progress_bar:
-                        self.progress_bar.update(n=1)
+                    response, session = api_request(self, "POST", self.api_scope, data)
+                    while response and not response['done']:
+                        response, session = api_request(self, "GET", "/".join([self.api, response['id']]),
+                                                        session=session)
+                        time.sleep(0.1)
+                        polling += 1
+                        if polling == 50:
+                            polling = 0
+                    if response:
+                        response, session = api_request(self, "GET", "/".join([self.api, response['id']]),
+                                                        session=session)
+                        self.result_queue.put((response, file_name))
+                        if self.progress_bar:
+                            self.progress_bar.update(n=1)
+            except Exception as e:
+                print(e)
+                print(get_stack_trace())
+                self.result_queue.put((None, None))
+            finally:
                 # Stop thread after adding validation response
                 self.file_queue.task_done()
 

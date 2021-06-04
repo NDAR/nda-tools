@@ -1,15 +1,23 @@
 import argparse
-import concurrent
-from concurrent.futures._base import ALL_COMPLETED
-from concurrent.futures.thread import ThreadPoolExecutor
+import itertools
 import tempfile
-
-from NDATools.clientscripts.vtcmd import validate_files
-from NDATools.MindarManager import *
 import csv
 import time
 import atexit
 import sys
+import os
+import signal
+import re
+
+from datetime import datetime
+
+from NDATools.clientscripts.vtcmd import *
+from NDATools.MindarManager import *
+from NDATools.MindarSubmission import *
+from NDATools.MindarHelpers import *
+from NDATools.Submission import *
+from NDATools.Utils import advanced_request
+from NDATools.Utils import get_stack_trace, exit_client
 
 
 def parse_args():
@@ -24,16 +32,16 @@ def parse_args():
     make_subcommand(subparsers, 'delete', delete_mindar, [delete_mindar_args, require_schema])  # mindar delete
     make_subcommand(subparsers, 'show', show_mindar, [show_mindar_args])  # mindar show
     make_subcommand(subparsers, 'describe', describe_mindar, [describe_mindar_args, require_schema])  # mindar describe
+    make_subcommand(subparsers, 'submit', submit_mindar, [require_schema, submit_mindar_args])  # mindar submit
     make_subcommand(subparsers, 'validate', validate_mindar, [require_schema, validate_mindar_args])  # mindar validate
-    make_subcommand(subparsers, 'submit', submit_mindar)  # mindar submit
     make_subcommand(subparsers, 'import', import_mindar, [require_schema, mindar_import_args])  # mindar import
     make_subcommand(subparsers, 'export', export_mindar, [export_mindar_args, require_schema])  # mindar export
 
     table_parser = make_subcommand(subparsers, 'tables', default)  # mindar table
     table_subparser = table_parser.add_subparsers(dest='table_subparser_name')
-    make_subcommand(table_subparser, 'add', add_table, [add_table_args])  # mindar table add
-    make_subcommand(table_subparser, 'drop', drop_table, [drop_table_args])  # mindar table drop
-    make_subcommand(table_subparser, 'reset', reset_table, [reset_table_args])  # mindar table reset
+    make_subcommand(table_subparser, 'add', add_table, [require_schema, add_table_args])  # mindar table add
+    make_subcommand(table_subparser, 'drop', drop_table, [require_schema, drop_table_args])  # mindar table drop
+    make_subcommand(table_subparser, 'reset', reset_table, [require_schema, reset_table_args])  # mindar table reset
 
     return parser.parse_args()
 
@@ -65,17 +73,14 @@ def create_mindar_args(parser):
 
 def add_table_args(parser):
     parser.add_argument('tables')
-    parser.add_argument('--schema', help='Schema to add tables to', required=True)
 
 
 def drop_table_args(parser):
     parser.add_argument('tables')
-    parser.add_argument('--schema', help='Schema to drop tables from')
 
 
 def reset_table_args(parser):
     parser.add_argument('tables')
-    parser.add_argument('--schema', help='Schema with affected tables')
     parser.add_argument('-f', '--force', dest='force_delete', action='store_true')
 
 
@@ -107,8 +112,30 @@ def validate_mindar_args(parser):
                                'home directory of the user, in a new folder with the same name as the mindar schema')
 
 
+def submit_mindar_args(parser):
+    parser.add_argument('-c', '--collection-id', type=int, dest='collectionID', action='store', help='The NDA collection ID', required=True)
+    parser.add_argument('--tables', help='MiNDAR tables, comma separated')
+    parser.add_argument('--worker-threads', dest='workerThreads', type=int, default=1, help='specifies the number of threads to use for exporting/validating csv''s')
+    parser.add_argument('--download-dir', help='target directory for download')
+    parser.add_argument('-l', '--list-dir', dest='listDir', type=str, nargs='+', action='store', help='Specifies the directories in which the associated files are files located.')
+    parser.add_argument('-m', '--manifest-path', dest='manifestPath', type=str, nargs='+', action='store', help='Specifies the directories in which the manifest files are located')
+    parser.add_argument('-s3', '--s3-bucket', dest='s3Bucket', type=str, action='store', help='Specifies the s3 bucket in which the associated files are files located.')
+    parser.add_argument('-pre', '--s3-prefix', dest='s3Prefix', type=str, action='store', default='', help='Specifies the s3 prefix in which the associated files are files located.')
+    parser.add_argument('-w', '--warning', action='store_true', help='Returns validation warnings for list of files')
+    parser.add_argument('-t', '--title', type=str, action='store', help='The title of the submission')
+    parser.add_argument('-s', '--scope', type=str, action='store', help='Flag whether to validate using a custom scope. Must enter a custom scope')
+    parser.add_argument('-r', '--resume', action='store_true', help='Restart an in-progress submission, resuming from the last successful part in a multi-part'
+                             'upload. Must enter a valid submission ID.')
+    parser.add_argument('-bc', '--batch', metavar='<arg>', type=int, action='store', default='10000', help='Batch size')
+
+    parser.add_argument('-ak', '--accessKey', metavar='<arg>', type=str, action='store', help='AWS access key')
+
+    parser.add_argument('-sk', '--secretKey', metavar='<arg>', type=str, action='store', help='AWS secret key')
+    parser.add_argument('--skip-s3-file-check', action='store_true')
+
+
 def require_schema(parser):
-    parser.add_argument('schema', help='miNDAR schema name')
+    parser.add_argument('schema', help='MiNDAR schema name')
 
 
 def mindar_password_args(parser):
@@ -152,11 +179,11 @@ def create_mindar(args, config, mindar):
 
 def delete_mindar(args, config, mindar):
     response = mindar.show_mindars(True)
-    match = [r for r in response if r['schema']==args.schema.lower()]
+    match = [r for r in response if r['schema'] == args.schema.lower()]
     if not match:
         print('miNDAR {} was not found. Please check your arguments and/or credentials and try again'.format(args.schema))
         return
-    elif match[0]['status'] in {'miNDAR Deleted','miNDAR Delete In Progress'}:
+    elif match[0]['status'] in {'miNDAR Deleted', 'miNDAR Delete In Progress'}:
         print("miNDAR {} already has a status of '{}' and cannot be deleted at this time.".format(args.schema, match[0]['status']))
         return
 
@@ -191,7 +218,7 @@ def validate_mindar(args, config, mindar):
         if invalid_files:
             raise Exception('The following files were not found: {}'.format(','.join(invalid_files)))
     else:
-        download_dir = args.download_dir or os.path.normpath('{}/{}'.format(os.path.expanduser('~'), args.schema))
+        download_dir = get_export_dir(args.download_dir, args.schema)
         if not args.tables:
             response = mindar.show_tables(args.schema)
             tables = [ds['shortName'].lower() for ds in response['dataStructures']]
@@ -199,13 +226,11 @@ def validate_mindar(args, config, mindar):
         else:
             tables = set(map(lambda x: x.lower(), args.tables.split(',')))
 
-        verify_directory(download_dir)
-
         file_list = export_mindar_helper(mindar, tables, args.schema, download_dir, False, args.worker_threads, True)
 
         print('Export of {}/{} tables in schema {} finished at {}'.format(len(file_list), len(tables), args.schema,
                                                                           datetime.now()))
-        successful_table_exports = set(map(lambda f: os.path.basename(f).replace('.csv',''), file_list))
+        successful_table_exports = set(map(lambda f: os.path.basename(f).replace('.csv', ''), file_list))
         for short_name in tables:
             if short_name not in successful_table_exports:
                 print('WARN - validation for table {} will be skipped because it was not successfully '
@@ -218,8 +243,97 @@ def validate_mindar(args, config, mindar):
     validate_files(file_list=file_list, warnings=args.warning, build_package=False, threads=args.worker_threads, config=config)
 
 
+# The initial version of this tool expects 1 data-structure per submission.
+def validate_mindar_submission_state(mindar_submission_data, tables, is_resume):
+    tables_with_submissions = list(filter(lambda x: x['submission_id'] is not None, mindar_submission_data.values()))
+    submission_ids = [t[0] for t in itertools.groupby(tables_with_submissions, lambda x: x['submission_id']) if len(list(t[1])) > 1]
+
+    if len(submission_ids) > 0:
+        m = 'Detected submissions with multiple tables in this mindar. This version of the NDA-Tools client does ' \
+            'not currently support processing mindar submissions in this situation. Please contact NDA Help Desk for assistance'
+        raise Exception(m)
+
+
+    processed_tables = [t['short_name'] for t in mindar_submission_data.values() if t['short_name'] in tables and t['submission_id'] is not None]
+    if len(processed_tables) > 0 and not is_resume:
+        m = 'Submissions have already been started for table(s) {}. You must provide the --resume option in order to continue.'.format(','.join(processed_tables))
+        raise Exception(m)
+
+
 def submit_mindar(args, config, mindar):
-    print('Submit, Mindar!')
+    # do this here because the vtcmd was written in a way that expects certain properties to be set on config and not args
+    # and we will be invoking several methods from the vtcmd script from 'submit_mindar'
+    config.update_with_args(args)
+
+    if args.tables:
+        tables = args.tables.split(',')
+    else:
+        response = mindar.show_tables(args.schema)
+        tables = [ds['shortName'].lower() for ds in response['dataStructures']]
+        tables.sort()
+
+    success_count = 0
+    print('Checking existing submissions for miNDAR...')
+    mindar_table_submission_data = mindar.get_mindar_submissions(args.schema)
+    validate_mindar_submission_state(mindar_table_submission_data, tables, args.resume)
+
+    if not tables:
+        print('No valid tables provided.')
+        exit_client(signal.SIGTERM)
+
+    complete_statuses = [Status.COMPLETE, Status.SUBMITTED_PROTOTYPE, Status.UPLOAD_COMPLETE]
+
+    # Run submission logic
+    for table in tables:
+        try:
+            mindar_submission = MindarSubmission(args.schema, table, MindarSubmissionStep.INITIATE, mindar)
+            if table in mindar_table_submission_data and args.resume:
+                table_submission_data = mindar_table_submission_data[table]
+                if table_submission_data['validation_uuid']:
+                    mindar_submission.validation_uuid = [table_submission_data['validation_uuid']]  # has to be an array
+                    mindar_submission.set_step(MindarSubmissionStep.SUBMISSION_PACKAGE)
+
+                if table_submission_data['submission_package_id']:
+                    mindar_submission.package_id = table_submission_data['submission_package_id']
+                    mindar_submission.set_step(MindarSubmissionStep.CREATE_SUBMISSION)
+
+                if table_submission_data['submission_id']:
+                    mindar_submission.submission_id = table_submission_data['submission_id']
+                    mindar_submission.set_step(MindarSubmissionStep.UPLOAD_ASSOCIATED_FILES)
+
+                if mindar_submission.submission_id:
+                    submission = Submission(id=mindar_submission.submission_id, full_file_path=None,
+                                            thread_num=args.workerThreads, submission_config=config, resume=True)
+                    submission.check_status()
+
+                    if submission.status in complete_statuses:
+                        print("Skipping submission for {}, already completed.".format(table))
+                        success_count += 1
+                        continue
+
+                # get the associated files
+                if mindar_submission.get_step() == MindarSubmissionStep.SUBMISSION_PACKAGE:
+                    print('Retrieving associated files...')
+                    response = advanced_request(endpoint='{}/{{}}'.format(config.validation_api), path_params=mindar_submission.validation_uuid)
+                    mindar_submission.associated_files = [response['associated_file_paths']] # Validation.associated files is a list of lists, for some reason
+
+            submission_id_message = '' if not mindar_submission.submission_id else ' (submission-id: {})'.format(mindar_submission.submission_id)
+            print('Beginning submission process for: {}{}...'.format(table, submission_id_message))
+
+            # set default values for dataset title and description
+            if not config.title:
+                config.title = 'DATA ENCLAVE SUBMISSION {} - TABLE {}'.format(args.schema, table)
+            config.description = 'DATA ENCLAVE SUBMISSION {} - TABLE {}'.format(args.schema, table)
+
+            mindar_submission.process(args, config)  # Begin submission process
+            success_count += 1
+        except Exception as e:
+            print(e)
+            print(get_stack_trace())
+            print('Aborting submission for {} due to error during previous step...'.format(table))
+
+    print('Finished creating submissions for {} out of {} tables in the {} miNDAR'
+          .format(success_count, len(tables), args.schema))
 
 
 def show_mindar(args, config, mindar):
@@ -255,7 +369,7 @@ def export_mindar(args, config, mindar):
         print('WARNING - Adding nda-header to exported files even though --add-nda-header argument was not specified, because it is required for validation')
         args.add_nda_header = True
 
-    download_dir = args.download_dir or os.path.normpath('{}/{}'.format(os.path.expanduser('~'), args.schema))
+    download_dir = get_export_dir(args.download_dir, args.schema)
 
     verify_directory(download_dir)
 
@@ -275,23 +389,6 @@ def export_mindar(args, config, mindar):
         validate_files(file_list=files, warnings=False, build_package=False, threads=args.worker_threads, config=config)
 
     exit_client(signal.SIGTERM)
-
-
-def export_mindar_helper(mindar, tables, schema, download_dir, include_id=False, worker_threads=1, add_nda_header=False):
-    files = []
-
-    def increment_success(f):
-        if not f.exception():
-            files.append(f.result())
-
-    with ThreadPoolExecutor(max_workers=worker_threads) as executor:
-        tasks = []
-        for table in tables:
-            t = executor.submit(mindar.export_table_to_file, schema, table, download_dir, include_id, add_nda_header)
-            tasks.append(t)
-            t.add_done_callback(increment_success)
-    concurrent.futures.wait(tasks, timeout=None, return_when=ALL_COMPLETED)
-    return files
 
 
 def import_mindar(args, config, mindar):
@@ -387,12 +484,14 @@ def import_mindar(args, config, mindar):
 
                 chunk_length = len(chunk)
 
+                # TODO: Scale down the memory usage of this by creating a MindarErroredRows object
+                # TODO: this object will store first row and then last row as well as a list of chunks it represents
                 if sys.version_info.major >= 3:
                     err = list(range(index, index + chunk_length))
                 else:
                     err = range(index, index + chunk_length)
 
-                errored.append(err)
+                errored.append((chunk_num, err))
 
                 if not args.error_continue:
                     raise e
@@ -401,19 +500,17 @@ def import_mindar(args, config, mindar):
 
             chunk_num += 1
 
+        # TODO: write some algo to process the errored data and to group the subsequent #s after eachother,
+        # TODO: e.g. Chunk 1 0-100, Chunk 2 101-200, Chunk 3 201-300 -> 0-300 (Chunks 1-3)
         if errored:
             print('{} import completed with errors!'.format(file_name))
             print('{} chunks produced errors, detailed report below: '.format(len(errored)))
 
-            chunk_num = 1
-
-            for err in errored:
+            for num, err in errored:
                 if err:
-                    print('Chunk {} - Impacting Row Numbers: {} - {}'.format(chunk_num, err[0], err[-1]))
+                    print('Chunk {} - Impacting Row Numbers: {} - {}'.format(num, err[0], err[-1]))
                 else:
                     print('Error reporting failed to properly estimate impacted row numbers, please report this.')
-
-                chunk_num += 1
         else:
             print('{} import successfully completed!'.format(file_name))
 
@@ -421,49 +518,6 @@ def import_mindar(args, config, mindar):
 
     if args.validate:
         validate_files(file_list=validation_files, warnings=args.warning, build_package=False, threads=args.worker_threads, config=config)
-
-
-def filter_existing_tables(schema, test_tables, mindar):
-    table_list = set(map(lambda x: x.lower(), test_tables))
-    response = mindar.show_tables(schema)
-    structures = {ds['shortName'].lower() for ds in response['dataStructures']}
-    return list(filter(lambda table: table in structures, table_list))
-
-
-def verify_all_tables_exist(schema, test_tables, mindar):
-    existing_tables = filter_existing_tables(schema, test_tables, mindar)
-    missing_tables = set(filter(lambda table: table not in existing_tables, test_tables))
-    if missing_tables:
-        print('WARNING: The following structures were specified as an argument but do not exist in the mindar: {}'.format(','.join(missing_tables)))
-        return missing_tables
-
-
-def verify_no_tables_exist(schema, test_tables, mindar):
-    existing_tables = filter_existing_tables(schema, test_tables, mindar)
-    if existing_tables:
-        print('WARNING: The following structures were specified as an argument but they already exist in the mindar'
-              ' so they will not be processed at this time: {}'.format(','.join(existing_tables)))
-        return existing_tables
-
-
-def add_table_helper(schema, table, mindar):
-    try:
-        print('Adding table {} to schema {}'.format(table, schema))
-        mindar.add_table(schema, table)
-        return True
-    except Exception as e:
-        # an error message will already be printed out from the Utils. class. Do not print out more info
-        return False
-
-
-def drop_table_helper(schema, table, mindar):
-    try:
-        print('Deleting table {} from schema {}'.format(table, schema))
-        mindar.drop_table(schema, table)
-        return True
-    except Exception as e:
-        # an error message will already be printed out from the Utils. class. Do not print out more info
-        return False
 
 
 def add_table(args, config, mindar):
@@ -555,68 +609,6 @@ def describe_mindar(args, config, mindar):
     print()
     print('Note - the row numbers are approximate and based on the most recent statistics that Oracle has gathered for the table''s in your schema.')
     print('To get the most accurate numers, use the --refresh-stats flag. For more information see https://docs.oracle.com/cd/A84870_01/doc/server.816/a76992/stats.htm.')
-
-
-def request_warning():
-    print('Executing request, this might take some time...')
-
-
-def requires_mindar_password(args, confirm=False):
-    if not args.mindar_password and not args.mindar_cred_file:
-        args.mindar_password = getpass.getpass('Please enter this miNDAR\'s access password: ')
-
-        if confirm:
-            confirm_password = ''
-
-            while confirm_password != args.mindar_password:
-                confirm_password = getpass.getpass('Please verify your password: ')
-
-                if confirm_password != args.mindar_password:
-                    print('Your passwords do not match, please try again.')
-    elif args.mindar_cred_file:  # TODO Technical Debt: Use a more standardized format for credentials
-        print('Opening credentials file...')
-        with open(args.mindar_cred_file, 'r') as cred_file:  # TODO: Verify secure permissions before
-            args.mindar_password = cred_file.read()
-        print('Loaded miNDAR password from credentials file!')
-
-
-def load_config(args):
-    config_mutated = False
-
-    if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
-        config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'), args.username, args.password, None, None)
-    else:
-        config = ClientConfiguration(os.path.normpath('clientscripts/config/settings.cfg'), args.username, args.password, None, None)
-        config_mutated = True
-
-        config.read_user_credentials()
-
-    if args.url:
-        config.mindar = args.url
-        config_mutated = True
-
-    if not config.password or not config.username:
-        print('Missing or malformed credentials in settings.cfg')
-        config.read_user_credentials()
-        config_mutated = True
-
-    if config_mutated:
-        config.make_config()
-
-    return config
-
-
-def verify_directory(directory):
-    if not os.path.exists(directory):
-        os.mkdir(directory)
-
-    if not os.path.isdir(directory):
-        print('{} is not a directory!'.format(directory))
-        exit_client(signal.SIGTERM)
-
-
-def print_time_exit(start_time):
-    print('Execution took %.2fs' % (time.time() - start_time))
 
 
 def main():

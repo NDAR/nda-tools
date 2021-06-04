@@ -1,23 +1,19 @@
-from __future__ import with_statement
 from __future__ import absolute_import
+from __future__ import with_statement
 
-import re
+import json
 import sys
-import requests.packages.urllib3.util
-from tqdm import tqdm
-import boto3
+
 import botocore
-import signal
+import requests.packages.urllib3.util
 
 from NDATools.S3Authentication import S3Authentication
 
 if sys.version_info[0] < 3:
     input = raw_input
 import requests.packages.urllib3.util
-import signal
 from tqdm import tqdm
 from NDATools.Configuration import *
-from NDATools.DataManager import *
 from NDATools.Utils import *
 
 
@@ -134,15 +130,13 @@ class SubmissionPackage:
                     else:
                         message = 'Incorrect/Missing collection ID or alternate endpoint.'
                         if self.exit:
-                            exit_client(signal=signal.SIGTERM,
-                                            message=message)
+                            exit_client(signal=signal.SIGTERM, message=message)
                         else:
                             raise Exception(message)
         else:
             message = 'The user {} does not have permission to submit to any collections or alternate upload locations.'.format(self.config.username)
             if self.exit:
-                exit_client(signal=signal.SIGTERM,
-                        message=message)
+                exit_client(signal=signal.SIGTERM, message=message)
             else:
                 raise Exception(message)
 
@@ -187,7 +181,7 @@ class SubmissionPackage:
         no_access_buckets = []
         if self.source_bucket:
             s3_client = self.credentials.get_s3_client()
-            for file in self.no_match[:]:
+            for file in tqdm(self.no_match[:]):
                 key = file
                 if self.source_prefix:
                     key = '/'.join([self.source_prefix, file])
@@ -330,10 +324,11 @@ class SubmissionPackage:
             r.close()
         if not hide_progress:
             package_download = tqdm(total=total_package_size,
-                                unit="bytes",
-                                unit_scale=True,
-                                desc="Submission Package Download",
-                                ascii=os.name == 'nt')
+                                    unit="bytes",
+                                    unit_scale=True,
+                                    desc="Submission Package Download",
+                                    ascii=os.name == 'nt')
+        print('dl_links: {}'.format(self.download_links))
         for url, file_name, size in self.download_links:
             new_path = os.path.join(os.path.expanduser('~'), self.config.submission_packages)
             path = os.path.join(new_path, self.package_folder)

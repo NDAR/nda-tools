@@ -12,14 +12,19 @@ else:
 import os
 from pkg_resources import resource_filename
 
+# TODO Make an __all__
+
 
 class ClientConfiguration:
+
     def __init__(self, settings_file, username=None, password=None, access_key=None, secret_key=None):
         self.config = configparser.ConfigParser()
         if settings_file == os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'):
             config_location = settings_file
+            self._check_and_fix_missing_options(config_location)
         else:
             config_location = resource_filename(__name__, settings_file)
+
         self.config.read(config_location)
 
         self.validation_api = self.config.get("Endpoints", "validation")
@@ -37,19 +42,12 @@ class ClientConfiguration:
         else:
             self.mindar = self.config.get("Endpoints", "mindar")
 
+        self.package_api = self.config.get("Endpoints", "package")
         self.validation_results = self.config.get("Files", "validation_results")
         self.submission_packages = self.config.get("Files", "submission_packages")
         self.aws_access_key = self.config.get("User", "access_key")
         self.aws_secret_key = self.config.get("User", "secret_key")
-        self.aws_session_token = ""
-        if not self.config.has_option("User", "session_token"):
-            fixed_config = configparser.RawConfigParser()
-            fixed_config.read(config_location)
-            fixed_config.set("User", "session_token", "")
-            with open(config_location, 'w') as configfile:
-                fixed_config.write(configfile)
-        else:
-            self.aws_session_token = self.config.get("User", "session_token")
+        self.aws_session_token = self.config.get('User', 'session_token')
         self.username = self.config.get("User", "username")
         self.password = self.config.get("User", "password")
 
@@ -74,6 +72,24 @@ class ClientConfiguration:
         self.hideProgress = False
         self.skip_local_file_check = False
 
+    def _check_and_fix_missing_options(self, config_location):
+        default_config = configparser.ConfigParser()
+        default_file_path = resource_filename(__name__, 'clientscripts/config/settings.cfg')
+        default_config.read(default_file_path)
+        default_settings = dict(default_config._sections)
+        self.config.read(config_location)
+        user_settings = dict(self.config._sections)
+
+        for section in default_settings:
+            for option in default_settings[section]:
+                if option not in user_settings[section]:
+                    print('[{}][{}] is missing'.format(section, option))
+                    with open(config_location, 'w') as configfile:
+
+                        self.config.set(section, option, default_settings[section][option])
+                        with open(config_location, 'w') as configfile:
+                            self.config.write(configfile)
+
     def make_config(self):
         file_path = os.path.join(os.path.expanduser('~'), '.NDATools')
         if not os.path.exists(file_path):
@@ -84,6 +100,7 @@ class ClientConfiguration:
 
         copy_config.add_section("Endpoints")
         copy_config.set("Endpoints", "data_manager", self.datamanager_api)
+        copy_config.set("Endpoints", "package", self.package_api)
         copy_config.set("Endpoints", "validation", self.validation_api)
         copy_config.set("Endpoints", "submission_package", self.submission_package_api)
         copy_config.set("Endpoints", "submission", self.submission_api)
@@ -115,3 +132,36 @@ class ClientConfiguration:
 
         if not self.aws_secret_key:
             self.aws_secret_key = getpass.getpass('Enter your aws_secret_key. If none, hit "Enter":')
+
+    def update_with_args(self, args):
+        if hasattr(args, 'collectionID') and args.collectionID:
+            self.collection_id = args.collectionID
+        if hasattr(args, 'alternateEndpoint') and args.alternateEndpoint:
+            self.endpoint_title = args.alternateEndpoint
+        if hasattr(args, 'listDir') and args.listDir:
+            self.directory_list = args.listDir
+        if hasattr(args, 'manifestPath') and args.manifestPath:
+            self.manifest_path = args.manifestPath
+        if hasattr(args, 's3Bucket') and args.s3Bucket:
+            self.source_bucket = args.s3Bucket
+        # default value of empty string
+        if hasattr(args, 's3Prefix'):
+            self.source_prefix = args.s3Prefix
+        if hasattr(args, 'title') and args.title:
+            self.title = ' '.join(args.title)
+        if hasattr(args, 'description') and args.description:
+            self.description = ' '.join(args.description)
+        if hasattr(args, 'scope') and args.scope:
+            self.scope = args.scope[0]
+        if hasattr(args, 'validationAPI') and args.validationAPI:
+            self.validation_api = args.validationAPI[0]
+        if hasattr(args, 'JSON') and args.JSON:
+            self.JSON = True
+        if hasattr(args, 'hideProgress') and args.hideProgress:
+            self.hideProgress = args.hideProgress
+        if hasattr(args, 'skipLocalAssocFileCheck') and args.skipLocalAssocFileCheck:
+            self.skip_local_file_check = True
+
+        self.skip_s3_file_check = True if hasattr(args, 'skip_s3_file_check') and args.skip_s3_file_check else False
+        if hasattr(args, 'workerThreads'):
+            self.workerThreads = args.workerThreads

@@ -174,7 +174,7 @@ Please note, the maximum transfer limit of data is 5TB at one time.
 ### All Package Data
 All packaged data can be downloaded by passing the package ID:
 
-`downloadcmd <packageID> -dp`
+`downloadcmd -dp <packageID>`
 
 Note: it will NOT download associated files *unless you created your NDA package with associated files*. Steps to download associated 
 files are below.
@@ -184,19 +184,19 @@ The downloadcmd command has two options for downloading data inside .txt files. 
 meta-data .txt files, many of which represent data measures. Genomics, imaging, and other associated data will be listed in these .txt files
 as s3 links. If you would like to download all the s3 links in your .txt file, you can indicate so by passing the -ds flag.
 
-`downloadcmd path/to/data/structure/file/image03.txt -ds`
+`downloadcmd -dp <packageID> -ds path/to/data/structure/file/image03.txt`
 
 Another option is to create your own .txt file listing any and all S3 links you would like to download from NDA. This can
 be a subset of the data you want, or a list of everything.
 
-`downloadcmd path/to/all/s3/txt/file/alls3.txt -t`
+`downloadcmd -dp <packageID> -t path/to/all/s3/txt/file/alls3.txt`
 
 ### Restart Download
 
 Often times, your download may be interrupted. To restart a download process, enter the same command you did for the original
 run, but include the -r flag and the directory where all the files were being downloaded: 
 
-`downloadcmd path/to/all/s3/txt/file/alls3.txt -t -r /Users/<your_user>/AWS_downloads`
+`downloadcmd -dp <packageID> -t path/to/all/s3/txt/file/alls3.txt -r /Users/<your_user>/AWS_downloads`
  
 
 ## Staging Data for Submission – mindar command

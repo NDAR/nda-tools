@@ -1,28 +1,29 @@
-from __future__ import with_statement
 from __future__ import absolute_import
+from __future__ import with_statement
+
+from enum import Enum
+import json as json_lib
+import logging
+import os
 import re
 import signal
 import sys
-import getpass
-import time
 import threading
+import time
 import traceback
 
 import requests
 from requests.adapters import HTTPAdapter
 import requests.packages.urllib3.util
-import json as json_lib
-import signal
-import os
-import logging
 
-from enum import Enum
 try:
     from inspect import signature
 except:
     from funcsigs import signature
 
 from NDATools.Configuration import ClientConfiguration
+
+# TODO Make an __all__
 
 if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
     config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'))
@@ -36,15 +37,11 @@ print('Opening log: {}'.format(log_file))
 logging.basicConfig(filename=log_file, level=logging.INFO, format="%(asctime)s:%(levelname)s:%(message)s")
 
 if sys.version_info[0] < 3:
-    import ConfigParser as configparser
 
     input = raw_input
     import thread
 else:
-    import configparser
     import _thread as thread
-
-import xml.etree.ElementTree as ET
 
 
 class Protocol(object):
@@ -171,8 +168,6 @@ def advanced_request(endpoint, verb=Verb.GET, content_type=ContentType.JSON, dat
 
         for name, value in query_params.items():
             appended_query_params.append(name + '=' + value)
-    elif not endpoint.endswith('/'):
-        endpoint += '/'
 
     if appended_query_params:
         endpoint += '?' + '&'.join(appended_query_params)
@@ -260,7 +255,7 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None):
         data = json_lib.dumps(json)
 
     retry_request = requests.packages.urllib3.util.retry.Retry(
-        total=7,
+        total=3,
         read=20,
         connect=20,
         backoff_factor=3,
@@ -288,8 +283,8 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None):
                          timeout=300, stream=False)
 
     except requests.exceptions.RequestException as e:
-        print('\nAn error occurred while making {} request, check your endpoint configuration:\n'.
-              format(e.request.method))
+        print('\nAn error occurred while making {} request to {}, check your endpoint configuration'.
+              format(e.request.method, endpoint))
         logging.error(e)
         if api.__class__.__name__.endswith('Task'):
             api.shutdown_flag.set()
@@ -326,7 +321,7 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None):
         message ='Error occurred while processing request {} {}.\r\n'.format(verb, endpoint)
         message += 'Error response from server: {}'.format(r.text)
 
-        if 'application/json' in r.headers['Content-Type'] and r.text:
+        if is_valid_json(r.text):
             response = json_lib.loads(r.text)
             if 'error' not in response and 'message' not in response:
                 message = 'Error response from server: {}'.format(response)
@@ -339,6 +334,14 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None):
         r.raise_for_status()
 
     return response, session
+
+
+def is_valid_json(test_json):
+    try:
+        json_lib.loads(test_json)
+        return True
+    except:
+        return False
 
 
 def exit_client(signal, frame=None, message=None):
@@ -366,6 +369,7 @@ def parse_local_files(directory_list, no_match, full_file_path, no_read_access, 
     :return: Modifies references to no_match, full_file_path, no_read_access
     """
     files_to_match = len(no_match)
+    print('Checking local file system for files...')
     logging.debug('Starting local directory search for {} files'.format(str(files_to_match)))
     progress_counter = int(files_to_match*0.05)
     for file in no_match[:]:
