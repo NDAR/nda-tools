@@ -238,7 +238,7 @@ def submit_package(package_id, full_file_path, associated_files, threads, batch,
         print('Submission ID: {}'.format(str(submission.submission_id)))
     if associated_files:
         print('Preparing to upload associated files.')
-        submission.submission_upload(hide_progress=config.hideProgress, config=config)
+        submission.submission_upload(hide_progress=config.hideProgress)
     if submission.status != Status.UPLOADING:
         print('\nYou have successfully completed uploading files for submission {} with status: {}'.format
               (submission.submission_id, submission.status))
