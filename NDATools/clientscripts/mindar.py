@@ -131,6 +131,7 @@ def submit_mindar_args(parser):
     parser.add_argument('-ak', '--accessKey', metavar='<arg>', type=str, action='store', help='AWS access key')
 
     parser.add_argument('-sk', '--secretKey', metavar='<arg>', type=str, action='store', help='AWS secret key')
+    parser.add_argument('--skip-s3-file-check', action='store_true')
 
 
 def require_schema(parser):
@@ -342,7 +343,7 @@ def submit_mindar(args, config, mindar):
 
                 if mindar_submission.submission_id:
                     submission = Submission(id=mindar_submission.submission_id, full_file_path=None,
-                                            thread_num=args.workerThreads, config=config, resume=True)
+                                            thread_num=args.workerThreads, submission_config=config, resume=True)
                     submission.check_status()
 
                     if submission.status in complete_statuses:
@@ -361,7 +362,8 @@ def submit_mindar(args, config, mindar):
                     print('Assigning associated files...')
                     mindar_submission.associated_files = associated_files
 
-            print('Beginning submission process for: {}...'.format(table))
+            submission_id_message = '' if not mindar_submission.submission_id else ' (submission-id: {})'.format(mindar_submission.submission_id)
+            print('Beginning submission process for: {}{}...'.format(table, submission_id_message))
 
             # set default values for dataset title and description
             if not config.title:

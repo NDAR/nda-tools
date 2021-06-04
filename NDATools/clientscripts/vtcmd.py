@@ -121,8 +121,8 @@ class Status:
     SYSERROR = 'SystemError'
 
 
-def resume_submission(submission_id, batch, config):
-    submission = Submission(id=submission_id, full_file_path=None, config=config, resume=True, batch_size=batch)
+def resume_submission(submission_id, batch, config, thread_num=None):
+    submission = Submission(id=submission_id, full_file_path=None, submission_config=config, resume=True, thread_num=thread_num, batch_size=batch)
     submission.check_status()
     if submission.status == Status.UPLOADING:
         directories = config.directory_list
@@ -132,11 +132,11 @@ def resume_submission(submission_id, batch, config):
         if submission.incomplete_files and submission.found_all_files(directories, source_bucket, source_prefix,
                                                                        retry_allowed=True):
             # if not config.skip_local_file_check:
-            submission.check_submitted_files(config)
+            submission.check_submitted_files()
             submission.complete_partial_uploads()
-            submission.submission_upload(hide_progress=config.hideProgress, config=config)
+            submission.submission_upload(hide_progress=config.hideProgress)
         else:
-           submission.submission_upload(hide_progress=config.hideProgress, config=config)
+           submission.submission_upload(hide_progress=config.hideProgress)
 
     else:
         print('Submission Completed with status {}'.format(submission.status))
@@ -231,7 +231,7 @@ def build_package(uuid, associated_files, config, download=True):
 
 
 def submit_package(package_id, full_file_path, associated_files, threads, batch, config):
-    submission = Submission(id=package_id, full_file_path=full_file_path, thread_num=threads, batch_size=batch, allow_exit=True, config=config)
+    submission = Submission(id=package_id, full_file_path=full_file_path, thread_num=threads, batch_size=batch, allow_exit=True, submission_config=config)
     print('Requesting submission for package: {}'.format(submission.package_id))
     submission.create_submission()
     if submission.submission_id:

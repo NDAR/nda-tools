@@ -108,7 +108,7 @@ class MindarSubmission:
         self.mindar.update_status(self.schema, self.table, submission_id=self.submission_id)
 
     def upload_associated_files(self, args, config):
-        resume_submission(str(self.submission_id), batch=args.batch, config=config)
+        resume_submission(str(self.submission_id), batch=args.batch, config=config, thread_num=config.workerThreads)
 
         print('Submission Complete for table {}...'.format(self.table))
         print()

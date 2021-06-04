@@ -162,3 +162,6 @@ class ClientConfiguration:
         if hasattr(args, 'skipLocalAssocFileCheck') and args.skipLocalAssocFileCheck:
             self.skip_local_file_check = True
 
+        self.skip_s3_file_check = True if hasattr(args, 'skip_s3_file_check') and args.skip_s3_file_check else False
+        if hasattr(args, 'workerThreads'):
+            self.workerThreads = args.workerThreads

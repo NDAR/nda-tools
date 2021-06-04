@@ -47,9 +47,9 @@ class Status:
 
 
 class Submission:
-    def __init__(self, id, full_file_path, config, resume=False, allow_exit=False, username=None, password=None,
+    def __init__(self, id, full_file_path, submission_config, resume=False, allow_exit=False, username=None, password=None,
                  thread_num=None, batch_size=None):
-        self.config = config
+        self.config = submission_config
         self.api = self.config.submission_api
         if username:
             self.config.username = username
@@ -57,10 +57,11 @@ class Submission:
             self.config.password = password
         self.username = self.config.username
         self.password = self.config.password
-        self.credentials = S3Authentication(config)
-        self.full_file_path = full_file_path
+        self.credentials = S3Authentication(submission_config)
+        # file sizes is a dictionary where the key is the file name and the value is a tuple with the file-name and file-size
+        self.file_sizes = full_file_path
         self.total_upload_size = 0
-        self.upload_queue = queue.Queue()
+        self.upload_queue = queue.LifoQueue()
         self.progress_queue = queue.Queue()
         self.thread_num = max([1, multiprocessing.cpu_count() - 1])
         if thread_num:
@@ -97,11 +98,12 @@ class Submission:
             message = 'There was an error creating your submission'
             if self.exit:
                 exit_client(signal=signal.SIGTERM,
-                        message=message)
+                            message=message)
             else:
                 raise Exception("{}\n{}".format('SubmissionError', message))
 
     def check_status(self):
+        print('Checking submission Status...')
         response, session = api_request(self, "GET", "/".join([self.api, str(self.submission_id)]))
 
         if response:
@@ -118,13 +120,16 @@ class Submission:
         return [{'submissionFileId': file['id'], 'destination_uri': file['file_remote_path']} for file in response if
                 file['status'] != Status.COMPLETE]
 
-    def get_multipart_credentials(self, file_ids, config):
+    def get_multipart_credentials(self, file_ids):
         all_credentials = []
         batched_ids = [file_ids[i:i + self.batch_size] for i in range(0, len(file_ids), self.batch_size)]
 
+        count = 1
         for ids in batched_ids:
-            s3_buck = config.source_bucket if hasattr(config,'source_bucket') else ''
-            s3_pre = config.source_prefix if hasattr(config, 'source_prefix') else ''
+            print('Retrieving credentials for files -  batch {} of {}...'.format(count, len(batched_ids)))
+            count += 1
+            s3_buck = self.config.source_bucket if hasattr(self.config, 'source_bucket') else ''
+            s3_pre = self.config.source_prefix if hasattr(self.config, 'source_prefix') else ''
             q_params = 's3SourceBucket={}&s3SourcePrefix={}'.format(s3_buck, s3_pre) if s3_buck else ''
             credentials_list, session = api_request(self, "POST", "/".join(
                 [self.api, self.submission_id, 'files/batchMultipartUploadCredentials?{}'.format(q_params)]), data=json.dumps(ids))
@@ -142,13 +147,14 @@ class Submission:
         for cred in id_list:
             file = cred['destination_uri'].split('/')
             file = '/'.join(file[4:])
-            size = self.full_file_path[file][1]
             update = {
                 "id": str(cred['submissionFileId']),
                 "md5sum": "None",
-                "size": size,
                 "status": status
             }
+            if file in self.file_sizes:
+                update['size']=self.file_sizes[file][1]
+
             batch_status_update.append(update)
 
         self.batch_status_update = batch_status_update
@@ -156,24 +162,26 @@ class Submission:
 
     @property
     def incomplete_files(self):
-
+        print('Retrieving incomplete files...')
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id, 'files']))
-        self.full_file_path = {}
+        self.file_sizes = {}
         self.associated_files = []
+        self.file_ids = []
         if response:
             for file in response:
                 if file['status'] != Status.COMPLETE:
                     self.associated_files.append(file['file_user_path'])
+                    self.file_ids.append(file["id"])
             return len(self.associated_files) > 0
         else:
-            message='There was an error requesting files for submission {}.'.format(self.submission_id)
+            message = 'There was an error requesting files for submission {}.'.format(self.submission_id)
             if self.exit:
                 exit_client(signal=signal.SIGTERM,
                             message=message)
             else:
                 raise Exception("{}\n{}".format('SubmissionError', message))
 
-    def check_submitted_files(self, config):
+    def check_submitted_files(self):
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id, 'files']))
 
         file_info = self.create_file_info_list(response)
@@ -198,22 +206,23 @@ class Submission:
                 unsubmitted_ids.append(e['submissionFileId'])
 
         file_ids = [int(ids['submissionFileId']) for ids in file_info]
-        new_ids = set(file_ids) & set(unsubmitted_ids)
+        existing_ids = {int(c['submissionFileId']) for c in self.credentials_list}
+        new_ids = set(file_ids) & set(unsubmitted_ids) - existing_ids
 
-        self.credentials_list = self.get_multipart_credentials(list(new_ids), config)
-
-        self.update_full_file_paths()
+        if new_ids:
+            self.credentials_list.extend(self.get_multipart_credentials(list(new_ids)))
+            self.update_full_file_paths()
 
     def update_full_file_paths(self):
         full_file_path = {}
 
         for credentials in self.credentials_list:
             full_path = (credentials['destination_uri'].split(self.submission_id)[1][1:])
-            for key,value in self.full_file_path.items():
+            for key, value in self.file_sizes.items():
                 if full_path == key:
                     full_file_path[key] = value
                     break
-        self.full_file_path = full_file_path
+        self.file_sizes = full_file_path
 
     def recollect_file_search_info(self):
         retry = input('Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
@@ -227,7 +236,7 @@ class Submission:
                 self.source_prefix = None
 
     def found_all_files(self, directories=None, source_bucket=None, source_prefix=None, retry_allowed=False):
-        def raise_error(error, l = []):
+        def raise_error(error, l=[]):
             m = '\n'.join([error] + list(set(l)))
             raise Exception(m)
 
@@ -248,18 +257,26 @@ class Submission:
 
         # local files
         if self.directory_list:
-            parse_local_files(self.directory_list, self.no_match, self.full_file_path, self.no_read_access,
+            parse_local_files(self.directory_list, self.no_match, self.file_sizes, self.no_read_access,
                               self.config.skip_local_file_check)
 
         # files in s3
         no_access_buckets = set()
         if self.source_bucket:
-            s3_client = self.credentials.get_s3_client()
-            file_number = len(self.no_match[:])
-            print('checking for {} files @ {}....'.format(file_number, datetime.now()))
+            s3_client = progress_bar = None
 
-            progress_bar = tqdm(ascii=os.name == 'nt', total=len(self.no_match), desc='Checking Files in S3...',
-                                dynamic_ncols=True, unit_scale=True, unit='files')
+            if not self.config.skip_s3_file_check:
+                if not self.config.aws_access_key:
+                    self.credentials_list = self.get_multipart_credentials(self.file_ids)
+                else:
+                    s3_client = self.credentials.get_s3_client()
+
+                file_number = len(self.no_match[:])
+                print('checking for {} files @ {}....'.format(file_number, datetime.now()))
+
+                progress_bar = tqdm(ascii=os.name == 'nt', total=len(self.no_match), desc='Checking Files in S3...',
+                                    dynamic_ncols=True, unit_scale=True, unit='files')
+
 
             def add_result(f):
                 progress_bar.update(1)
@@ -269,14 +286,16 @@ class Submission:
                         no_access_buckets.append(result)
 
             tasks = []
+            creds_by_source = {c["source_uri"]: c for c in self.credentials_list}
             with ThreadPoolExecutor(max_workers=self.thread_num) as executor:
                 for index, file in enumerate(self.no_match[:]):
-                    t = executor.submit(self.check_file_exists_in_s3, file, s3_client)
+                    t = executor.submit(self.check_file_exists_in_s3, file, s3_client, creds_by_source)
                     tasks.append(t)
                     t.add_done_callback(add_result)
 
             concurrent.futures.wait(tasks, timeout=None, return_when=ALL_COMPLETED)
-            progress_bar.close()
+            if progress_bar:
+                progress_bar.close()
 
         if self.no_match:
             if no_access_buckets:
@@ -310,7 +329,7 @@ class Submission:
                     print(file)
                 self.recollect_file_search_info()
                 [self.no_read_access.remove(i) for i in
-                    [file for file in self.no_read_access if check_read_permissions(file)]]
+                 [file for file in self.no_read_access if check_read_permissions(file)]]
             else:
                 error = "".join(['Read Permission Error:', message])
                 raise_error(error, self.no_match)
@@ -324,14 +343,23 @@ class Submission:
         except TypeError:
             return len(self.source_bucket) > 0
 
-    def check_file_exists_in_s3(self, file, s3_client):
+    def check_file_exists_in_s3(self, file, s3_client, creds_by_source=None):
         key = file
         if self.source_prefix:
             key = '/'.join([self.source_prefix, file])
         file_name = '/'.join(['s3:/', self.source_bucket, key])
+        self.file_sizes[file] = (file_name, None)
+        if self.config.skip_s3_file_check:
+            self.no_match.remove(file)
+
+        if creds_by_source:
+            creds = creds_by_source[file_name]
+            s3_client = S3Authentication.get_s3_client_with_config(creds['access_key'], creds['secret_key'],
+                                                                   creds['session_token'])
+
         try:
             response = s3_client.head_object(Bucket=self.source_bucket, Key=key)
-            self.full_file_path[file] = (file_name, int(response['ContentLength']))
+            self.file_sizes[file] = (file_name, int(response['ContentLength']))
             self.no_match.remove(file)
         except botocore.exceptions.ClientError as e:
             # If a client error is thrown, then check that it was a 404 error.
@@ -368,37 +396,48 @@ class Submission:
         for upload in multipart_uploads.incomplete_mpu:
             self.all_mpus.append(upload)
 
-    def submission_upload(self, hide_progress, config):
+    def submission_upload(self, hide_progress):
         with self.upload_queue.mutex:
             self.upload_queue.queue.clear()
         with self.progress_queue.mutex:
             self.progress_queue.queue.clear()
-        self.total_files = len(self.full_file_path)
-        for associated_file in self.full_file_path:
-            path, file_size = self.full_file_path[associated_file]
-            self.total_upload_size += file_size
+        self.total_files = len(self.file_sizes)
+        for associated_file in self.file_sizes:
+            path, file_size = self.file_sizes[associated_file]
+            if file_size:
+                self.total_upload_size += file_size
 
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id, 'files']))
         if response:
             if not self.resume:
                 file_id_info = self.create_file_info_list(response)
                 file_ids = [int(ids['submissionFileId']) for ids in file_id_info]
-                self.credentials_list = self.get_multipart_credentials(file_ids, config)
+                self.credentials_list = self.get_multipart_credentials(file_ids)
                 self.batch_update_status(status=Status.IN_PROGRESS)
 
             if not hide_progress:
-                self.total_progress = tqdm(total=self.total_upload_size,
-                                           position=0,
-                                           unit_scale=True,
-                                           unit="bytes",
-                                           desc="Total Upload Progress",
-                                           ascii=os.name == 'nt',
-                                           dynamic_ncols=True)
+                if self.total_upload_size:
+                    self.total_progress = tqdm(total=self.total_upload_size,
+                                               position=0,
+                                               unit_scale=True,
+                                               unit="bytes",
+                                               desc="Total Upload Progress",
+                                               ascii=os.name == 'nt',
+                                               dynamic_ncols=True)
+                else:
+                    self.total_progress = tqdm(total=len(self.file_sizes),
+                                                position=0,
+                                               unit_scale=True,
+                                               unit="files",
+                                               desc="Total Upload Progress",
+                                               ascii=os.name == 'nt',
+                                               dynamic_ncols=True)
 
             workers = []
+            self.creds_by_fileid = {c['submissionFileId']: c for c in self.credentials_list}
             for x in range(self.thread_num):
-                worker = Submission.S3Upload(x, self.config, self.upload_queue, self.full_file_path, self.submission_id,
-                                             self.progress_queue, self.credentials_list, self.all_mpus)
+                worker = Submission.S3Upload(x, self.config, self.upload_queue, self.file_sizes, self.submission_id,
+                                             self.progress_queue, self.creds_by_fileid, self.all_mpus)
 
                 workers.append(worker)
                 worker.daemon = True
@@ -409,21 +448,26 @@ class Submission:
                     self.upload_queue.put([file, False])
             self.upload_queue.put(["STOP", False])
             self.upload_tries += 1
-            while any(map(lambda w: w.is_alive(), workers)):
+            try:
+                while any(map(lambda w: w.is_alive(), workers)):
+                    if not hide_progress:
+                        for progress in iter(self.progress_queue.get, None):
+                            if not self.total_progress.total:
+                                self.total_progress.update(progress)
+                            elif (self.total_progress.n < self.total_progress.total
+                                  and progress <= (self.total_progress.total - self.total_progress.n)):
+                                self.total_progress.update(progress)
+                    time.sleep(0.1)
                 if not hide_progress:
-                    for progress in iter(self.progress_queue.get, None):
-                        if (self.total_progress.n < self.total_progress.total
-                                and progress <= (self.total_progress.total - self.total_progress.n)):
-                            self.total_progress.update(progress)
-                time.sleep(0.1)
-            if not hide_progress:
-                if self.total_progress.n < self.total_progress.total:
-                    self.total_progress.update(self.total_progress.total - self.total_progress.n)
-                self.total_progress.close()
-            session = None
-
+                    if self.total_progress.total and self.total_progress.n < self.total_progress.total:
+                        self.total_progress.update(self.total_progress.total - self.total_progress.n)
+                    self.total_progress.close()
+                session = None
+            except Exception as error:
+                print(str(error))
+                exit_client(signal.SIGTERM)
         else:
-            message='There was an error requesting submission {}.'.format(self.submission_id)
+            message = 'There was an error requesting submission {}.'.format(self.submission_id)
             if self.exit:
                 exit_client(signal=signal.SIGTERM,
                             message=message)
@@ -434,7 +478,6 @@ class Submission:
 
         if not hide_progress:
             print('\nUploads complete.')
-            print('Checking Submission Status.')
         self.check_status()
         if self.status == Status.UPLOADING:
             if not self.incomplete_files:
@@ -454,15 +497,15 @@ class Submission:
             else:
                 print('There was an error transferring some files, trying again')
                 if self.found_all_files and self.upload_tries < 5:
-                    self.submission_upload(hide_progress, config)
+                    self.submission_upload(hide_progress)
         if self.status != Status.UPLOADING and hide_progress:
             return
 
     class S3Upload(threading.Thread):
-        def __init__(self, index, config, upload_queue, full_file_path, submission_id, progress_queue, credentials_list,
+        def __init__(self, index, upload_config, upload_queue, full_file_path, submission_id, progress_queue, credentials_list,
                      all_mpus):
             threading.Thread.__init__(self)
-            self.config = config
+            self.config = upload_config
             self.upload_queue = upload_queue
             self.upload = None
             self.upload_tries = 0
@@ -472,7 +515,7 @@ class Submission:
             self.source_bucket = self.config.source_bucket
             self.source_prefix = self.config.source_prefix
             self.credentials = S3Authentication(self.config)
-            self.full_file_path = full_file_path
+            self.file_sizes = full_file_path
             self.credentials_list = credentials_list
             self.submission_id = submission_id
             self.all_mpus = all_mpus
@@ -481,50 +524,53 @@ class Submission:
             self.shutdown_flag = threading.Event()
             self.expired = False
 
+        def is_s3_to_s3_copy(self):
+            if not self.upload:
+                return False
+            local_path = sanitize_file_path(self.upload['file_user_path'])
+            full_path, file_size = self.file_sizes[local_path]
+            return full_path.startswith('s3') and not self.config.aws_access_key
+
+
         def upload_config(self):
             local_path = sanitize_file_path(self.upload['file_user_path'])
             remote_path = self.upload['file_remote_path']
             file_id = self.upload['id']
-            for cred in self.credentials_list:
-                if str(cred['submissionFileId']) == file_id:
-                    credentials = {'access_key': cred['access_key'], 'secret_key': cred['secret_key'],
-                                   'session_token': cred['session_token']}
-                    break
+            credentials = self.credentials_list[int(file_id)]
             paths = remote_path.split('/')
             bucket = paths[2]
             key = "/".join(paths[3:])
-            full_path, file_size = self.full_file_path[local_path]
+            full_path, file_size = self.file_sizes[local_path]
             return file_id, credentials, bucket, key, full_path, file_size
 
         def update_tokens(self):
             link = self.upload['_links']['multipartUploadCredentials']['href']
-            credentials, session = api_request(self, "GET", link)
+            s3_buck = self.config.source_bucket if hasattr(self.config, 'source_bucket') else ''
+            s3_pre = self.config.source_prefix if hasattr(self.config, 'source_prefix') else ''
+            q_params = 's3SourceBucket={}&s3SourcePrefix={}'.format(s3_buck, s3_pre) if s3_buck else ''
 
-            for creds in self.credentials_list:
-                if creds['fileId'] == credentials['fileId']:
-                    self.credentials_list.remove(creds)
-                    break
-            self.credentials_list.append(credentials)
-
+            credentials, session = api_request(self, "GET", '{}?{}'.format(link, q_params))
+            self.credentials_list[int(credentials['fileId'])] = credentials
             return credentials
 
         def add_back_to_queue(self, bucket, prefix):
             # If expired token:
             #  1. Add to upload_queue so it is picked up by another thread again
             self.upload_queue.put([self.upload, True])  # need to figure out how to test this and if it is the best way to retry a single file upload
-            self.upload_queue.put(["STOP", False])  # need to add the sentinel value again
 
-            # 2. Add a function to get new credentials and update self.credentials_list AND
-            # 3. In upload.config, edit it so it knows we need new credentials
-            new_credentials = self.update_tokens()
+            # self.upload_queue.put(["STOP", False])  # need to add the sentinel value again
 
-            # 4. Check if file has mpu, add to self.mpu
-
-            multipart_uploads = MultiPartsUpload(bucket, prefix, self.config, new_credentials['access_key'],
-                                                 new_credentials['secret_key'], new_credentials['session_token'])
-            multipart_uploads.get_multipart_uploads()
-
-            self.all_mpus = multipart_uploads.incomplete_mpu
+            # # 2. Add a function to get new credentials and update self.credentials_list AND
+            # # 3. In upload.config, edit it so it knows we need new credentials
+            # new_credentials = self.update_tokens()
+            # print('new_credentials: {}'.format(str(new_credentials)))
+            # # 4. Check if file has mpu, add to self.mpu
+            # if not self.is_s3_to_s3_copy():
+            #     multipart_uploads = MultiPartsUpload(bucket, prefix, self.config, new_credentials['access_key'],
+            #                                          new_credentials['secret_key'], new_credentials['session_token'])
+            #     multipart_uploads.get_multipart_uploads()
+            #
+            #     self.all_mpus = multipart_uploads.incomplete_mpu
 
         class UpdateProgress(object):
 
@@ -534,42 +580,50 @@ class Submission:
             def __call__(self, bytes_amount):
                 self.progress_queue.put(bytes_amount)
 
-        def attempt_bucket_to_bucket_copy(self, creds, bucket, key):
+        def attempt_s3_to_s3_copy(self, creds, bucket, key):
+            file_length = 0
+            local_path = sanitize_file_path(self.upload['file_user_path'])
+
+            bytes_added = []
             def callback(b):
-                self.progress_queue.put(b)
-            if not self.config.aws_access_key:
+                bytes_added.append(b)
 
-                try:
-                    # attempt to perform a bucket to bucket transfer perform a bucket to bucket
-                    s3_resource = boto3.Session(aws_access_key_id=creds['access_key'],
-                                                aws_secret_access_key=creds['secret_key'],
-                                                aws_session_token=creds['session_token']
-                                                ).resource('s3')
+            try:
+                # attempt to perform a bucket to bucket transfer perform a bucket to bucket
+                s3_resource = boto3.Session(aws_access_key_id=creds['access_key'],
+                                            aws_secret_access_key=creds['secret_key'],
+                                            aws_session_token=creds['session_token']
+                                            ).resource('s3')
 
-                    source_key = key.split('/')[1:]
-                    source_key = '/'.join(source_key)
+                source_key = key.split('/')[1:]
+                source_key = '/'.join(source_key)
 
-                    # create a source dictionary that specifies bucket name and key name of the object to be copied
-                    copy_source = {
-                        'Bucket': self.config.source_bucket,
-                        'Key': source_key if not self.config.source_prefix else '/'.join(
-                            [self.config.source_prefix, source_key])
-                    }
-                    bucket = s3_resource.Bucket(bucket)
+                # create a source dictionary that specifies bucket name and key name of the object to be copied
+                copy_source = {
+                    'Bucket': self.config.source_bucket,
+                    'Key': source_key if not self.config.source_prefix else '/'.join(
+                        [self.config.source_prefix, source_key])
+                }
+                #bucket = s3_resource.Bucket(bucket)
 
-                    bucket.copy(copy_source, key, Callback=callback)  ## check if this uploads files > 5GB
-                except Exception as e:
-                    print (e)
-                    print(get_stack_trace())
-                    raise e
-
+                #bucket.copy(copy_source, key, Callback=callback)  ## check if this uploads files > 5GB
+                s3_resource.meta.client.copy(copy_source, bucket, key, Callback=callback)
+                if not self.file_sizes[local_path][1]:
+                    self.file_sizes[local_path] = (self.file_sizes[local_path][0], sum(bytes_added))
+                self.progress_queue.put(1)
+            except Exception as e:
+                print('error during s3-to-s3 copy: {}'.format(e))
+                print(get_stack_trace())
+                raise e
 
         def run(self):
             while True and not self.shutdown_flag.is_set():
                 if self.upload and self.upload_tries < 5:
                     self.upload_tries += 1
                 else:
+                    print('getting from queue')
                     upload = self.upload_queue.get()
+                    print('retrieved from queue')
 
                 self.upload = upload[0]
                 self.expired = upload[1]
@@ -583,13 +637,28 @@ class Submission:
                         self.upload_tries = 0
                         self.upload = None
                         self.upload_queue.task_done()
+                        print('getting from queue2')
                         upload = self.upload_queue.get()
+                        print('retrived from queue2')
                         self.upload = upload[0]
                         self.expired = upload[1]
 
+                if self.expired:
+                    # 2. Add a function to get new credentials and update self.credentials_list AND
+                    # 3. In upload.config, edit it so it knows we need new credentials
+                    new_credentials = self.update_tokens()
+                    print('new_credentials: {}'.format(str(new_credentials)))
+                    # 4. Check if file has mpu, add to self.mpu
+                    if not self.is_s3_to_s3_copy():
+                        multipart_uploads = MultiPartsUpload(bucket, prefix, self.config, new_credentials['access_key'],
+                                                             new_credentials['secret_key'],
+                                                             new_credentials['session_token'])
+                        multipart_uploads.get_multipart_uploads()
+
+                        self.all_mpus = multipart_uploads.incomplete_mpu
+
                 file_id, credentials, bucket, key, full_path, file_size = self.upload_config()
                 prefix = 'submission_{}'.format(self.submission_id)
-
 
                 """
                 Methods for  file transfer: 
@@ -645,8 +714,19 @@ class Submission:
                     source_key = '/'.join(source_key)
                     self.source_key = '/'.join([self.source_prefix, source_key])
 
-                    if not self.config.aws_access_key :
-                        self.attempt_bucket_to_bucket_copy(credentials, bucket, key)
+                    if self.is_s3_to_s3_copy():
+                        try:
+
+                            self.attempt_s3_to_s3_copy(credentials, bucket, key)
+                        except Exception as error:
+                            e = str(error)
+                            if "ExpiredToken" in e or 'Bad Request' in e:
+                                print('expired creds: {}'.format(str(credentials)))
+                                self.add_back_to_queue(bucket, prefix)
+                                expired_error = True
+                            else:
+                                print('error creds: {}'.format(str(credentials)))
+                                raise error
                         self.progress_queue.put(None)
                     else:
                         # Try downloading and then uploading
@@ -719,7 +799,7 @@ class Submission:
                     """
 
                     if mpu_exist:
-                        u = UploadMultiParts(mpu_to_complete, self.full_file_path, bucket, prefix, self.config,
+                        u = UploadMultiParts(mpu_to_complete, self.file_sizes, bucket, prefix, self.config,
                                              credentials, file_size)
                         u.get_parts_information()
                         if not self.expired:
@@ -786,4 +866,4 @@ class Submission:
                 self.upload_tries = 0
                 self.upload = None
                 self.upload_queue.task_done()
-
+            print ('Run Method Finished')

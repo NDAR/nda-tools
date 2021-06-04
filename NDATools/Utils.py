@@ -369,6 +369,7 @@ def parse_local_files(directory_list, no_match, full_file_path, no_read_access, 
     :return: Modifies references to no_match, full_file_path, no_read_access
     """
     files_to_match = len(no_match)
+    print('Checking local file system for files...')
     logging.debug('Starting local directory search for {} files'.format(str(files_to_match)))
     progress_counter = int(files_to_match*0.05)
     for file in no_match[:]:
