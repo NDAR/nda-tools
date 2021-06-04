@@ -90,7 +90,9 @@ class MindarSubmission:
     def create_submission_package(self, args, config):
         print('Starting Submission Package Step for miNDAR table {}...'.format(self.table))
 
-        package_results = build_package(self.validation_uuid, self.associated_files, config=config, download=False)
+        # even if we do have assocaited files for this mindar, pass in an empty list so that we skip
+        # the file search step, which happens again at the resume submission step anyway
+        package_results = build_package(self.validation_uuid, [], config=config, download=False)
         self.package_id = package_results[0]
         self.full_file_path = package_results[1]
         print('Updating status in mindar submission table - setting submission_package_uuid = {}'.format(self.package_id))

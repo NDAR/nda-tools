@@ -16,6 +16,7 @@ from NDATools.MindarManager import *
 from NDATools.MindarSubmission import *
 from NDATools.MindarHelpers import *
 from NDATools.Submission import *
+from NDATools.Utils import advanced_request
 from NDATools.Utils import get_stack_trace, exit_client
 
 
@@ -268,43 +269,6 @@ def submit_mindar(args, config, mindar):
     # and we will be invoking several methods from the vtcmd script from 'submit_mindar'
     config.update_with_args(args)
 
-    # need to support:
-    # resume,
-    # submit tables
-    # s3 to s3 copy operation
-    # rollback?
-    # multiple submissions (1 per ds)
-
-    # Argument section - just to keep track of different command line options
-    # args.tables, args.worker_threads, args.download_dir, args.listDir, args.manifestPath, args.s3Bucket, args.s3Prefix, args.warning
-    # args.collectionID, args.description, args.title, args.scope, args.resume
-
-    # TODO - add endpoint to mindar in order to get:
-    # submissions from schema, if they exist
-    # table(s) for each submission
-    # data-structure row ranges for each table
-    # submission-package-id(s) and validation-id(s) for each table
-
-    # TODO - Add logic to client to error out if submission already exists for a particular mindar schmea + data-table (we can remove this restriction in the future)
-    #
-    # TODO - add submission_status, validation-uuid, submission-package-uuid to mindar_submission table
-    # TODO - add compressed index to mindar_submission for schema, submission-id, table, submission-package-id, validation-result-id
-
-    # Workflow ->
-    # For each data-structure in tables:
-    # check if submission exists for mindar schema + structure. If it does, print error message and continue to next structure
-    # add records to mindar-submission table first, before trying to create a submission. Add them with a submission_status of processing or initializing
-    # export and validate
-    # update submission_status to 'validated', and set validation-id for each record in mindar-submission
-    # create submission package from validation uuid
-    # update submission_status to 'submission-package-created', and set submission-package-id for each record in mindar-submission
-    # create submission from package
-    # update submission_status to 'submitted', and set submission_id, dataset_id and collection_id for each record in mindar-submission
-
-    # on Error:
-    #    print and log error message. Continue to next data-structure in tables
-
-    # TODO - add endpoint to update status of records in mindar-submission table
     if args.tables:
         tables = args.tables.split(',')
     else:
@@ -351,16 +315,11 @@ def submit_mindar(args, config, mindar):
                         success_count += 1
                         continue
 
-                # This is extremely hacky and should only be executed *after* the submission would be potentially
-                # skipped due to completion so that it doesn't accidentally get run.
+                # get the associated files
                 if mindar_submission.get_step() == MindarSubmissionStep.SUBMISSION_PACKAGE:
-                    print('Determined {} needs associated files, re-running export & validation...'.format(table))
-                    mindar_submission.export(args, config)
-                    validation_uuid, associated_files = validate_files(file_list=mindar_submission.files,
-                                                                       warnings=args.warning, build_package=False,
-                                                                       threads=args.workerThreads, config=config)
-                    print('Assigning associated files...')
-                    mindar_submission.associated_files = associated_files
+                    print('Retrieving associated files...')
+                    response = advanced_request(endpoint='{}/{{}}'.format(config.validation_api), path_params=mindar_submission.validation_uuid)
+                    mindar_submission.associated_files = [response['associated_file_paths']] # Validation.associated files is a list of lists, for some reason
 
             submission_id_message = '' if not mindar_submission.submission_id else ' (submission-id: {})'.format(mindar_submission.submission_id)
             print('Beginning submission process for: {}{}...'.format(table, submission_id_message))

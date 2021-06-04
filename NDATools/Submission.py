@@ -594,253 +594,277 @@ class Submission:
                     self.file_sizes[local_path] = (self.file_sizes[local_path][0], sum(bytes_added))
                 self.progress_queue.put(1)
             except Exception as e:
-                logging.debug('error during s3-to-s3 copy: {}'.format(e))
-                logging.debug(get_stack_trace())
+                print('error during s3-to-s3 copy: {}'.format(e))
+                print(get_stack_trace())
                 raise e
 
         def run(self):
-            while True and not self.shutdown_flag.is_set():
-                if self.upload and self.upload_tries < 5:
-                    self.upload_tries += 1
-                else:
-                    upload = self.upload_queue.get()
-
-                self.upload = upload[0]
-                self.expired = upload[1]
-                if self.upload == "STOP":
-                    if self.upload_queue.qsize() == 0:
-                        self.upload_queue.put(["STOP", False])
-                        self.shutdown_flag.set()
-                        break
+            try:
+                while True and not self.shutdown_flag.is_set():
+                    if self.upload and self.upload_tries < 5:
+                        self.upload_tries += 1
                     else:
-                        self.progress_queue.put(None)
-                        self.upload_tries = 0
-                        self.upload = None
-                        self.upload_queue.task_done()
-                        upload = self.upload_queue.get()
-                        self.upload = upload[0]
-                        self.expired = upload[1]
+                        upload = self.upload_queue.get(timeout=10)
+                        if not upload and self.upload_queue.qsize() == 0:
+                            self.shutdown_flag.set()
+                            logging.debug('Set shutdown flag')
+                            break
 
-                if self.expired:
-                    # If expired get new credentials and update self.credentials_list
-                    new_credentials = self.update_tokens()
-                    logging.debug('new_credentials: {}'.format(str(new_credentials)))
-                    # Check if file has mpu, add to self.mpu
-                    if not self.is_s3_to_s3_copy():
-                        multipart_uploads = MultiPartsUpload(bucket, prefix, self.config, new_credentials['access_key'],
-                                                             new_credentials['secret_key'],
-                                                             new_credentials['session_token'])
-                        multipart_uploads.get_multipart_uploads()
+                    self.upload = upload[0]
+                    self.expired = upload[1]
+                    if self.upload == "STOP":
+                        logging.debug('Processing STOP value')
+                        if self.upload_queue.qsize() == 0:
+                            self.upload_queue.put(["STOP", False])
+                            self.shutdown_flag.set()
+                            logging.debug('Set shutdown flag')
+                            break
+                        else:
+                            self.progress_queue.put(None)
+                            self.upload_tries = 0
+                            self.upload = None
+                            self.upload_queue.task_done()
+                            upload = self.upload_queue.get(timeout=10)
+                            if not upload and self.upload_queue.qsize() == 0:
+                                self.shutdown_flag.set()
+                                logging.debug('Set shutdown flag')
+                                break
+                            self.upload = upload[0]
+                            self.expired = upload[1]
 
-                        self.all_mpus = multipart_uploads.incomplete_mpu
+                    if self.expired:
+                        # If expired get new credentials and update self.credentials_list
+                        new_credentials = self.update_tokens()
+                        logging.debug('new_credentials: {}'.format(str(new_credentials)))
+                        # Check if file has mpu, add to self.mpu
+                        if not self.is_s3_to_s3_copy():
+                            multipart_uploads = MultiPartsUpload(bucket, prefix, self.config,
+                                                                 new_credentials['access_key'],
+                                                                 new_credentials['secret_key'],
+                                                                 new_credentials['session_token'])
+                            multipart_uploads.get_multipart_uploads()
 
-                file_id, credentials, bucket, key, full_path, file_size = self.upload_config()
-                prefix = 'submission_{}'.format(self.submission_id)
+                            self.all_mpus = multipart_uploads.incomplete_mpu
 
-                """
-                Methods for  file transfer: 
-
-                If the source file is local, use the credentials supplied by the submission API to upload from local 
-                file to remote S3 location.
-
-                If the source file is from S3:
-                a) check settings.cfg for permanent user credentials (aws_access_key, aws_secret_key)
-                b) if permanent credentials are provided, use them to retrieve the source file,
-                c) if not provided use a FederationUser token from DataManager API to retreive the source file,
-                d) use credentials supplied by the submission API to upload to remote S3 location.
-                
-                If the file was uploaded using multi-part, it will first complete the multi part uploads.
-                """
-
-                expired_error = False
-                mpu_exist = False
-                for upload in self.all_mpus:
-                    if upload['Key'] == key:
-                        mpu_exist = True
-                        mpu_to_complete = upload
-                        break
-
-                if full_path.startswith('s3'):
+                    file_id, credentials, bucket, key, full_path, file_size = self.upload_config()
+                    prefix = 'submission_{}'.format(self.submission_id)
 
                     """
-                    Assumes you are uploading from external s3 bucket. SOURCE_BUCKET and SOURCE_PREFIX are hard-coded 
-                    values, which specify where the object should be copied from (i.e., 100206 subject directory can be
-                    located in s3://hcp-openaccess-temp, with a prefix of HCP_1200).
+                    Methods for  file transfer: 
 
-                    Creates source and destination clients for S3 tranfer. If supplied in settings.cfg uses permanent 
-                    credentials for accessing source buckets. If permanent credentials are not supplied in
-                    settings.cfg, uses a tempoary FederationUser Token from DataManager API to access source bucket. 
+                    If the source file is local, use the credentials supplied by the submission API to upload from local 
+                    file to remote S3 location.
 
-                    The transfer uses a file streaming method by streaming the body of the file into memory and uploads 
-                    the stream in chunks using AWS S3Transfer. This Transfer client will automatically use multi part 
-                    uploads when necessary. To maximize efficiency, only files greater than 1e8 bytes are uploaded using 
-                    the multi part upload. Smaller files are uploaded in one part.  
+                    If the source file is from S3:
+                    a) check settings.cfg for permanent user credentials (aws_access_key, aws_secret_key)
+                    b) if permanent credentials are provided, use them to retrieve the source file,
+                    c) if not provided use a FederationUser token from DataManager API to retreive the source file,
+                    d) use credentials supplied by the submission API to upload to remote S3 location.
 
-                    After each successful transfer, the script will change the status of the file to complete in NDA's 
-                    submission webservice. 
-
-                    NOTE: For best results and to be cost effective, it is best to perform this file transfer in an AWS 
-                    EC2 instance.
+                    If the file was uploaded using multi-part, it will first complete the multi part uploads.
                     """
-                    tqdm.monitor_interval = 0
 
-                    s3_config = Config(connect_timeout=240, read_timeout=240)
-                    self.source_s3 = self.credentials.get_s3_resource(s3_config)
+                    expired_error = False
+                    mpu_exist = False
+                    for upload in self.all_mpus:
+                        if upload['Key'] == key:
+                            mpu_exist = True
+                            mpu_to_complete = upload
+                            break
 
-                    source_key = key.split('/')[1:]
-                    source_key = '/'.join(source_key)
-                    self.source_key = '/'.join([self.source_prefix, source_key])
+                    if full_path.startswith('s3'):
 
-                    if self.is_s3_to_s3_copy():
-                        try:
+                        """
+                        Assumes you are uploading from external s3 bucket. SOURCE_BUCKET and SOURCE_PREFIX are hard-coded 
+                        values, which specify where the object should be copied from (i.e., 100206 subject directory can be
+                        located in s3://hcp-openaccess-temp, with a prefix of HCP_1200).
 
-                            self.attempt_s3_to_s3_copy(credentials, bucket, key)
-                        except Exception as error:
-                            e = str(error)
-                            if "ExpiredToken" in e or 'Bad Request' in e:
-                                logging.debug('expired creds: {}'.format(str(credentials)))
-                                self.add_back_to_queue(bucket, prefix)
-                                expired_error = True
+                        Creates source and destination clients for S3 tranfer. If supplied in settings.cfg uses permanent 
+                        credentials for accessing source buckets. If permanent credentials are not supplied in
+                        settings.cfg, uses a tempoary FederationUser Token from DataManager API to access source bucket. 
+
+                        The transfer uses a file streaming method by streaming the body of the file into memory and uploads 
+                        the stream in chunks using AWS S3Transfer. This Transfer client will automatically use multi part 
+                        uploads when necessary. To maximize efficiency, only files greater than 1e8 bytes are uploaded using 
+                        the multi part upload. Smaller files are uploaded in one part.  
+
+                        After each successful transfer, the script will change the status of the file to complete in NDA's 
+                        submission webservice. 
+
+                        NOTE: For best results and to be cost effective, it is best to perform this file transfer in an AWS 
+                        EC2 instance.
+                        """
+                        tqdm.monitor_interval = 0
+
+                        s3_config = Config(connect_timeout=240, read_timeout=240)
+                        self.source_s3 = self.credentials.get_s3_resource(s3_config)
+
+                        source_key = key.split('/')[1:]
+                        source_key = '/'.join(source_key)
+                        self.source_key = '/'.join([self.source_prefix, source_key])
+
+                        if self.is_s3_to_s3_copy():
+                            try:
+
+                                self.attempt_s3_to_s3_copy(credentials, bucket, key)
+                            except Exception as error:
+                                e = str(error)
+                                if "ExpiredToken" in e or 'Bad Request' in e:
+                                    logging.debug('expired creds: {}'.format(str(credentials)))
+                                    self.add_back_to_queue(bucket, prefix)
+                                    expired_error = True
+                                else:
+                                    logging.debug('error creds: {}'.format(str(credentials)))
+                                    raise error
+                            self.progress_queue.put(None)
+                        else:
+                            # Try downloading and then uploading
+                            self.fileobj = self.source_s3.Object(self.source_bucket, self.source_key.lstrip('/')).get()[
+                                'Body']
+                            if mpu_exist:
+                                u = UploadMultiParts(mpu_to_complete, self.full_file_path, bucket, prefix, self.config,
+                                                     credentials, file_size)
+                                u.get_parts_information()
+                                if not self.expired:
+                                    self.progress_queue.put(u.completed_bytes)
+                                seq = 1
+
+                                for buffer in self.fileobj.iter_chunks(chunk_size=u.chunk_size):
+                                    if seq in u.parts_completed:
+                                        part = u.parts[seq - 1]
+                                        u.check_md5(part, buffer)
+                                    else:
+                                        try:
+                                            u.upload_part(buffer, seq)
+                                            self.progress_queue.put(len(buffer))
+                                            # upload missing part
+                                        except Exception as error:
+                                            e = str(error)
+                                            if "ExpiredToken" in e:
+                                                self.add_back_to_queue(bucket, prefix)
+                                                expired_error = True
+                                            else:
+                                                raise error
+                                    seq += 1
+                                if not expired_error:
+                                    u.complete()
+                                self.progress_queue.put(None)
+
                             else:
-                                logging.debug('error creds: {}'.format(str(credentials)))
-                                raise error
-                        self.progress_queue.put(None)
+
+                                # set chunk size dynamically to based on file size
+                                if file_size > 9999:
+                                    multipart_chunk_size = (file_size // 9999)
+                                else:
+                                    multipart_chunk_size = file_size
+                                transfer_config = TransferConfig(multipart_threshold=100 * 1024 * 1024,
+                                                                 multipart_chunksize=multipart_chunk_size)
+
+                                self.dest = S3Authentication.get_s3_client_with_config(credentials['access_key'],
+                                                                                       credentials['secret_key'],
+                                                                                       credentials['session_token'])
+                                self.dest_bucket = bucket
+                                self.dest_key = key
+                                self.temp_key = self.dest_key + '.temp'
+
+                                try:
+                                    self.dest.upload_fileobj(
+                                        self.fileobj,
+                                        self.dest_bucket,
+                                        self.dest_key,
+                                        Callback=self.UpdateProgress(self.progress_queue),
+                                        Config=transfer_config
+                                    )
+                                except boto3.exceptions.S3UploadFailedError as error:
+                                    e = str(error)
+                                    if "ExpiredToken" in e:
+                                        self.add_back_to_queue(bucket, prefix)
+                                        self.credentials = S3Authentication(self.config)
+                                    else:
+                                        raise error
+                            self.progress_queue.put(None)
+
                     else:
-                        # Try downloading and then uploading
-                        self.fileobj = self.source_s3.Object(self.source_bucket, self.source_key.lstrip('/')).get()['Body']
+                        """
+                        Assumes the file is being uploaded from local file system
+                        """
+
                         if mpu_exist:
-                            u = UploadMultiParts(mpu_to_complete, self.full_file_path, bucket, prefix, self.config, credentials, file_size)
+                            u = UploadMultiParts(mpu_to_complete, self.file_sizes, bucket, prefix, self.config,
+                                                 credentials, file_size)
                             u.get_parts_information()
                             if not self.expired:
                                 self.progress_queue.put(u.completed_bytes)
                             seq = 1
 
-                            for buffer in self.fileobj.iter_chunks(chunk_size=u.chunk_size):
-                                if seq in u.parts_completed:
-                                    part = u.parts[seq - 1]
-                                    u.check_md5(part, buffer)
-                                else:
-                                    try:
-                                        u.upload_part(buffer, seq)
-                                        self.progress_queue.put(len(buffer))
-                                        # upload missing part
-                                    except Exception as error:
-                                        e = str(error)
-                                        if "ExpiredToken" in e:
-                                            self.add_back_to_queue(bucket, prefix)
-                                            expired_error = True
-                                        else:
-                                            raise error
-                                seq += 1
+                            with open(full_path, 'rb') as f:
+                                while True:
+                                    buffer_start = u.chunk_size * (seq - 1)
+                                    f.seek(buffer_start)
+                                    buffer = f.read(u.chunk_size)
+                                    if len(buffer) == 0:  # EOF
+                                        break
+                                    if seq in u.parts_completed:
+                                        part = u.parts[seq - 1]
+                                        u.check_md5(part, buffer)
+                                    else:
+                                        try:
+                                            u.upload_part(buffer, seq)
+                                            self.progress_queue.put(len(buffer))
+                                        except Exception as error:
+                                            e = str(error)
+                                            if "ExpiredToken" in e:
+                                                self.add_back_to_queue(bucket, prefix)
+                                                expired_error = True
+                                                break
+                                            else:
+                                                raise error
+
+                                    seq += 1
                             if not expired_error:
                                 u.complete()
                             self.progress_queue.put(None)
-
                         else:
+                            if credentials:
+                                s3 = S3Authentication.get_s3_client_with_config(credentials['access_key'],
+                                                                                credentials['secret_key'],
+                                                                                credentials['session_token'])
+                                config = TransferConfig(
+                                    multipart_threshold=100 * 1024 * 1024,
+                                    max_concurrency=2,
+                                    num_download_attempts=10)
 
-                            # set chunk size dynamically to based on file size
-                            if file_size > 9999:
-                                multipart_chunk_size = (file_size // 9999)
+                                s3_transfer = S3Transfer(s3, config)
+                                tqdm.monitor_interval = 0
+                                try:
+                                    s3_transfer.upload_file(full_path, bucket, key,
+                                                            callback=self.UpdateProgress(self.progress_queue))
+                                except boto3.exceptions.S3UploadFailedError as error:
+                                    e = str(error)
+                                    if "ExpiredToken" in e:
+                                        self.add_back_to_queue(bucket, prefix)
+                                        self.credentials = S3Authentication(self.config)
+                                    else:
+                                        raise error
+
+                                self.progress_queue.put(None)
+
                             else:
-                                multipart_chunk_size = file_size
-                            transfer_config = TransferConfig(multipart_threshold=100 * 1024 * 1024,
-                                                             multipart_chunksize=multipart_chunk_size)
+                                print('There was an error uploading {} after {} retry attempts'.format(full_path,
+                                                                                                       self.upload_tries))
+                                continue
 
-                            self.dest = S3Authentication.get_s3_client_with_config(credentials['access_key'],
-                                                                                   credentials['secret_key'],
-                                                                                   credentials['session_token'])
-                            self.dest_bucket = bucket
-                            self.dest_key = key
-                            self.temp_key = self.dest_key + '.temp'
-
-                            try:
-                                self.dest.upload_fileobj(
-                                    self.fileobj,
-                                    self.dest_bucket,
-                                    self.dest_key,
-                                    Callback=self.UpdateProgress(self.progress_queue),
-                                    Config=transfer_config
-                                )
-                            except boto3.exceptions.S3UploadFailedError as error:
-                                e = str(error)
-                                if "ExpiredToken" in e:
-                                    self.add_back_to_queue(bucket, prefix)
-                                    self.credentials = S3Authentication(self.config)
-                                else:
-                                    raise error
-                        self.progress_queue.put(None)
-
-                else:
-                    """
-                    Assumes the file is being uploaded from local file system
-                    """
-
-                    if mpu_exist:
-                        u = UploadMultiParts(mpu_to_complete, self.file_sizes, bucket, prefix, self.config,
-                                             credentials, file_size)
-                        u.get_parts_information()
-                        if not self.expired:
-                            self.progress_queue.put(u.completed_bytes)
-                        seq = 1
-
-                        with open(full_path, 'rb') as f:
-                            while True:
-                                buffer_start = u.chunk_size * (seq - 1)
-                                f.seek(buffer_start)
-                                buffer = f.read(u.chunk_size)
-                                if len(buffer) == 0:  # EOF
-                                    break
-                                if seq in u.parts_completed:
-                                    part = u.parts[seq - 1]
-                                    u.check_md5(part, buffer)
-                                else:
-                                    try:
-                                        u.upload_part(buffer, seq)
-                                        self.progress_queue.put(len(buffer))
-                                    except Exception as error:
-                                        e = str(error)
-                                        if "ExpiredToken" in e:
-                                            self.add_back_to_queue(bucket, prefix)
-                                            expired_error = True
-                                            break
-                                        else:
-                                            raise error
-
-                                seq += 1
-                        if not expired_error:
-                            u.complete()
-                        self.progress_queue.put(None)
-                    else:
-                        if credentials:
-                            s3 = S3Authentication.get_s3_client_with_config(credentials['access_key'],
-                                                                            credentials['secret_key'],
-                                                                            credentials['session_token'])
-                            config = TransferConfig(
-                                multipart_threshold=100 * 1024 * 1024,
-                                max_concurrency=2,
-                                num_download_attempts=10)
-
-                            s3_transfer = S3Transfer(s3, config)
-                            tqdm.monitor_interval = 0
-                            try:
-                                s3_transfer.upload_file(full_path, bucket, key,
-                                                        callback=self.UpdateProgress(self.progress_queue))
-                            except boto3.exceptions.S3UploadFailedError as error:
-                                e = str(error)
-                                if "ExpiredToken" in e:
-                                    self.add_back_to_queue(bucket, prefix)
-                                    self.credentials = S3Authentication(self.config)
-                                else:
-                                    raise error
-
-                            self.progress_queue.put(None)
-
-                        else:
-                            print('There was an error uploading {} after {} retry attempts'.format(full_path,
-                                                                                                   self.upload_tries))
-                            continue
-
-                self.upload_tries = 0
-                self.upload = None
-                self.upload_queue.task_done()
-            logging.debug('Run Method Finished')
+                    self.upload_tries = 0
+                    self.upload = None
+                    self.upload_queue.task_done()
+                logging.debug('Run Method Finished')
+            except queue.Empty as error:
+                logging.debug('No more records to process - shutting down thread.')
+                self.shutdown_flag.set()
+                self.progress_queue.put(None)
+            except Exception as error:
+                print('error caught in main thread - '.format(str(error)))
+                print(get_stack_trace())
+                print('shutting down thread.')
+                self.shutdown_flag.set()
+                self.progress_queue.put(None)
