@@ -129,7 +129,7 @@ class Submission:
             print('Retrieving credentials for files -  batch {} of {}...'.format(count, len(batched_ids)))
             count += 1
             s3_buck = self.config.source_bucket if hasattr(self.config, 'source_bucket') else ''
-            s3_pre = self.config.source_prefix if hasattr(self.config, 'source_prefix') else ''
+            s3_pre = self.config.source_prefix if hasattr(self.config, 'source_prefix') and self.config.source_prefix else ''
             q_params = 's3SourceBucket={}&s3SourcePrefix={}'.format(s3_buck, s3_pre) if s3_buck else ''
             credentials_list, session = api_request(self, "POST", "/".join(
                 [self.api, self.submission_id, 'files/batchMultipartUploadCredentials?{}'.format(q_params)]), data=json.dumps(ids))
@@ -230,10 +230,8 @@ class Submission:
         response = retry.split(' ')
         self.directory_list = response
         if response[0] == '-s3':
-            self.source_bucket = response[1]
-            self.source_prefix = input('Enter any prefix for your S3 object, or hit "Enter": ')
-            if self.source_prefix == "":
-                self.source_prefix = None
+            self.config.source_bucket = self.source_bucket = response[1]
+            self.config.source_prefix = self.source_prefix = input('Enter any prefix for your S3 object, or hit "Enter": ')
 
     def found_all_files(self, directories=None, source_bucket=None, source_prefix=None, retry_allowed=False):
         def raise_error(error, l=[]):
@@ -545,11 +543,11 @@ class Submission:
         def update_tokens(self):
             link = self.upload['_links']['multipartUploadCredentials']['href']
             s3_buck = self.config.source_bucket if hasattr(self.config, 'source_bucket') else ''
-            s3_pre = self.config.source_prefix if hasattr(self.config, 'source_prefix') else ''
+            s3_pre = self.config.source_prefix if hasattr(self.config, 'source_prefix') and self.config.source_prefix else ''
             q_params = 's3SourceBucket={}&s3SourcePrefix={}'.format(s3_buck, s3_pre) if s3_buck else ''
 
             credentials, session = api_request(self, "GET", '{}?{}'.format(link, q_params))
-            self.credentials_list[int(credentials['fileId'])] = credentials
+            self.credentials_list[int(credentials['fileId'])] = credentials-c
             return credentials
 
         def add_back_to_queue(self, bucket, prefix):
