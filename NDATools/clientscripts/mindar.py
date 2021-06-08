@@ -264,6 +264,9 @@ def submit_mindar(args, config, mindar):
     # do this here because the vtcmd was written in a way that expects certain properties to be set on config and not args
     # and we will be invoking several methods from the vtcmd script from 'submit_mindar'
     config.update_with_args(args)
+    if config.skip_s3_file_check and not config.source_bucket:
+        print('Value for --s3-bucket argument must be provided if --skip-s3-file-check is set. Please correct command line arguments before re-running the command')
+        exit_client()
 
     if args.tables:
         tables = args.tables.split(',')
