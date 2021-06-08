@@ -344,7 +344,7 @@ def is_valid_json(test_json):
         return False
 
 
-def exit_client(signal, frame=None, message=None):
+def exit_client(signal=None, frame=None, message=None):
     for t in threading.enumerate():
         try:
             t.shutdown_flag.set()
