@@ -23,8 +23,6 @@ from NDATools.Utils import get_stack_trace, exit_client
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.set_defaults(func=default)
-    parser.add_argument('--url', dest='url')
-    parser.add_argument('--profile', action='store_true', help='Enable runtime profiling.')
 
     subparsers = parser.add_subparsers(dest='subparser_name')
 
@@ -58,80 +56,99 @@ def make_subcommand(subparser, command, method, provider=None):
 
     result.add_argument('--username', dest='username', help='NDA username')
     result.add_argument('--password', dest='password', help='NDA password')
+    result.add_argument('--url', dest='url', help='Change what miNDAR api url is being used')
+    result.add_argument('--profile', action='store_true', help='Enable runtime profiling.')
 
     return result
 
 
 def show_mindar_args(parser):
-    parser.add_argument('--include-deleted', dest='include_deleted', action='store_true', help='Include deleted miNDARs in output')
+    parser.add_argument('--include-deleted', dest='include_deleted', action='store_true',
+                        help='Include deleted miNDARs in output')
 
 
 def create_mindar_args(parser):
     # parser.add_argument('--package', dest='package', help='Create mindar using a pre-existing package')
-    parser.add_argument('--nickname', dest='nickname', help='Created miNDAR nickname')
+    parser.add_argument('--nickname', dest='nickname',
+                        help='Created miNDAR nickname')
 
 
 def add_table_args(parser):
-    parser.add_argument('tables')
+    parser.add_argument('tables', help='Comma separated list of tables')
 
 
 def drop_table_args(parser):
-    parser.add_argument('tables')
+    parser.add_argument('tables', help='Comma separated list of tables')
 
 
 def reset_table_args(parser):
-    parser.add_argument('tables')
-    parser.add_argument('-f', '--force', dest='force_delete', action='store_true')
+    parser.add_argument('tables', help='Comma separated list of tables')
+    parser.add_argument('-f', '--force', dest='force_delete', action='store_true',
+                        help='Skips delete confirmation dialogue')
 
 
 def delete_mindar_args(parser):
-    parser.add_argument('-f', '--force', dest='force_delete', action='store_true')
+    parser.add_argument('-f', '--force', dest='force_delete', action='store_true',
+                        help='Skips delete confirmation dialogue')
 
 
 def describe_mindar_args(parser):
-    parser.add_argument('--refresh-stats', dest='refresh_stats', action='store_true')
+    parser.add_argument('--refresh-stats', dest='refresh_stats', action='store_true',
+                        help='Forces a statistics refresh before fetching miNDAR information')
 
 
 def export_mindar_args(parser):
-    parser.add_argument('--tables')
-    parser.add_argument('--include-id', action='store_true')
-    parser.add_argument('--validate', action='store_true')
-    parser.add_argument('--add-nda-header', action='store_true')
+    parser.add_argument('--tables', help='Comma separated list of tables')
+    parser.add_argument('--include-id', action='store_true', help='Will include row-id in the exported files')
+    parser.add_argument('--validate', action='store_true', help='Will trigger a validation once export is complete')
+    parser.add_argument('--add-nda-header', action='store_true',
+                        help='Will append NDA data structure information heading to exported file')
     parser.add_argument('--download-dir', help='target directory for download')
     parser.add_argument('--worker-threads', default='1',
                         help='specifies the number of threads to use for exporting csv''s', type=int)
 
 
 def validate_mindar_args(parser):
-    parser.add_argument('--files')
-    parser.add_argument('--tables')
+    parser.add_argument('--files',
+                        help='Allows designating specific files to validate, rather than exporting mindar data')
+    parser.add_argument('--tables', help='Comma separated list of tables')
     parser.add_argument('--worker-threads', default='1',
                         help='specifies the number of threads to use for exporting/validating csv''s', type=int)
     parser.add_argument('-w', '--warning', action='store_true', help='Returns validation warnings for list of files')
-    parser.add_argument('--download-dir', help= 'If no value is specified, exported mindar tables are downloaded into the '
-                               'home directory of the user, in a new folder with the same name as the mindar schema')
+    parser.add_argument('--download-dir',
+                        help='If no value is specified, exported mindar tables are downloaded into the '
+                        'home directory of the user, in a new folder with the same name as the mindar schema')
 
 
 def submit_mindar_args(parser):
-    parser.add_argument('-c', '--collection-id', type=int, dest='collectionID', action='store', help='The NDA collection ID', required=True)
+    parser.add_argument('-c', '--collection-id', type=int, dest='collectionID', action='store',
+                        help='The NDA collection ID', required=True)
     parser.add_argument('--tables', help='MiNDAR tables, comma separated')
-    parser.add_argument('--worker-threads', dest='workerThreads', type=int, default=1, help='specifies the number of threads to use for exporting/validating csv''s')
+    parser.add_argument('--worker-threads', dest='workerThreads', type=int, default=1,
+                        help='specifies the number of threads to use for exporting/validating csv''s')
     parser.add_argument('--download-dir', help='target directory for download')
-    parser.add_argument('-l', '--list-dir', dest='listDir', type=str, nargs='+', action='store', help='Specifies the directories in which the associated files are files located.')
-    parser.add_argument('-m', '--manifest-path', dest='manifestPath', type=str, nargs='+', action='store', help='Specifies the directories in which the manifest files are located')
-    parser.add_argument('-s3', '--s3-bucket', dest='s3Bucket', type=str, action='store', help='Specifies the s3 bucket in which the associated files are files located.')
-    parser.add_argument('-pre', '--s3-prefix', dest='s3Prefix', type=str, action='store', default='', help='Specifies the s3 prefix in which the associated files are files located.')
+    parser.add_argument('-l', '--list-dir', dest='listDir', type=str, nargs='+', action='store',
+                        help='Specifies the directories in which the associated files are files located.')
+    parser.add_argument('-m', '--manifest-path', dest='manifestPath', type=str, nargs='+', action='store',
+                        help='Specifies the directories in which the manifest files are located')
+    parser.add_argument('-s3', '--s3-bucket', dest='s3Bucket', type=str, action='store',
+                        help='Specifies the s3 bucket in which the associated files are files located.')
+    parser.add_argument('-pre', '--s3-prefix', dest='s3Prefix', type=str, action='store', default='',
+                        help='Specifies the s3 prefix in which the associated files are files located.')
     parser.add_argument('-w', '--warning', action='store_true', help='Returns validation warnings for list of files')
     parser.add_argument('-t', '--title', type=str, action='store', help='The title of the submission')
-    parser.add_argument('-s', '--scope', type=str, action='store', help='Flag whether to validate using a custom scope. Must enter a custom scope')
-    parser.add_argument('-r', '--resume', action='store_true', help='Restart an in-progress submission, resuming from the last successful part in a multi-part'
+    parser.add_argument('-s', '--scope', type=str, action='store',
+                        help='Flag whether to validate using a custom scope. Must enter a custom scope')
+    parser.add_argument('-r', '--resume', action='store_true',
+                        help='Restart an in-progress submission, resuming from the last successful part in a multi-part'
                              'upload. Must enter a valid submission ID.')
     parser.add_argument('-bc', '--batch', metavar='<arg>', type=int, action='store', default='10000', help='Batch size')
 
     parser.add_argument('-ak', '--accessKey', metavar='<arg>', type=str, action='store', help='AWS access key')
 
     parser.add_argument('-sk', '--secretKey', metavar='<arg>', type=str, action='store', help='AWS secret key')
-    parser.add_argument('--skip-s3-file-check', action='store_true')
+    parser.add_argument('--skip-s3-file-check', action='store_true',
+                        help='Skips the check performed to verify that s3 files exist where expected')
 
 
 def require_schema(parser):
@@ -146,11 +163,15 @@ def mindar_password_args(parser):
 def mindar_import_args(parser):
     parser.add_argument('table', help='miNDAR schema table name')
     parser.add_argument('files', nargs='+', help='CSV data files')
-    parser.add_argument('--validate', dest='validate', action='store_true')
-    parser.add_argument('--warning', '-w', dest='warning', action='store_true')
+    parser.add_argument('--validate', dest='validate', action='store_true',
+                        help='Run validation on imported files after import')
+    parser.add_argument('--warning', '-w', dest='warning', action='store_true',
+                        help='During validation warnings will be logged')
     parser.add_argument('--worker-threads', dest='worker_threads', help='How many threads to use for validation')
-    parser.add_argument('--continue-on-error', dest='error_continue', action='store_true')
-    parser.add_argument('--chunk-size', type=int, default=1000, dest='chunks', help='How many rows should each request contain')
+    parser.add_argument('--continue-on-error', dest='error_continue', action='store_true',
+                        help='Errors encountered by the server during import will not terminate the import process')
+    parser.add_argument('--chunk-size', type=int, default=1000, dest='chunks',
+                        help='How many rows should each request contain')
 
 
 def default(args, config, mindar):
@@ -160,8 +181,12 @@ def default(args, config, mindar):
 def create_mindar(args, config, mindar):
     requires_mindar_password(args, True)
 
+    password = args.mindar_password
+
+    # TODO: process mcreds file
+
     print('Creating an empty miNDAR, this might take some time...')
-    response = mindar.create_mindar(password=args.mindar_password, nickname=args.nickname)
+    response = mindar.create_mindar(password=password, nickname=args.nickname)
     print()
     print('------ MiNDAR Created ------')
     print("Current Status: {}".format(response['status']))
@@ -594,7 +619,7 @@ def describe_mindar(args, config, mindar):
     structures = response['dataStructures']
 
     if len(structures) <= 0:
-        print('This miNDAR has no tables yet. You can add one by executing \'mindar add-table <table-name>\'.')
+        print('This miNDAR has no tables yet. You can add one by executing \'mindar table add <schema> <table-name>\'.')
         return
 
     structures.sort(key=lambda x: x['shortName'])
