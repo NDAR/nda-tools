@@ -148,8 +148,6 @@ class SubmissionPackage:
         if response[0] == '-s3':
             self.source_bucket = response[1]
             self.source_prefix = input('Enter any prefix for your S3 object, or hit "Enter": ')
-            if self.source_prefix == "":
-                self.source_prefix = None
 
     def file_search(self, directories=None, source_bucket=None, source_prefix=None, retry_allowed=False):
         def raise_error(error, l = []):
