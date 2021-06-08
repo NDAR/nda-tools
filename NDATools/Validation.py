@@ -98,7 +98,7 @@ class Validation:
                 self.w = True
             if response['status'] == Status.PENDING_MANIFEST and response['errors'] == {}:
                 self.process_manifests(response)
-                response, session = api_request(self, "GET", "/".join([self.api, response['id']]))
+                response, session = api_request(self, "GET", "/".join([self.api, response['id']]), authorized=False)
                 self.associated_files.append(response['associated_file_paths'])
 
             self.uuid.append(response['id'])
@@ -265,7 +265,7 @@ class Validation:
             self.process_manifests(r, yes_manifest=yes_manifest, validation_results = self.validation_result)
 
         while not self.validation_result.status.startswith(Status.COMPLETE):
-            response, session = api_request(self, "GET", "/".join([self.api, r['id']]))
+            response, session = api_request(self, "GET", "/".join([self.api, r['id']]), authorized=False)
             self.validation_result = Validation.ValidationManifestResult(response, self.hide_progress)
             for m in self.validation_result.manifests:
                 if m.status == Status.ERROR:
@@ -286,7 +286,7 @@ class Validation:
 
         def upload_manifest(self, _fp):
             manifest_object = json.load(_fp)
-            api_request(self, "PUT", self.url, data=json.dumps(manifest_object))
+            api_request(self, "PUT", self.url, data=json.dumps(manifest_object), authorized=False)
 
     class ValidationManifestResult:
 
@@ -341,17 +341,17 @@ class Validation:
 
                     data = file.read()
 
-                    response, session = api_request(self, "POST", self.api_scope, data)
+                    response, session = api_request(self, "POST", self.api_scope, data, authorized=False)
                     while response and not response['done']:
                         response, session = api_request(self, "GET", "/".join([self.api, response['id']]),
-                                                        session=session)
+                                                        session=session, authorized=False)
                         time.sleep(0.1)
                         polling += 1
                         if polling == 50:
                             polling = 0
                     if response:
                         response, session = api_request(self, "GET", "/".join([self.api, response['id']]),
-                                                        session=session)
+                                                        session=session, authorized=False)
                         self.result_queue.put((response, file_name))
                         if self.progress_bar:
                             self.progress_bar.update(n=1)

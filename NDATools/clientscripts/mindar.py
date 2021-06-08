@@ -289,7 +289,7 @@ def submit_mindar(args, config, mindar):
         exit_client()
 
     if args.tables:
-        tables = args.tables.split(',')
+        tables = list(map(lambda x: x.lower(), args.tables.split(',')))
     else:
         response = mindar.show_tables(args.schema)
         tables = [ds['shortName'].lower() for ds in response['dataStructures']]

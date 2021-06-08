@@ -247,7 +247,7 @@ def get_stack_trace():
     #print(tb)
 
 
-def api_request(api, verb, endpoint, data=None, session=None, json=None):
+def api_request(api, verb, endpoint, data=None, session=None, json=None, authorized=True):
 
     if data and json:
         raise Exception(ValueError)
@@ -270,7 +270,8 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None):
         elif api.get_protocol(api) == Protocol.XML:
             headers.update({'content-type': 'text/xml'})
     else:
-        auth = requests.auth.HTTPBasicAuth(api.config.username, api.config.password)
+        if authorized:
+            auth = requests.auth.HTTPBasicAuth(api.config.username, api.config.password)
         headers.update({'content-type': 'application/json'})
 
     if not session:
