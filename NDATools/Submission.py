@@ -117,8 +117,11 @@ class Submission:
                 raise Exception("{}\n{}".format('StatusError', message))
 
     def create_file_info_list(self, response):
-        return [{'submissionFileId': file['id'], 'destination_uri': file['file_remote_path']} for file in response if
-                file['status'] != Status.COMPLETE]
+        return [{'submissionFileId': file['id'],
+                 'destination_uri': file['file_remote_path'],
+                 'source_uri': file['file_user_path']
+                } for file in response if file['status'] != Status.COMPLETE
+               ]
 
     def get_multipart_credentials(self, file_ids):
         all_credentials = []
@@ -129,7 +132,7 @@ class Submission:
             print('Retrieving credentials for files -  batch {} of {}...'.format(count, len(batched_ids)))
             count += 1
             s3_buck = self.config.source_bucket if hasattr(self.config, 'source_bucket') else ''
-            s3_pre = self.config.source_prefix if hasattr(self.config, 'source_prefix') else ''
+            s3_pre = self.config.source_prefix if hasattr(self.config, 'source_prefix') and self.config.source_prefix else ''
             q_params = 's3SourceBucket={}&s3SourcePrefix={}'.format(s3_buck, s3_pre) if s3_buck else ''
             credentials_list, session = api_request(self, "POST", "/".join(
                 [self.api, self.submission_id, 'files/batchMultipartUploadCredentials?{}'.format(q_params)]), data=json.dumps(ids))
@@ -145,8 +148,13 @@ class Submission:
             id_list = self.credentials_list
 
         for cred in id_list:
-            file = cred['destination_uri'].split('/')
-            file = '/'.join(file[4:])
+            if 'source_uri' in cred and cred['source_uri'] and cred['source_uri'].startswith('s3://'):
+                # special handling when locations of associated files are absolute s3 URLS
+                file = cred['source_uri']
+            else:
+                file = cred['destination_uri'].split('/')
+                file = '/'.join(file[4:])
+
             size = self.file_sizes[file][1]
             update = {
                 "id": str(cred['submissionFileId']),
@@ -216,8 +224,12 @@ class Submission:
     def update_full_file_paths(self):
         full_file_path = {}
 
-        for credentials in self.credentials_list:
-            full_path = (credentials['destination_uri'].split(self.submission_id)[1][1:])
+        for cred in self.credentials_list:
+            if 'source_uri' in cred and cred['source_uri'] and cred['source_uri'].startswith('s3://'):
+                # special handling when locations of associated files are absolute s3 URLS
+                full_path = cred['source_uri']
+            else:
+                full_path = cred['destination_uri'].split(self.submission_id)[1][1:]
             for key, value in self.file_sizes.items():
                 if full_path == key:
                     full_file_path[key] = value
@@ -230,10 +242,8 @@ class Submission:
         response = retry.split(' ')
         self.directory_list = response
         if response[0] == '-s3':
-            self.source_bucket = response[1]
-            self.source_prefix = input('Enter any prefix for your S3 object, or hit "Enter": ')
-            if self.source_prefix == "":
-                self.source_prefix = None
+            self.config.source_bucket = self.source_bucket = response[1]
+            self.config.source_prefix = self.source_prefix = input('Enter any prefix for your S3 object, or hit "Enter": ')
 
     def found_all_files(self, directories=None, source_bucket=None, source_prefix=None, retry_allowed=False):
         def raise_error(error, l=[]):
@@ -346,12 +356,31 @@ class Submission:
 
     def check_file_exists_in_s3(self, file, s3_client, creds_by_source=None):
         key = file
-        if self.source_prefix:
-            key = '/'.join([self.source_prefix, file])
-        file_name = '/'.join(['s3:/', self.source_bucket, key])
+        # special handling when locations of associated files are absolute s3 URLS
+        if key.startswith('s3://'):
+            # confirm that the s3bucket + s3Prefix matches the s3 url, or throw an error
+            tmp = 's3://{}/{}'.format(self.source_bucket, self.source_prefix) if self.source_prefix else 's3://{}'.format(self.source_bucket)
+            if not key.startswith(tmp):
+                m = 'Error - Detected absolute s3-url in associated files with an s3 location different from the --s3-bucket/--s3-prefix command line arguments. '
+                m += 'Please correct s3-url or command line arguments in order to continue. '
+                m += '\n --s3-bucket = {}, --s3-prefix = {}'.format(self.source_bucket, self.source_prefix)
+                m += '\n s3-url = {}'.format(key)
+                print(m)
+                exit_client()
+
+            file_name = key
+            key = key.replace('s3://{}/'.format(self.source_bucket), '')
+            if self.source_prefix:
+                key = key.replace('{}/'.format(self.source_prefix), '')
+        else:
+            if self.source_prefix:
+                key = '/'.join([self.source_prefix, file])
+            file_name = '/'.join(['s3:/', self.source_bucket, key])
+
         self.file_sizes[file] = (file_name, None)
         if self.config.skip_s3_file_check:
             self.no_match.remove(file)
+            return
 
         if creds_by_source:
             creds = creds_by_source[file_name]
@@ -545,11 +574,11 @@ class Submission:
         def update_tokens(self):
             link = self.upload['_links']['multipartUploadCredentials']['href']
             s3_buck = self.config.source_bucket if hasattr(self.config, 'source_bucket') else ''
-            s3_pre = self.config.source_prefix if hasattr(self.config, 'source_prefix') else ''
+            s3_pre = self.config.source_prefix if hasattr(self.config, 'source_prefix') and self.config.source_prefix else ''
             q_params = 's3SourceBucket={}&s3SourcePrefix={}'.format(s3_buck, s3_pre) if s3_buck else ''
 
             credentials, session = api_request(self, "GET", '{}?{}'.format(link, q_params))
-            self.credentials_list[int(credentials['fileId'])] = credentials
+            self.credentials_list[int(credentials['fileId'])] = credentials-c
             return credentials
 
         def add_back_to_queue(self, bucket, prefix):
@@ -580,8 +609,14 @@ class Submission:
                                             aws_session_token=creds['session_token']
                                             ).resource('s3')
 
-                source_key = key.split('/')[1:]
-                source_key = '/'.join(source_key)
+                if local_path.startswith('s3://'):
+                    # special handling when locations of associated files are absolute s3 URLS
+                    source_key = local_path.replace('s3://{}/'.format(self.source_bucket),'')
+                    if self.source_prefix:
+                        source_key = local_path.replace('{}/'.format(self.source_prefix),'')
+                else:
+                    source_key = key.split('/')[1:]
+                    source_key = '/'.join(source_key)
 
                 # create a source dictionary that specifies bucket name and key name of the object to be copied
                 copy_source = {
