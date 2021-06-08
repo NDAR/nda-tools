@@ -412,6 +412,8 @@ def sanitize_file_path(file):
     :return: Relative or absolute filepath with leading / or drive:/ removed
     """
     # Sanitize all backslashes (\) with forward slashes (/)
+    if file.startswith('s3://'):
+            return file
     file_key = file.replace('\\', '/').replace('//', '/')
     # If Mac/Linux full path
     if re.search(r'^/.+$', file):
