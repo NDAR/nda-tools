@@ -157,7 +157,6 @@ def require_schema(parser):
 
 def mindar_password_args(parser):
     parser.add_argument('--mpassword', dest='mindar_password', help='miNDAR password')
-    parser.add_argument('--mcreds', dest='mindar_cred_file', help='miNDAR credentials file')
 
 
 def mindar_import_args(parser):
@@ -181,12 +180,8 @@ def default(args, config, mindar):
 def create_mindar(args, config, mindar):
     requires_mindar_password(args, True)
 
-    password = args.mindar_password
-
-    # TODO: process mcreds file
-
     print('Creating an empty miNDAR, this might take some time...')
-    response = mindar.create_mindar(password=password, nickname=args.nickname)
+    response = mindar.create_mindar(password=args.mindar_password, nickname=args.nickname)
     print()
     print('------ MiNDAR Created ------')
     print("Current Status: {}".format(response['status']))

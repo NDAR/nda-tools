@@ -222,13 +222,13 @@ python -m pip install --index-url https://test.pypi.org/simple/ nda-tools==0.3.0
 From time to time, we will be uploading newer versions of this script to TestPyPi. 
 
 Confirm that the tool is installed by running
- ```
+```
  mindar -h
-```   
+```
 ## Creating an empty miNDAR
 Enter the following command to create an empty miNDAR
 ```
-mindar create --nickname  <name here> --mpasword <mindar-password-here>
+mindar create --nickname <name here> --mpasword <mindar-password-here>
 ```
 After this command completes, an empty miNDAR for your user will have been created. The connection information required to connect directly to this DB will be output to the command line. 
  
@@ -242,8 +242,8 @@ If none is provided, a default name of 'MINDAR_BLANK_PKG_XXXXX' will be assigned
 ## Showing existing miNDAR
 The following command will show all miNDARs associated with the current user. 
 ```
-  mindar show --include-deleted
-``` 
+mindar show --include-deleted
+```
 After this command completes, a table will be output to the console containing basic information about each miNDAR associated with the current user.
  
 ##### Command line args
@@ -265,8 +265,8 @@ After this command completes, a Delete request will be initiated for the miNDAR 
 ## Adding tables to a miNDAR
 Enter the following command to add a table to a miNDAR
 ```
-mindar tables add image03,genomics03,datastructureexample07  --schema <schema>
-``` 
+mindar tables add <schema> image03,genomics03,datastructureexample07
+```
 This command will attempt to add each table specified at the command line to the miNDAR, one by one. If an error is encountered during the addition of one of the tables to the miNDAR, the tool will display an error message and continue onto the next table in the list. The tables argument must be a comma delimited list without spaces. If a table is specified on the command line that already exists in the miNDAR, it will be skipped over during processing and the data in that table will not be affected by the command.
 
 ##### Command line args
@@ -277,7 +277,7 @@ This command will attempt to add each table specified at the command line to the
 The following command will show all the tables contained in a particular miNDAR. 
 ```
 mindar describe --refresh-stats <schema>
-``` 
+```
 After this command completes, a table will be output to the console containing basic information about each table inside the miNDAR with the specified schema
  
 ##### Command line args
@@ -286,8 +286,8 @@ After this command completes, a table will be output to the console containing b
 ## Dropping tables from a miNDAR
 Enter the following command to remove a table to a miNDAR
 ```
-mindar tables drop image03,genomics03,datastructureexample07  --schema <schema>
-``` 
+mindar tables drop <schema> image03,genomics03,datastructureexample07
+```
 This command will attempt to drop each table specified at the command line to the miNDAR, one by one. If an error is encountered during the processing of one of the tables, the tool will display an error message and continue onto the next table in the list. The tables argument must be a comma delimited list without spaces. If a table is specified on the command line that does not exist in the miNDAR, it will be skipped over during processing and the data in that table will not be affected by the command.
     
 ## Recreating tables in a miNDAR
@@ -295,8 +295,8 @@ This command is provided in the even that a user wants to undo edits made to tab
 
 Enter the following command to drop and re-add tables to a miNDAR. 
 ```
-  mindar tables reset image03,genomics03,datastructureexample07  --schema <schema>
-``` 
+mindar tables reset <schema> image03,genomics03,datastructureexample07
+```
 This command will attempt to drop each table specified (if it exists in the miNDAR) and then re-add the table to the miNDAR. At the end of this command, each table will not contain any rows and the table structure will match the latest structure definition retrieved from the data-dictionary API (https://nda.nih.gov/api/datadictionary/docs/swagger-ui.html). If an error is encountered during the processing of one of the tables, the tool will display an error message and continue onto the next table in the list. The tables argument must be a comma delimited list without spaces. 
 
 ## Further Assistance
