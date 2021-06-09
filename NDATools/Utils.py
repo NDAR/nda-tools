@@ -247,7 +247,7 @@ def get_stack_trace():
     #print(tb)
 
 
-def api_request(api, verb, endpoint, data=None, session=None, json=None, authorized=True):
+def api_request(api, verb, endpoint, data=None, session=None, json=None, authorized=True, timeout=300):
 
     if data and json:
         raise Exception(ValueError)
@@ -262,7 +262,7 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None, authori
         status_forcelist=(502, 504)
     )
 
-    headers = {'accept': 'application/json'}
+    headers = {'accept': 'application/json', 'Accept-Encoding':'gzip, compress, br, deflate'}
     auth = None
     if isinstance(api, Protocol):
         if api.get_protocol(api) == Protocol.CSV:
@@ -281,7 +281,7 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None, authori
     response = None
     try:
         r = session.send(requests.Request(verb, endpoint, headers, auth=auth, data=data).prepare(),
-                         timeout=300, stream=False)
+                         timeout=timeout, stream=False)
 
     except requests.exceptions.RequestException as e:
         print('\nAn error occurred while making {} request to {}, check your endpoint configuration'.

@@ -90,7 +90,7 @@ class Submission:
         self.all_mpus = []
 
     def create_submission(self):
-        response, session = api_request(self, "POST", "/".join([self.api, self.package_id]))
+        response, session = api_request(self, "POST", "/".join([self.api, self.package_id]), timeout=400)
         if response:
             self.status = response['submission_status']
             self.submission_id = response['submission_id']
@@ -170,7 +170,7 @@ class Submission:
 
     @property
     def incomplete_files(self):
-        logging.debug('Retrieving incomplete files...')
+        print('Retrieving incomplete files...')
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id, 'files']))
         self.file_sizes = {}
         self.associated_files = []
@@ -190,6 +190,7 @@ class Submission:
                 raise Exception("{}\n{}".format('SubmissionError', message))
 
     def check_submitted_files(self):
+        print('Checking submitted files')
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id, 'files']))
 
         file_info = self.create_file_info_list(response)
@@ -223,18 +224,18 @@ class Submission:
 
     def update_full_file_paths(self):
         full_file_path = {}
-
+        paths = set()
         for cred in self.credentials_list:
             if 'source_uri' in cred and cred['source_uri'] and cred['source_uri'].startswith('s3://'):
                 # special handling when locations of associated files are absolute s3 URLS
-                full_path = cred['source_uri']
+                paths.add(cred['source_uri'])
             else:
-                full_path = cred['destination_uri'].split(self.submission_id)[1][1:]
-            for key, value in self.file_sizes.items():
-                if full_path == key:
-                    full_file_path[key] = value
-                    break
-        self.file_sizes = full_file_path
+                paths.add(cred['destination_uri'].split(self.submission_id)[1][1:])
+
+        # After this runs, any entries in self.full-file-paths that do not have a matching entry in the credential-list
+        # will be deleted from the dictionary
+        r = {path: self.file_sizes[path] for path in paths}
+        self.file_sizes = r
 
     def recollect_file_search_info(self):
         retry = input('Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
@@ -288,7 +289,6 @@ class Submission:
                 progress_bar = tqdm(ascii=os.name == 'nt', total=len(self.no_match), desc='Checking Files in S3...',
                                     dynamic_ncols=True, unit_scale=True, unit='files')
 
-
             def add_result(f):
                 progress_bar.update(1)
                 if not f.exception():
@@ -296,15 +296,20 @@ class Submission:
                     if result:
                         no_access_buckets.append(result)
 
-            tasks = []
             creds_by_source = {c["source_uri"]: c for c in self.credentials_list}
-            with ThreadPoolExecutor(max_workers=self.thread_num) as executor:
+            if self.config.skip_s3_file_check:
+                # its faster not to utilize threads here, since there is no blocking operation if we arent making an http call
                 for index, file in enumerate(self.no_match[:]):
-                    t = executor.submit(self.check_file_exists_in_s3, file, s3_client, creds_by_source)
-                    tasks.append(t)
-                    t.add_done_callback(add_result)
+                    self.check_file_exists_in_s3(file, None, creds_by_source)
+            else:
+                tasks = []
+                with ThreadPoolExecutor(max_workers=self.thread_num) as executor:
+                    for index, file in enumerate(self.no_match[:]):
+                        t = executor.submit(self.check_file_exists_in_s3, file, s3_client, creds_by_source)
+                        tasks.append(t)
+                        t.add_done_callback(add_result)
 
-            concurrent.futures.wait(tasks, timeout=None, return_when=ALL_COMPLETED)
+                concurrent.futures.wait(tasks, timeout=None, return_when=ALL_COMPLETED)
             if progress_bar:
                 progress_bar.close()
 
@@ -467,7 +472,7 @@ class Submission:
             self.creds_by_fileid = {c['submissionFileId']: c for c in self.credentials_list}
             for x in range(self.thread_num):
                 worker = Submission.S3Upload(x, self.config, self.upload_queue, self.file_sizes, self.submission_id,
-                                             self.progress_queue, self.creds_by_fileid, self.all_mpus)
+                                             self.progress_queue, self.creds_by_fileid, self.all_mpus, self.credentials)
 
                 workers.append(worker)
                 worker.daemon = True
@@ -531,7 +536,7 @@ class Submission:
 
     class S3Upload(threading.Thread):
         def __init__(self, index, upload_config, upload_queue, full_file_path, submission_id, progress_queue, credentials_list,
-                     all_mpus):
+                     all_mpus, credentials):
             threading.Thread.__init__(self)
             self.config = upload_config
             self.upload_queue = upload_queue
@@ -542,7 +547,7 @@ class Submission:
             self.password = self.config.password
             self.source_bucket = self.config.source_bucket
             self.source_prefix = self.config.source_prefix
-            self.credentials = S3Authentication(self.config)
+            self.credentials = credentials
             self.file_sizes = full_file_path
             self.credentials_list = credentials_list
             self.submission_id = submission_id
@@ -731,8 +736,6 @@ class Submission:
                         """
                         tqdm.monitor_interval = 0
 
-                        s3_config = Config(connect_timeout=240, read_timeout=240)
-                        self.source_s3 = self.credentials.get_s3_resource(s3_config)
 
                         source_key = key.split('/')[1:]
                         source_key = '/'.join(source_key)
@@ -753,6 +756,9 @@ class Submission:
                                     raise error
                             self.progress_queue.put(None)
                         else:
+                            s3_config = Config(connect_timeout=240, read_timeout=240)
+                            self.source_s3 = self.credentials.get_s3_resource(s3_config)
+
                             # Try downloading and then uploading
                             self.fileobj = self.source_s3.Object(self.source_bucket, self.source_key.lstrip('/')).get()[
                                 'Body']
