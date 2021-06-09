@@ -70,7 +70,7 @@ def add_table_helper(schema, table, mindar):
 
 
 def requires_mindar_password(args, confirm=False):
-    if not args.mindar_password and not args.mindar_cred_file:
+    if not args.mindar_password:
         args.mindar_password = getpass.getpass('Please enter this miNDAR\'s access password: ')
 
         if confirm:
@@ -81,11 +81,6 @@ def requires_mindar_password(args, confirm=False):
 
                 if confirm_password != args.mindar_password:
                     print('Your passwords do not match, please try again.')
-    elif args.mindar_cred_file:  # TODO Technical Debt: Use a more standardized format for credentials
-        print('Opening credentials file...')
-        with open(args.mindar_cred_file, 'r') as cred_file:  # TODO: Verify secure permissions before
-            args.mindar_password = cred_file.read()
-        print('Loaded miNDAR password from credentials file!')
 
 
 def get_export_dir(directory, schema):

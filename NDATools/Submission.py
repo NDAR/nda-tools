@@ -135,7 +135,8 @@ class Submission:
             s3_pre = self.config.source_prefix if hasattr(self.config, 'source_prefix') and self.config.source_prefix else ''
             q_params = 's3SourceBucket={}&s3SourcePrefix={}'.format(s3_buck, s3_pre) if s3_buck else ''
             credentials_list, session = api_request(self, "POST", "/".join(
-                [self.api, self.submission_id, 'files/batchMultipartUploadCredentials?{}'.format(q_params)]), data=json.dumps(ids))
+                [self.api, self.submission_id, 'files/batchMultipartUploadCredentials?{}'.format(q_params)]),
+                                                    data=json.dumps(ids), timeout=600)
             all_credentials = all_credentials + credentials_list['credentials']
             time.sleep(2)
 

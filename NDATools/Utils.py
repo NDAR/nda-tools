@@ -247,7 +247,7 @@ def get_stack_trace():
     #print(tb)
 
 
-def api_request(api, verb, endpoint, data=None, session=None, json=None, authorized=True, timeout=300):
+def api_request(api, verb, endpoint, data=None, session=None, json=None, authorized=True, timeout=420):
 
     if data and json:
         raise Exception(ValueError)
@@ -256,7 +256,7 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None, authori
 
     retry_request = requests.packages.urllib3.util.retry.Retry(
         total=3,
-        read=20,
+        read=200,
         connect=20,
         backoff_factor=3,
         status_forcelist=(502, 504)
