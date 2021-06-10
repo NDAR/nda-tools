@@ -129,7 +129,7 @@ class Submission:
 
         count = 1
         for ids in batched_ids:
-            print('Retrieving credentials for files -  batch {} of {}...'.format(count, len(batched_ids)))
+            print('Retrieving credentials for files -  batch {} of {} @ {}...'.format(count, len(batched_ids), datetime.now()))
             count += 1
             s3_buck = self.config.source_bucket if hasattr(self.config, 'source_bucket') else ''
             s3_pre = self.config.source_prefix if hasattr(self.config, 'source_prefix') and self.config.source_prefix else ''
@@ -191,7 +191,7 @@ class Submission:
                 raise Exception("{}\n{}".format('SubmissionError', message))
 
     def check_submitted_files(self):
-        print('Checking submitted files')
+        print('Checking submitted files @ {}'.format(datetime.now()))
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id, 'files']))
 
         file_info = self.create_file_info_list(response)

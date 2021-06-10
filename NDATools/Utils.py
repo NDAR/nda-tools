@@ -287,6 +287,8 @@ def api_request(api, verb, endpoint, data=None, session=None, json=None, authori
         print('\nAn error occurred while making {} request to {}, check your endpoint configuration'.
               format(e.request.method, endpoint))
         logging.error(e)
+        print(get_error())
+        print(get_stack_trace())
         if api.__class__.__name__.endswith('Task'):
             api.shutdown_flag.set()
             thread.interrupt_main()
