@@ -171,7 +171,7 @@ class Submission:
 
     @property
     def incomplete_files(self):
-        print('Retrieving incomplete files...')
+        print('Retrieving incomplete files @ {}...'.format(datetime.now()))
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id, 'files']))
         self.file_sizes = {}
         self.associated_files = []
@@ -193,6 +193,7 @@ class Submission:
     def check_submitted_files(self):
         print('Checking submitted files @ {}'.format(datetime.now()))
         response, session = api_request(self, "GET", "/".join([self.api, self.submission_id, 'files']))
+        logging.debug('finished getting submission files @ {}'.format(datetime.now()))
 
         file_info = self.create_file_info_list(response)
 
@@ -206,14 +207,17 @@ class Submission:
                               self.batch_size)]
         unsubmitted_ids = []
 
-        for batch in batched_data:
+        for index, batch in enumerate(batched_data):
+            print('Checking submitted files batch {}/{} @ {}'.format(index+1, len(batched_data), datetime.now()))
+
             session = requests.session()
             r = session.send(requests.Request('PUT', url, headers, auth=auth, data=json.dumps(batch)).prepare(),
-                             timeout=300, stream=False)
+                             timeout=600, stream=False)
             response = json.loads(r.text)
             errors = response['errors']
             for e in errors:
                 unsubmitted_ids.append(e['submissionFileId'])
+            logging.debug('Finished batch request {}/{} at @ {}'.format(index+1, len(batched_data), datetime.now()))
 
         file_ids = [int(ids['submissionFileId']) for ids in file_info]
         existing_ids = {int(c['submissionFileId']) for c in self.credentials_list}
@@ -452,19 +456,21 @@ class Submission:
                 self.batch_update_status(status=Status.IN_PROGRESS)
 
             if not hide_progress:
-                if self.total_upload_size:
-                    self.total_progress = tqdm(total=self.total_upload_size,
-                                               position=0,
-                                               unit_scale=True,
-                                               unit="bytes",
-                                               desc="Total Upload Progress",
-                                               ascii=os.name == 'nt',
-                                               dynamic_ncols=True)
-                else:
+                # TODO - refactor this logic into a reusable method
+                is_s3_to_s3_copy = hasattr(self.config, 'source_bucket') and self.config.source_bucket and not self.config.aws_access_key
+                if is_s3_to_s3_copy :
                     self.total_progress = tqdm(total=len(self.file_sizes),
                                                 position=0,
                                                unit_scale=True,
                                                unit="files",
+                                               desc="Total Upload Progress",
+                                               ascii=os.name == 'nt',
+                                               dynamic_ncols=True)
+                elif self.total_upload_size:
+                    self.total_progress = tqdm(total=self.total_upload_size,
+                                               position=0,
+                                               unit_scale=True,
+                                               unit="bytes",
                                                desc="Total Upload Progress",
                                                ascii=os.name == 'nt',
                                                dynamic_ncols=True)
