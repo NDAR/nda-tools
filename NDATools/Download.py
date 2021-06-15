@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 from __future__ import with_statement
 
+import json
 import sys
 
 IS_PY2 = sys.version_info < (3, 0)
