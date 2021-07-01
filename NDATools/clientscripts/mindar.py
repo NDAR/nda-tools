@@ -149,6 +149,7 @@ def submit_mindar_args(parser):
     parser.add_argument('-sk', '--secretKey', metavar='<arg>', type=str, action='store', help='AWS secret key')
     parser.add_argument('--skip-s3-file-check', action='store_true',
                         help='Skips the check performed to verify that s3 files exist where expected')
+    parser.add_argument('-co', '--clear-old', dest='clear', action='store_true', help='Removes any old submissions that are present')
 
 
 def require_schema(parser):
@@ -284,6 +285,11 @@ def submit_mindar(args, config, mindar):
     # do this here because the vtcmd was written in a way that expects certain properties to be set on config and not args
     # and we will be invoking several methods from the vtcmd script from 'submit_mindar'
     config.update_with_args(args)
+
+    if args.clear and args.resume:
+        print('Incompatible arguments detected! --clear-old is incompatible with --resume!')
+        return
+
     if config.skip_s3_file_check and not config.source_bucket:
         print('Value for --s3-bucket argument must be provided if --skip-s3-file-check is set. Please correct command line arguments before re-running the command')
         exit_client()
@@ -339,6 +345,18 @@ def submit_mindar(args, config, mindar):
                     print('Retrieving associated files...')
                     response = advanced_request(endpoint='{}/{{}}'.format(config.validation_api), path_params=mindar_submission.validation_uuid)
                     mindar_submission.associated_files = [response['associated_file_paths']] # Validation.associated files is a list of lists, for some reason
+
+            elif table in mindar_table_submission_data and not mindar_table_submission_data[table]['validation_uuid'] is None and not args.resume:
+                # An incomplete submission is present
+                if args.clear:
+                    print('Clearing old submission for {}...'.format(table))
+                    mindar.clear_mindar_submission(args.schema, table)
+                    print('Submission cleared!')
+                else:
+                    print('There is already an outstanding submission for this miNDAR table!')
+                    print('If you wish to resume the old submission, please run this command again with --resume')
+                    print('Alternatively, if you wish to abandon the old submission, please run this command again with --clear-old')
+                    continue
 
             submission_id_message = '' if not mindar_submission.submission_id else ' (submission-id: {})'.format(mindar_submission.submission_id)
             print('Beginning submission process for: {}{}...'.format(table, submission_id_message))

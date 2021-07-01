@@ -88,6 +88,10 @@ class MindarManager:
         return self.__authenticated_request(self.__make_url('/{}/tables/{}/records/bulkUpdate'),
                                             path_params=[schema, table_name], verb=Verb.POST, data=params)
 
+    def clear_mindar_submission(self, schema, table):
+        return self.__authenticated_request(self.__make_url('/{}/tables/{}/submission'), path_params=[schema, table],
+                                            verb=Verb.DELETE)
+
     def export_table_to_file(self, schema, table, root_dir='.', include_id=False, add_nda_header=False):
         start = datetime.now()
         invalid_structure = False
