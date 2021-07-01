@@ -228,7 +228,7 @@ def validate_mindar(args, config, mindar):
     if args.files and args.schema:
         raise Exception('Schema argument are incompatible with --files argument. Please specify one or the other')
     if args.download_dir and args.files:
-        print('Warning: download-dir argument was provided, but does not have any affect when used with --files arg')
+        print('WARNING: download-dir argument was provided, but does not have any affect when used with --files arg')
 
     if args.files:
         file_list = args.files.split(',')
@@ -265,7 +265,7 @@ def validate_mindar(args, config, mindar):
 
 
 # The initial version of this tool expects 1 data-structure per submission.
-def validate_mindar_submission_state(mindar_submission_data, tables, is_resume):
+def validate_mindar_submission_state(mindar_submission_data):
     tables_with_submissions = list(filter(lambda x: x['submission_id'] is not None, mindar_submission_data.values()))
     submission_ids = [t[0] for t in itertools.groupby(tables_with_submissions, lambda x: x['submission_id']) if len(list(t[1])) > 1]
 
@@ -275,20 +275,22 @@ def validate_mindar_submission_state(mindar_submission_data, tables, is_resume):
         raise Exception(m)
 
 
-    processed_tables = [t['short_name'] for t in mindar_submission_data.values() if t['short_name'] in tables and t['submission_id'] is not None]
-    if len(processed_tables) > 0 and not is_resume:
-        m = 'Submissions have already been started for table(s) {}. You must provide the --resume option in order to continue.'.format(','.join(processed_tables))
-        raise Exception(m)
-
-
 def submit_mindar(args, config, mindar):
+
     # do this here because the vtcmd was written in a way that expects certain properties to be set on config and not args
     # and we will be invoking several methods from the vtcmd script from 'submit_mindar'
     config.update_with_args(args)
 
+
     if args.clear and args.resume:
         print('Incompatible arguments detected! --clear-old is incompatible with --resume!')
-        return
+        exit_client()
+
+    if args.resume:
+        # Eventually we want to remove the --resume flag, but we do not want to break any scripts that abcd might have
+        # already made for this submission cycle.
+        print('\r\nWARNING - the default behavior in this version of the submit command is to resume existing submissions. '
+              'The --resume flag no longer needs to be specified and will be removed in a future release\r\n')
 
     if config.skip_s3_file_check and not config.source_bucket:
         print('Value for --s3-bucket argument must be provided if --skip-s3-file-check is set. Please correct command line arguments before re-running the command')
@@ -304,7 +306,7 @@ def submit_mindar(args, config, mindar):
     success_count = 0
     print('Checking existing submissions for miNDAR...')
     mindar_table_submission_data = mindar.get_mindar_submissions(args.schema)
-    validate_mindar_submission_state(mindar_table_submission_data, tables, args.resume)
+    validate_mindar_submission_state(mindar_table_submission_data)
 
     if not tables:
         print('No valid tables provided.')
@@ -316,47 +318,41 @@ def submit_mindar(args, config, mindar):
     for table in tables:
         try:
             mindar_submission = MindarSubmission(args.schema, table, MindarSubmissionStep.INITIATE, mindar)
-            if table in mindar_table_submission_data and args.resume:
+            if table in mindar_table_submission_data:
                 table_submission_data = mindar_table_submission_data[table]
-                if table_submission_data['validation_uuid']:
-                    mindar_submission.validation_uuid = [table_submission_data['validation_uuid']]  # has to be an array
-                    mindar_submission.set_step(MindarSubmissionStep.SUBMISSION_PACKAGE)
+                if args.clear:
+                    # An incomplete submission is present
+                    print('Clearing old submission for {}...'.format(table))
+                    mindar.clear_mindar_submission(args.schema, table)
+                    print('Submission cleared!')
+                else:
+                    if table_submission_data['validation_uuid']:
+                        mindar_submission.validation_uuid = [table_submission_data['validation_uuid']]  # has to be an array
+                        mindar_submission.set_step(MindarSubmissionStep.SUBMISSION_PACKAGE)
 
-                if table_submission_data['submission_package_id']:
-                    mindar_submission.package_id = table_submission_data['submission_package_id']
-                    mindar_submission.set_step(MindarSubmissionStep.CREATE_SUBMISSION)
+                    if table_submission_data['submission_package_id']:
+                        mindar_submission.package_id = table_submission_data['submission_package_id']
+                        mindar_submission.set_step(MindarSubmissionStep.CREATE_SUBMISSION)
 
-                if table_submission_data['submission_id']:
-                    mindar_submission.submission_id = table_submission_data['submission_id']
-                    mindar_submission.set_step(MindarSubmissionStep.UPLOAD_ASSOCIATED_FILES)
+                    if table_submission_data['submission_id']:
+                        mindar_submission.submission_id = table_submission_data['submission_id']
+                        mindar_submission.set_step(MindarSubmissionStep.UPLOAD_ASSOCIATED_FILES)
 
-                if mindar_submission.submission_id:
-                    submission = Submission(id=mindar_submission.submission_id, full_file_path=None,
-                                            thread_num=args.workerThreads, submission_config=config, resume=True)
-                    submission.check_status()
+                    if mindar_submission.submission_id:
+                        submission = Submission(id=mindar_submission.submission_id, full_file_path=None,
+                                                thread_num=args.workerThreads, submission_config=config, resume=True)
+                        submission.check_status()
 
-                    if submission.status in complete_statuses:
-                        print("Skipping submission for {}, already completed.".format(table))
-                        success_count += 1
-                        continue
+                        if submission.status in complete_statuses:
+                            print("Skipping submission for {}, already completed.".format(table))
+                            success_count += 1
+                            continue
 
                 # get the associated files
                 if mindar_submission.get_step() == MindarSubmissionStep.SUBMISSION_PACKAGE:
                     print('Retrieving associated files...')
                     response = advanced_request(endpoint='{}/{{}}'.format(config.validation_api), path_params=mindar_submission.validation_uuid)
                     mindar_submission.associated_files = [response['associated_file_paths']] # Validation.associated files is a list of lists, for some reason
-
-            elif table in mindar_table_submission_data and not mindar_table_submission_data[table]['validation_uuid'] is None and not args.resume:
-                # An incomplete submission is present
-                if args.clear:
-                    print('Clearing old submission for {}...'.format(table))
-                    mindar.clear_mindar_submission(args.schema, table)
-                    print('Submission cleared!')
-                else:
-                    print('There is already an outstanding submission for this miNDAR table!')
-                    print('If you wish to resume the old submission, please run this command again with --resume')
-                    print('Alternatively, if you wish to abandon the old submission, please run this command again with --clear-old')
-                    continue
 
             submission_id_message = '' if not mindar_submission.submission_id else ' (submission-id: {})'.format(mindar_submission.submission_id)
             print('Beginning submission process for: {}{}...'.format(table, submission_id_message))
