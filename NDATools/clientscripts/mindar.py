@@ -149,8 +149,10 @@ def submit_mindar_args(parser):
     parser.add_argument('-sk', '--secretKey', metavar='<arg>', type=str, action='store', help='AWS secret key')
     parser.add_argument('--skip-s3-file-check', action='store_true',
                         help='Skips the check performed to verify that s3 files exist where expected')
-    parser.add_argument('-co', '--clear-old', dest='clear', action='store_true', help='Removes any old submissions that are present')
-
+    parser.add_argument('-cn', '--create-new', action='store_true', help='The default behavior of the submit '
+                               'command is to create a single submission for each structure in a miNDAR. This flag '
+                               'should be specified if the user wants to replace any submissions that have already been created. '
+                               'Note - If this option is specified, any in-progress submissions will be abandoned')
 
 def require_schema(parser):
     parser.add_argument('schema', help='MiNDAR schema name')
@@ -282,7 +284,7 @@ def submit_mindar(args, config, mindar):
     config.update_with_args(args)
 
 
-    if args.clear and args.resume:
+    if args.create_new and args.resume:
         print('Incompatible arguments detected! --clear-old is incompatible with --resume!')
         exit_client()
 
@@ -320,7 +322,7 @@ def submit_mindar(args, config, mindar):
             mindar_submission = MindarSubmission(args.schema, table, MindarSubmissionStep.INITIATE, mindar)
             if table in mindar_table_submission_data:
                 table_submission_data = mindar_table_submission_data[table]
-                if args.clear:
+                if args.create_new:
                     # An incomplete submission is present
                     print('Clearing old submission for {}...'.format(table))
                     mindar.clear_mindar_submission(args.schema, table)
