@@ -127,7 +127,7 @@ def configure(args):
     if args.description:
         config.description = ' '.join(args.description)
     if args.scope:
-        config.scope = args.scope[0]
+        config.scope = args.scope
     if args.validationAPI:
         config.validation_api = args.validationAPI[0]
     if args.JSON:
