@@ -3,6 +3,8 @@ from __future__ import with_statement
 
 import sys
 
+from requests import HTTPError
+
 IS_PY2 = sys.version_info < (3, 0)
 
 if IS_PY2:
@@ -14,9 +16,8 @@ import csv
 from threading import Thread
 import botocore
 import multiprocessing
-
 from NDATools.Utils import *
-
+import requests
 
 class Worker(Thread):
     """ Thread executing tasks from a given tasks queue """
@@ -86,6 +87,7 @@ class Download(Protocol):
         self.verbose = verbose
         self.s3_links = {}
         self.package_file_id_list = set()
+        self.package_file_download_errors = set()
 
     @staticmethod
     def get_protocol(cls):
@@ -100,7 +102,9 @@ class Download(Protocol):
         auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
         headers = {'content-type': 'application/json'}
         url = self.package_url + '/{}/files?page=1&size=all'.format(self.package)
-        response = json.loads(requests.get(url, headers, auth=auth).text)
+        tmp = requests.get(url, headers, auth=auth)
+        tmp.raise_for_status()
+        response = json.loads(tmp.text)
 
         for element in response['results']:
             associated = element['associatedFile']
@@ -137,7 +141,9 @@ class Download(Protocol):
         :param id_list: List of package file IDs with max size of 50,000
         """
         url = self.package_url + '/{}/files/batchGeneratePresignedUrls'.format(self.package)
-        response = json.loads(requests.post(url, headers=headers, json=id_list, auth=auth).text)
+        tmp = requests.post(url, headers=headers, json=id_list, auth=auth)
+        tmp.raise_for_status()
+        response = json.loads(tmp.text)
 
         for element in response['presignedUrls']:
             download_url = element['downloadURL']
@@ -166,15 +172,18 @@ class Download(Protocol):
         parses both files to identify all associated files for the data structure, and then
         requests the package file ids for those files from the package service
         """
-        data_structure_name = self.dataStructure.split('/')[-1].split('.txt')[0]
+        data_structure_name = self.dataStructure.split(os.path.sep)[-1].split('.txt')[0]
         auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
         headers = {'content-type': 'application/json'}
-        url = self.package_url + '/{}/files?page=1&size=all'.format(self.package)
-        response = json.loads(requests.get(url, headers, auth=auth).text)
+        url = self.package_url + '/{}/files?page=1&size=all&types=Data'.format(self.package)
+        tmp = requests.get(url, headers, auth=auth)
+        tmp.raise_for_status()
+        response = json.loads(tmp.text)
         has_data_structure = False
         has_data_structure_manifest = False
         for element in response['results']:
-            if data_structure_name == element['download_alias'].split('.txt')[0]:
+            # api response is always lower-case
+            if data_structure_name.lower() == element['download_alias'].split('.txt')[0]:
                 pfi = list()
                 pfi.append(element['package_file_id'])
                 self.__post_for_s3_links(pfi, auth, headers)
@@ -191,7 +200,11 @@ class Download(Protocol):
             if has_data_structure_manifest and has_data_structure:
                 break
         if not has_data_structure:
+            structures = [f['download_alias'].replace('.txt', '') for f in response['results'] if
+                          f['nda_file_type'] == 'Data']
+            structures.sort()
             print('{} data structure is not included in the package'.format(self.dataStructure))
+            print('Valid structures for this package are:\n{}'.format('\n'.join(structures)))
             sys.exit(1)
 
         def __get_manifest_and_file_elements(data_structure_name):
@@ -200,7 +213,9 @@ class Download(Protocol):
             manifest_elements = []
 
             # Parse the data dictionary api results and create a list of file elements and manifest elements.
-            for el in requests.get(self.datadictionary_url+'/{}'.format(data_structure_name)).json()['dataElements']:
+            tmp = requests.get(self.datadictionary_url + '/{}'.format(data_structure_name))
+            tmp.raise_for_status()
+            for el in tmp.json()['dataElements']:
                 if el['type'] == 'File':
                     file_elements.append(el['name'])
                 elif el['type'] == 'Manifest':
@@ -215,13 +230,14 @@ class Download(Protocol):
 
         with open(os.path.normpath(os.path.join(self.directory, data_structure_name + '.txt'))) as data_structure_file:
             reader = csv.DictReader(data_structure_file, dialect='excel-tab')
+            next(reader)  # skip both description lines
 
             for row in reader:
                 for file_element in file_elements:
-                    if file_element in row and row[file_element] is not None:
+                    if file_element in row and row[file_element]:
                         data_structure_file_links.add(row[file_element])
                 for manifest_element in manifest_elements:
-                    if manifest_element in row and row[manifest_element] is not None:
+                    if manifest_element in row and row[manifest_element]:
                         if row['dataset_id'] in manifest_names:
                             manifest_names[row['dataset_id']].append(row[manifest_element])
                         else:
@@ -245,13 +261,33 @@ class Download(Protocol):
         auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
         url = self.package_url + '/{}/files'.format(self.package)
         try:
-            for package_file in requests.post(url, auth=auth, json=list(self.path_list)).json():
+            response = requests.post(url, auth=auth, json=list(self.path_list))
+            response.raise_for_status()
+            for package_file in response.json():
                 self.package_file_id_list.add(package_file['package_file_id'])
                 self.local_file_names[package_file['package_file_id']] = package_file['download_alias']
-        except ValueError:
-            print('One or more S3 URLs cannot be found in the package.')
-            print('Check if associated files were included, when you created your data package.')
-            sys.exit(1)
+        except HTTPError as e:
+            if e.response.status_code == 404:
+                message = e.response.text
+                invalid_s3_links = set(map(lambda x: x.rstrip(), message.split('\n')[1:]))
+                print('WARNING: The following associated files were not found in the package '
+                      'and will not be downloaded\n{}'.format('\n'.join(invalid_s3_links)))
+                print()
+                for i in invalid_s3_links:
+                    self.path_list.remove(i)
+
+                if not self.path_list:
+                    print('Error detected in package config. Please contact NDAHelp@mail.nih.gov for assistance in resolving this error.')
+                    print('Please note - this error may be encountered if you did not select the "include associated files" '
+                          'option when before your data package. If you wish to download associated files, you will need to create a new '
+                          'package')
+                    sys.exit(1)
+                else:
+                    self.get_package_file_ids() # retry request after excluding the invalid s3links
+                    return
+            else:
+                raise e
+
         self.__chunk_file_id_list()
 
     def get_links(self, links, files, package, filters=None):
@@ -326,6 +362,7 @@ class Download(Protocol):
         except Exception as e:
             # If a client error is thrown, then check that it was a 404 error.
             # If it was a 404 error, then the bucket does not exist.
+            self.package_file_download_errors.add(package_file_id)
             error_code = int(e.response['Error']['Code'])
             if error_code == 404:
                 message = 'This path is incorrect: {}. Please try again.'.format(s3_link)
@@ -337,8 +374,8 @@ class Download(Protocol):
                 raise Exception(e)
 
     def start_workers(self, resume, prev_directory, thread_num=None):
-        def download(path):
-            self.download_from_s3link(path, resume, prev_directory)
+        def download(package_file_id):
+            self.download_from_s3link(package_file_id, resume, prev_directory)
 
         # Instantiate a thread pool with i worker threads
         self.thread_num = max([1, multiprocessing.cpu_count() - 1])
@@ -349,4 +386,7 @@ class Download(Protocol):
 
         # Add the jobs in bulk to the thread pool
         pool.map(download, self.package_file_id_list)
+        print('Beginning download of {} files to {}'.format(len(self.package_file_id_list), self.directory))
         pool.wait_completion()
+        print('Finished processing download requests for {} files. Total errors encountered: {}'
+              .format(len(self.package_file_id_list), len(self.package_file_download_errors)))

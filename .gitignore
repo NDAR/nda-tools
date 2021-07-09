@@ -10,3 +10,6 @@
 /*.egg
 
 /tests/test_files/
+
+**/.idea/
+**/venv/

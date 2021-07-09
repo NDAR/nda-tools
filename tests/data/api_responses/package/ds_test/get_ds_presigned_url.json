@@ -1,0 +1,9 @@
+{
+	"presignedUrls": [
+		{
+			"package_file_id": 3132764122,
+			"downloadURL": "https://gpop.s3.amazonaws.com/ndar_data/QueryPackages/PRODDB/618523879050%3Acollect_member/Package_1189934/fmriresults01.txt?X-Amz-Security-Token=FwoGZXIvYXdzEI%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaDJewpv0RVRY80FdQYiK4AqWH3F8od8PLLmzuuucUmvyF9V%2BpgZMGBV7Ug5%2FySYWBVRhwctWeevzQNOwETUznWMlrOD8BNcYDA649oxwYD%2BM0Jyq7FixzALr55cGE%2BEzk7VV9WFMYagk0l98rPjVrBr24k8cw822z8GcPWHcNLv1%2BdNEvDVcVIyBY5znQvObK2O7vCZOfqCX0FOEnaamgY8B%2FW%2B1pRC%2BbF8vPW%2Bbl032zEap6F29qRmhP9CVdZrP9DciQf7obnXiywI%2Bl0wNNJrguWHulb97y2FwtoWesyKnv8fUGIodg%2FgfBZzwDhlDIpI6cT2uiUWs%2B6PozKk7xUJoMfweNHwqVfOIGmCJPb6npbhw%2FomKcu%2B%2BitNi2IE8eSJZuTPGW8o5%2BvrRW%2BLXuS9U3cTf4RW2p2GXi3mIVhZVCrbzvFeLSMyjDrpiHBjIp3IO6t0IeToOPdXFrHJ2odrJdfk9wpxHoi%2BHOiYWnvfqAq5QwypMqp%2Bg%3D&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20210707T210611Z&X-Amz-SignedHeaders=host&X-Amz-Expires=129599&X-Amz-Credential=ASIAZAAXFM2FJYOV2X4E%2F20210707%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Signature=dfaf737497c84fcc334b45db22311ade370f7b64d94a31b61a239eca5d796ebf"
+		}
+	],
+	"errors": []
+}
