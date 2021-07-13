@@ -51,12 +51,13 @@ def parse_args():
 
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Option to print out more detailed messages as the program runs.')
+
     args = parser.parse_args()
 
     return args
 
 
-def configure(username, password):
+def configure(username=None, password=None):
 
     NDATools.Utils.logging.getLogger().setLevel(logging.INFO)
     if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):

@@ -7,8 +7,6 @@ from NDATools.Submission import Submission
 import argparse
 import logging
 import os
-import pkg_resources
-
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -184,7 +182,6 @@ def validate_files(file_list, warnings, build_package, threads, config=None):
     if warnings:
         validation.get_warnings()
         print('Warnings output to: {}'.format(validation.log_file))
-
     else:
         if validation.w:
             print('\nNote: Your data has warnings. To save warnings, run again with -w argument.')
@@ -218,7 +215,8 @@ def validate_files(file_list, warnings, build_package, threads, config=None):
             else:
                 print('Your answer <{}> was not recognized, please enter yes or no.'.format(str(proceed)))
                 continue
-    return([validation.uuid, validation.associated_files])
+
+    return validation.uuid, validation.associated_files
 
 
 def build_package(uuid, associated_files, config):
