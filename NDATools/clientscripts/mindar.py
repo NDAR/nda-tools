@@ -154,6 +154,7 @@ def submit_mindar_args(parser):
                                'should be specified if the user wants to replace any submissions that have already been created. '
                                'Note - If this option is specified, any in-progress submissions will be abandoned')
 
+
 def require_schema(parser):
     parser.add_argument('schema', help='MiNDAR schema name')
 
@@ -283,7 +284,6 @@ def submit_mindar(args, config, mindar):
     # and we will be invoking several methods from the vtcmd script from 'submit_mindar'
     config.update_with_args(args)
 
-
     if args.create_new and args.resume:
         print('Incompatible arguments detected! --clear-old is incompatible with --resume!')
         exit_client()
@@ -307,7 +307,7 @@ def submit_mindar(args, config, mindar):
 
     success_count = 0
     print('Checking existing submissions for miNDAR...')
-    mindar_table_submission_data = mindar.get_mindar_submissions(args.schema)
+    mindar_table_submission_data = mindar.get_mindar_submissions(args.schema, create_new=args.create_new)
     validate_mindar_submission_state(mindar_table_submission_data)
 
     if not tables:
@@ -321,13 +321,14 @@ def submit_mindar(args, config, mindar):
         try:
             mindar_submission = MindarSubmission(args.schema, table, MindarSubmissionStep.INITIATE, mindar)
             if table in mindar_table_submission_data:
-                table_submission_data = mindar_table_submission_data[table]
                 if args.create_new:
                     # An incomplete submission is present
                     print('Clearing old submission for {}...'.format(table))
                     mindar.clear_mindar_submission(args.schema, table)
                     print('Submission cleared!')
                 else:
+                    table_submission_data = mindar_table_submission_data[table]
+
                     if table_submission_data['validation_uuid']:
                         mindar_submission.validation_uuid = [table_submission_data['validation_uuid']]  # has to be an array
                         mindar_submission.set_step(MindarSubmissionStep.SUBMISSION_PACKAGE)

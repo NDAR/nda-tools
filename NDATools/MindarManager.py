@@ -148,7 +148,7 @@ class MindarManager:
 
             raise e
 
-    def get_mindar_submissions(self, schema):
+    def get_mindar_submissions(self, schema, create_new=True):
         existing_mindar_submissions = self.__authenticated_request(self.__make_url('/{}/submissions/'),
                                                                    path_params=[schema])
         # transform the structure of data returned by the service so that it is easier to process (key each ds by short_name)
@@ -178,7 +178,10 @@ class MindarManager:
         for submission in existing_mindar_submissions['submissions']:
             for table in submission['tables']:
                 if table['short_name'] in mindar_table_submission_data:
-                    raise Exception(err_msg.format('submissions'))
+                    if not create_new:
+                        raise Exception(err_msg.format('submissions'))
+                    else:
+                        logging.info("Ignoring error case in submission data retrieval because --create-new is present.")
                 else:
                     mindar_table_submission_data[table['short_name']] = transform(table, submission['submission_id'])
 
