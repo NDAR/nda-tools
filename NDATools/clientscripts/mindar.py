@@ -31,7 +31,7 @@ def parse_args():
     make_subcommand(subparsers, 'show', show_mindar, [show_mindar_args])  # mindar show
     make_subcommand(subparsers, 'describe', describe_mindar, [describe_mindar_args, require_schema])  # mindar describe
     make_subcommand(subparsers, 'submit', submit_mindar, [require_schema, submit_mindar_args])  # mindar submit
-    make_subcommand(subparsers, 'validate', validate_mindar, [require_schema, validate_mindar_args])  # mindar validate
+    make_subcommand(subparsers, 'validate', validate_mindar, [optional_schema, validate_mindar_args])  # mindar validate
     make_subcommand(subparsers, 'import', import_mindar, [require_schema, mindar_import_args])  # mindar import
     make_subcommand(subparsers, 'export', export_mindar, [export_mindar_args, require_schema])  # mindar export
 
@@ -155,6 +155,10 @@ def submit_mindar_args(parser):
                                'Note - If this option is specified, any in-progress submissions will be abandoned')
 
 
+def optional_schema(parser):
+    parser.add_argument('schema', help='MiNDAR schema name', nargs='?')
+
+
 def require_schema(parser):
     parser.add_argument('schema', help='MiNDAR schema name')
 
@@ -232,6 +236,9 @@ def validate_mindar(args, config, mindar):
         raise Exception('Schema argument are incompatible with --files argument. Please specify one or the other')
     if args.download_dir and args.files:
         print('WARNING: download-dir argument was provided, but does not have any affect when used with --files arg')
+
+    if not args.files and not args.schema:
+        raise Exception('ERROR: Must have provided either a schema or --files args')
 
     if args.files:
         file_list = args.files.split(',')
