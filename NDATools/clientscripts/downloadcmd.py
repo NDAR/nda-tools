@@ -49,29 +49,30 @@ def parse_args():
     parser.add_argument('-wt', '--workerThreads', metavar='<arg>', type=int, action='store',
                         help='Number of worker threads')
 
-    parser.add_argument('-v', '--verbose', action='store_true',
-                        help='Option to print out more detailed messages as the program runs.')
+    parser.add_argument('-q', '--quiet', action='store_true',
+                        help='Option to suppress output of detailed messages as the program runs.')
 
     args = parser.parse_args()
 
     return args
 
 
-def configure(username=None, password=None):
+def configure(args):
 
     NDATools.Utils.logging.getLogger().setLevel(logging.INFO)
     if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
-        config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'), username, password)
+        config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'), args.username, args.password)
     else:
-        config = ClientConfiguration('clientscripts/config/settings.cfg', username, password)
+        config = ClientConfiguration('clientscripts/config/settings.cfg', args.username, args.password)
         config.read_user_credentials()
         config.make_config()
+
     return config
 
 
 def main():
     args = parse_args()
-    config = configure(args.username, args.password)
+    config = configure(args)
 
     # directory where files will be downloaded
     if args.directory:
@@ -101,15 +102,9 @@ def main():
     else:  # only package provided
         links = 'package'
 
-    s3Download = Download(dir, config, verbose=args.verbose)
+    s3Download = Download(dir, config, quiet=args.quiet)
     s3Download.get_links(links, paths, args.package, filters=None)
-
-    if len(s3Download.s3_links) == 0:
-        return
     s3Download.start_workers(args.resume, dir, args.workerThreads)
-
-    if args.verbose:
-        print('Finished downloading all files.')
 
 
 if __name__ == "__main__":

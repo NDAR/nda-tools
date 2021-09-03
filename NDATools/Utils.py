@@ -6,6 +6,8 @@ import sys
 import getpass
 import time
 import threading
+import traceback
+
 import requests
 from requests.adapters import HTTPAdapter
 import requests.packages.urllib3.util
@@ -38,6 +40,7 @@ else:
 
 import xml.etree.ElementTree as ET
 
+
 class Protocol(object):
     CSV = "csv"
     XML = "xml"
@@ -47,8 +50,8 @@ class Protocol(object):
     def get_protocol(cls):
         return cls.JSON
 
-def api_request(api, verb, endpoint, data=None, session=None):
 
+def api_request(api, verb, endpoint, data=None, session=None):
     retry = requests.packages.urllib3.util.retry.Retry(
         total=20,
         read=20,
@@ -154,11 +157,11 @@ def parse_local_files(directory_list, no_match, full_file_path, no_read_access, 
     """
     files_to_match = len(no_match)
     logging.debug('Starting local directory search for {} files'.format(str(files_to_match)))
-    progress_counter = int(files_to_match*0.05)
+    progress_counter = int(files_to_match * 0.05)
     for file in no_match[:]:
         if progress_counter == 0:
             logging.debug('Found {} files out of {}'.format(str(files_to_match - len(no_match)), str(files_to_match)))
-            progress_counter = int(files_to_match*0.05)
+            progress_counter = int(files_to_match * 0.05)
         file_key = sanitize_file_path(file)
         for d in directory_list:
             if skip_local_file_check:
@@ -184,7 +187,9 @@ def parse_local_files(directory_list, no_match, full_file_path, no_read_access, 
                 full_file_path[file_key] = (file_name, os.path.getsize(file_name))
                 no_match.remove(file)
                 break
-    logging.debug('Local directory search complete, found {} files out of {}'.format(str(files_to_match - len(no_match)), str(files_to_match)))
+    logging.debug(
+        'Local directory search complete, found {} files out of {}'.format(str(files_to_match - len(no_match)),
+                                                                           str(files_to_match)))
 
 
 def sanitize_file_path(file):
@@ -213,3 +218,21 @@ def check_read_permissions(file):
         if err.errno == 13:
             print('Permission Denied: {}'.format(file))
     return False
+
+
+def get_error():
+    exc_type, exc_value, exc_tb = sys.exc_info()
+    tbe = traceback.TracebackException(
+        exc_type, exc_value, exc_tb,
+    )
+    ex = ''.join(tbe.format_exception_only())
+    return 'Error: {}'.format(ex)
+
+
+def get_traceback():
+    exc_type, exc_value, exc_tb = sys.exc_info()
+    tbe = traceback.TracebackException(
+        exc_type, exc_value, exc_tb,
+    )
+    tb = ''.join(tbe.format())
+    return tb
