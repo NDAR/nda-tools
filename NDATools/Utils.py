@@ -131,7 +131,7 @@ def api_request(api, verb, endpoint, data=None, session=None):
     return response, session
 
 
-def exit_client(signal, frame=None, message=None):
+def exit_client(signal=signal.SIGTERM, frame=None, message=None):
     for t in threading.enumerate():
         try:
             t.shutdown_flag.set()

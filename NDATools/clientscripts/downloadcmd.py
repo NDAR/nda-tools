@@ -52,6 +52,12 @@ def parse_args():
     parser.add_argument('-q', '--quiet', action='store_true',
                         help='Option to suppress output of detailed messages as the program runs.')
 
+    parser.add_argument('--file-regex',
+                        help='Option can be used to download only a subset of the files in a package. '
+    ' This command line arg can be used with the -ds, -dp or -t flags. For example, to download all files with a ".txt" extension, you can specify --file-regex ".*.txt". '
+     ' To download all files that contain "NDARINVZLHFUAF0" in the name, use --file-regex "NDARINVZLHFUAF0". '
+     ' Finally to download all files underneath a folder called "T1w", use --file-regex ".*/T1w/.*"')
+
     args = parser.parse_args()
 
     return args
@@ -102,9 +108,9 @@ def main():
     else:  # only package provided
         links = 'package'
 
-    s3Download = Download(dir, config, quiet=args.quiet)
+    s3Download = Download(dir, config, quiet=args.quiet, thread_num=args.workerThreads, regex_file_filter=args.file_regex)
     s3Download.get_links(links, paths, args.package, filters=None)
-    s3Download.start_workers(args.resume, dir, args.workerThreads)
+    s3Download.start_workers(args.resume, dir)
 
 
 if __name__ == "__main__":

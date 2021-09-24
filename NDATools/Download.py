@@ -5,17 +5,20 @@ import datetime
 import sys
 
 from requests import HTTPError
+import threading
+
 
 IS_PY2 = sys.version_info < (3, 0)
 
 if IS_PY2:
     from Queue import Queue
     from io import open
+    from urlparse import urlparse
 else:
     from queue import Queue
+    from urllib.parse import urlparse
 import csv
 from threading import Thread
-import botocore
 import multiprocessing
 from NDATools.Utils import *
 import requests
@@ -67,7 +70,7 @@ class ThreadPool:
 
 class Download(Protocol):
 
-    def __init__(self, directory, config=None, quiet=False):
+    def __init__(self, directory, config=None, quiet=False, thread_num=None, regex_file_filter=None):
         if config:
             self.config = config
         else:
@@ -79,7 +82,7 @@ class Download(Protocol):
         self.password = config.password
         self.directory = directory
         self.download_queue = Queue()
-        self.local_file_names = {}
+        self.local_file_names = {}  # map of package-file-id to alias
         self.access_key = None
         self.secret_key = None
         self.session = None
@@ -89,8 +92,22 @@ class Download(Protocol):
         self.s3_links = {}
         self.package_file_id_list = set()
         self.package_file_download_errors = set()
+        # self.package_file_download_errors needs a lock if multiple threads will be adding to it simultaneously
+        self.package_file_download_errors_lock = threading.Lock()
+
         self.download_all_files_flg = False
         self.auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
+
+        # Instantiate a thread pool with i worker threads
+        self.thread_num = thread_num if thread_num else max([1, multiprocessing.cpu_count() - 1])
+        self.regex_file_filter = regex_file_filter
+        if not thread_num:
+            self.verbose_print()
+            self.verbose_print('No value specified for --workerThreads. Using the default option of {}'.format(
+                self.thread_num))
+            self.verbose_print(
+                'Important - You can configure the thread count setting using the --workerThreads argument to maximize your download speed.')
+            self.verbose_print()
 
     @staticmethod
     def get_protocol(cls):
@@ -112,22 +129,25 @@ class Download(Protocol):
         if len(id_list) == 1:
             file_id = id_list[0]
             url = self.package_url + '/{}/files/{}/download_url'.format(self.package, file_id)
-            tmp = requests.get(url, headers=self.request_header(), json=id_list, auth=self.auth)
-            tmp.raise_for_status()
+            with requests.session() as session:
+                session.mount(url, HTTPAdapter(max_retries=5))
+                tmp = session.get(url, headers=self.request_header(), json=id_list, auth=self.auth)
+                tmp.raise_for_status()
             response = json.loads(tmp.text)
             return response['downloadURL']
         else:
             # Use the batchGeneratePresignedUrls when retrieving multiple files
             self.verbose_print('Retrieving credentials for {} files'.format(len(id_list)))
             url = self.package_url + '/{}/files/batchGeneratePresignedUrls'.format(self.package)
-            tmp = requests.post(url, headers=self.request_header(), json=id_list, auth=self.auth)
-            tmp.raise_for_status()
+            with requests.session() as session:
+                session.mount(url, HTTPAdapter(max_retries=5))
+                tmp = session.post(url, headers=self.request_header(), json=id_list, auth=self.auth)
+                tmp.raise_for_status()
             response = json.loads(tmp.text)
 
             creds = {e['package_file_id']: e['downloadURL'] for e in response['presignedUrls']}
             self.verbose_print('Finished retrieving credentials')
             return creds
-
 
     def use_s3_links_file(self):
         """
@@ -139,13 +159,19 @@ class Download(Protocol):
             with open(self.dataStructure, 'r', encoding='utf-8') as s3_links_file:
                 for line in s3_links_file:
                     if line.startswith('s3://'):
-                        path_list.add(line.strip())
+                        if self.regex_file_filter and not re.search(self.regex_file_filter, line):
+                            pass
+                        else:
+                            path_list.add(line.strip())
+            if not path_list:
+                print('No valid paths found in s3-links file. If you specified a regular expression, make sure your regular expression is correct before re-running the command.')
+                exit_client()
+
             self.get_package_file_ids(path_list)
         except IOError as e:
             self.verbose_print(
                 '{} not found. Please enter the correct path to your file and try again.'.format(self.dataStructure))
             raise e
-
 
     def use_data_structure(self):
         """
@@ -228,12 +254,25 @@ class Download(Protocol):
                         if row['manifest_name'] in manifest_names[row['dataset_id']]:
                             data_structure_manifest_file_links.add(row['associated_file'])
         path_list = set()
+
         path_list.update(data_structure_file_links)
         path_list.update(data_structure_manifest_file_links)
+        if self.regex_file_filter:
+            path_list = set(filter(lambda x: re.search(self.regex_file_filter, x), path_list))
+
         if len(path_list) > 0:
+            print('Getting file information for {} files in structure {}...'.format(len(path_list), data_structure_name))
             self.get_package_file_ids(path_list)
+            print('Finished retreiving file information')
+        else:
+            print('No valid paths found in data-structure file. If you specified a regular expression, make sure your regular expression is correct before re-running the command.')
+            exit_client()
+
+
 
     def get_package_file_ids(self, path_list):
+        if not path_list:
+            exit_client(signal=signal.SIGTERM, message='Illegal Argument - path_list cannot be empty')
         url = self.package_url + '/{}/files'.format(self.package)
         try:
             response = requests.post(url, auth=self.auth, json=list(path_list))
@@ -266,7 +305,6 @@ class Download(Protocol):
             else:
                 raise e
 
-
     def get_links(self, links, files, package, filters=None):
         self.package = package
         if links == 'datastructure':
@@ -284,8 +322,7 @@ class Download(Protocol):
         else:
             self.get_package_file_ids(files)
 
-
-    def download_from_s3link(self, package_file_id, resume, prev_directory, err_if_exists=False):
+    def download_from_s3link(self, package_file_id, resume, prev_directory, err_if_exists=False, failed_s3_links_file=None):
 
         # use this instead of exists_ok in order to work with python v.2
         def mk_dir_ignore_err(dir):
@@ -300,42 +337,43 @@ class Download(Protocol):
                     raise
                 pass
 
-        alias = self.local_file_names[package_file_id]
-        completed_download = os.path.normpath(os.path.join(self.directory, alias))
-        partial_download = os.path.normpath(
-            os.path.join(prev_directory, alias + '.partial'))
-        downloaded = False
-        resume_header = None
-        bytes_written = 0
-
-        if os.path.isfile(completed_download):
-            if err_if_exists:
-                msg= "File {} already exists. Move or rename the file before re-running the command to continue".format(completed_download)
-                print(msg)
-                print('Exiting...')
-                sys.exit(1)
-
-            self.verbose_print('Skipping download (already exists): {}'.format(completed_download))
-            return bytes_written
-
-        if os.path.isfile(partial_download):
-            downloaded = True
-            downloaded_size = os.path.getsize(partial_download)
-            resume_header = {'Range': 'bytes={}-'.format(downloaded_size)}
-            self.verbose_print('Resuming download: {}'.
-                               format(partial_download))
-        else:
-            mk_dir_ignore_err(os.path.dirname(partial_download))
-            self.verbose_print('Starting download: {}'.format(partial_download))
-
-        s3_link = self.get_presigned_urls([package_file_id])
-
         try:
+            alias = self.local_file_names[package_file_id]
+            completed_download = os.path.normpath(os.path.join(self.directory, alias))
+            partial_download = os.path.normpath(
+                os.path.join(prev_directory, alias + '.partial'))
+            downloaded = False
+            resume_header = None
+            bytes_written = 0
+
+            if os.path.isfile(completed_download):
+                if err_if_exists:
+                    msg = "File {} already exists. Move or rename the file before re-running the command to continue".format(
+                        completed_download)
+                    print(msg)
+                    print('Exiting...')
+                    sys.exit(1)
+
+                self.verbose_print('Skipping download (already exists): {}'.format(completed_download))
+                return bytes_written
+
+            if os.path.isfile(partial_download):
+                downloaded = True
+                downloaded_size = os.path.getsize(partial_download)
+                resume_header = {'Range': 'bytes={}-'.format(downloaded_size)}
+                self.verbose_print('Resuming download: {}'.
+                                   format(partial_download))
+            else:
+                mk_dir_ignore_err(os.path.dirname(partial_download))
+                self.verbose_print('Starting download: {}'.format(partial_download))
+
+            s3_link = self.get_presigned_urls([package_file_id])
             s = requests.session()
             if resume_header:
                 s.headers.update(resume_header)
             with open(partial_download, "ab" if downloaded else "wb") as download_file:
                 with s.get(s3_link, stream=True) as response:
+                    response.raise_for_status()
                     for chunk in response.iter_content(chunk_size=512 * 1024):
                         if chunk:
                             bytes_written += download_file.write(chunk)
@@ -343,28 +381,69 @@ class Download(Protocol):
             self.verbose_print('Completed download {}'.format(completed_download))
             return bytes_written
         except Exception as e:
-            # If a client error is thrown, then check that it was a 404 error.
-            # If it was a 404 error, then the bucket does not exist.
-            self.package_file_download_errors.add(package_file_id)
-            error_code = -1 if not isinstance(e, HTTPError) else int(e.response['Error']['Code'])
+            if not s3_link:
+                # we couldnt get credentials, which means the service has become un-responsive.
+                # Instruct the user to retry at another time
+                print()
+                print('Unexpected Error During File Download - Service Unresponsive. Unable to obtain credentials for file-id {}'.format(package_file_id))
+                print('Please re-try downloading files at a later time. ')
+                print('You may contact NDAHelp@mail.nih.gov for assistance in resolving this error.')
+                exit_client()
+
+            tmp = urlparse(s3_link)
+
+            # presigned urls are either https://bucketname.s3.amazonaws.com/key... or
+            # https://s3.amazonaws.com/bucket/path
+            if tmp.hostname == 's3.amazonaws.com':
+                bucket = tmp.path.split('/')[1]
+                path = '/'.join(tmp.path.split('/')[2:])
+                path = '/' + path
+            else:
+                bucket = tmp.hostname.replace('.s3.amazonaws.com', '')
+                path = tmp.path
+
+            s3_address = 's3://' + bucket + path
+            with self.package_file_download_errors_lock:
+                self.package_file_download_errors.add(s3_address)
+                if failed_s3_links_file:
+                    failed_s3_links_file.write(s3_address + "\n")
+                    failed_s3_links_file.flush()
+
+            error_code = -1 if not isinstance(e, HTTPError) else int(e.response.status_code)
             if error_code == 404:
                 message = 'This path is incorrect: {}. Please try again.'.format(s3_link)
                 self.verbose_print(message)
-                raise Exception(e)
             elif error_code == 403:
                 message = '\nThis is a private bucket. Please contact NDAR for help: {}'.format(s3_link)
                 self.verbose_print(message)
-                raise Exception(e)
             else:
                 self.verbose_print(str(e))
                 self.verbose_print(get_traceback())
+
+            if bytes_written == 0:
+                try:
+                    os.remove(partial_download)
+                except:
+                    self.verbose_print('error removing partial file {}'.format(partial_download))
             return 0
 
-
-    def start_workers(self, resume, prev_directory, thread_num=None):
+    def start_workers(self, resume, prev_directory):
         success_files = set()
         download_request_count = 0
         download_start_date = datetime.datetime.now()
+
+        failed_s3_links_file = open('failed_s3_links_file_{}.txt'.format(time.strftime("%Y%m%dT%H%M%S")), 'a')
+        message = 'Beginning download of files to {} using {} threads'.format(self.directory, self.thread_num)
+        print()
+        print(message)
+        time.sleep(1.5)
+
+        message = 'S3 links for files that failed to download will be written out to {}. You can attempt to download these files later by running: '\
+            .format(failed_s3_links_file.name)
+        message +='\n\tdownloadcmd -dp {} -t "{}"'.format(self.package, os.path.realpath(failed_s3_links_file.name))
+        print(message)
+        print()
+        time.sleep(5)
 
         # These are all arrays just so that the print_download_progress_report method can update the variables inside them
         trailing_50_file_bytes = []
@@ -380,7 +459,7 @@ class Download(Protocol):
 
             seconds_last_50_files = (datetime.datetime.now() - trailing_50_timestamp[0]).seconds
             if seconds_last_50_files == 0:
-                seconds_last_50_files = 1 # avoid a 'division by 0' error
+                seconds_last_50_files = 1  # avoid a 'division by 0' error
             download_progress_message += ' Avg download rate for the last 50 files is ~ {} bytes/sec.' \
                 .format(byte_total // seconds_last_50_files)
 
@@ -394,7 +473,8 @@ class Download(Protocol):
 
         def download(package_file_id):
             # check if  these exist, and if not, get and set:
-            trailing_50_file_bytes.append(self.download_from_s3link(package_file_id, resume, prev_directory))
+            downloaded_bytes = self.download_from_s3link(package_file_id, resume, prev_directory, failed_s3_links_file=failed_s3_links_file)
+            trailing_50_file_bytes.append(downloaded_bytes)
             success_files.add(package_file_id)
             num_downloaded = len(success_files)
 
@@ -402,21 +482,7 @@ class Download(Protocol):
                 print_download_progress_report(num_downloaded)
 
 
-        # Instantiate a thread pool with i worker threads
-        self.thread_num = max([1, multiprocessing.cpu_count() - 1])
-        if thread_num:
-            self.thread_num = thread_num
-        else:
-            self.verbose_print()
-            self.verbose_print('WARNING: No value specified for --workerThreads. Using the default option of {}'.format(
-                self.thread_num))
-            self.verbose_print(
-                'You should configure the thread count setting using the --workerThreads argument to maximize your download speed.')
-            self.verbose_print()
-
         pool = ThreadPool(self.thread_num)
-
-        print('Beginning download of files to {} using {} threads'.format(self.directory, self.thread_num))
 
         for package_file_id_list in self.generate_download_batch_file_ids():
             additional_file_ct = len(package_file_id_list)
@@ -426,6 +492,11 @@ class Download(Protocol):
             pool.map(download, package_file_id_list)
 
         pool.wait_completion()
+        failed_s3_links_file.close()
+        # dont generate a file if there were no failures
+        if not self.package_file_download_errors:
+            print('No failures detected. Removing file {}'.format(failed_s3_links_file.name))
+            os.remove(failed_s3_links_file.name)
 
         print()
 
@@ -433,11 +504,16 @@ class Download(Protocol):
         print('     Total download requests {}'
               .format(download_request_count))
         print('     Total errors encountered: {}'.format(len(self.package_file_download_errors)))
+
+        print()
         print(' Exiting Program...')
+
 
     def get_package_files_by_page(self, page, batch_size):
 
         url = self.package_url + '/{}/files?page={}&size={}'.format(self.package, page, batch_size)
+        if self.regex_file_filter:
+            url += '&regex={}'.format(self.regex_file_filter)
         aliases = {}
         package_file_ids = set()
         try:
