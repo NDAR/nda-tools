@@ -30,7 +30,7 @@ def check_version():
                 version = max(version, ver)
     NDATools.pypi_version = str(version)
 
-    if NDATools.__version__ != NDATools.pypi_version:
+    if parse(NDATools.__version__) < parse(NDATools.pypi_version):
         print("Your version of nda-tools is out of date. Please upgrade to the latest version ({}) from PyPi or GitHub and "
               "try again. \n\tTo upgrade using pip, run: \r\npip install nda-tools=={}".format(NDATools.pypi_version, NDATools.pypi_version))
         sys.exit(1)
