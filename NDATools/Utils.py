@@ -1,44 +1,44 @@
-from __future__ import with_statement
-from __future__ import absolute_import
+from __future__ import absolute_import, with_statement
+
+import json
+import logging
+import os
 import re
 import signal
 import sys
-import getpass
-import time
 import threading
+import time
 import traceback
 
 import requests
 from requests.adapters import HTTPAdapter
 import requests.packages.urllib3.util
-import json
-import signal
-import os
-import logging
 
+import NDATools
 from NDATools.Configuration import ClientConfiguration
+
+IS_PY2 = sys.version_info < (3, 0)
+
+if IS_PY2:
+    from io import open
+    from urlparse import urlparse
+else:
+    from urllib.parse import urlparse
 
 if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
     config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'))
 else:
     config = ClientConfiguration('clientscripts/config/settings.cfg')
-validation_results_dir = os.path.join(os.path.expanduser('~'), config.validation_results)
-if not os.path.exists(validation_results_dir):
-    os.mkdir(validation_results_dir)
-log_file = os.path.join(validation_results_dir, "debug_log_{}.txt").format(time.strftime("%Y%m%dT%H%M%S"))
-print('Opening log: {}'.format(log_file))
+
+log_file = os.path.join(NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER, "debug_log_{}.txt").format(time.strftime("%Y%m%dT%H%M%S"))
+# TODO - make the log level configurable by command line arg or env. variable. NDA_VTCMD_LOG_LEVEL=?
 logging.basicConfig(filename=log_file, level=logging.INFO, format="%(asctime)s:%(levelname)s:%(message)s")
 
 if sys.version_info[0] < 3:
-    import ConfigParser as configparser
-
     input = raw_input
     import thread
 else:
-    import configparser
     import _thread as thread
-
-import xml.etree.ElementTree as ET
 
 
 class Protocol(object):
@@ -141,7 +141,6 @@ def exit_client(signal=signal.SIGTERM, frame=None, message=None):
         print('\n\n{}'.format(message))
     else:
         print('\n\nExit signal received, shutting down...')
-    print('Please contact NDAHelp@mail.nih.gov if you need assistance.')
     sys.exit(1)
 
 
@@ -205,6 +204,7 @@ def sanitize_file_path(file):
     if re.search(r'^/.+$', file):
         file_key = file.split('/', 1)[1]
     # If Windows full path
+    #TODO - correct regex. All single drive letters should be valid, (not just 'D'). Backslashes as file-separaters need to be added
     elif re.search(r'^\D:/.+$', file_key):
         file_key = file_key.split(':/', 1)[1]
     return file_key
@@ -236,3 +236,34 @@ def get_traceback():
     )
     tb = ''.join(tbe.format())
     return tb
+
+
+# return bucket and key for url (handles http and s3 protocol)
+def deconstruct_s3_url(url):
+    tmp = urlparse(url)
+    if tmp.scheme == 's3':
+        bucket = tmp.netloc
+        path = tmp.path.lstrip('/')
+    elif tmp.scheme == 'https':
+        # presigned urls are either https://bucketname.s3.amazonaws.com/key... or
+        # https://s3.amazonaws.com/bucket/path
+        if tmp.hostname == 's3.amazonaws.com':
+            bucket = tmp.path.split('/')[1]
+            path = '/'.join(tmp.path.split('/')[2:])
+            path = '/' + path
+        else:
+            bucket = tmp.hostname.replace('.s3.amazonaws.com', '')
+            path = tmp.path
+    else:
+        raise Exception('Invalid URL passed to deconstruct_s3_url method: {}'.format(url))
+
+    return bucket, path.lstrip('/')
+
+# converts . and .. and ~ in file-paths. (as well as variable names like %HOME%
+def convert_to_abs_path(file_name):
+    return os.path.abspath(os.path.expanduser(os.path.expandvars(file_name)))
+
+
+def human_size(bytes, units=[' bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']):
+    """ Returns a human readable string representation of bytes """
+    return str(round(bytes,2)) + units[0] if bytes < 1024 else human_size(bytes / 1024, units[1:])

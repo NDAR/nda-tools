@@ -32,8 +32,6 @@ class ClientConfiguration:
         self.datamanager_api = self.config.get("Endpoints", "data_manager")
         self.package_api = self.config.get("Endpoints", "package")
         self.datadictionary_api = self.config.get("Endpoints", "datadictionary")
-        self.validation_results = self.config.get("Files", "validation_results")
-        self.submission_packages = self.config.get("Files", "submission_packages")
         self.aws_access_key = self.config.get("User", "access_key")
         self.aws_secret_key = self.config.get("User", "secret_key")
         self.aws_session_token = self.config.get('User', 'session_token')

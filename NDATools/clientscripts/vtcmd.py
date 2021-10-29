@@ -245,7 +245,7 @@ def build_package(uuid, associated_files, config):
     print('Downloading submission package.')
     package.download_package(hide_progress=config.hideProgress)
     print('\nA copy of your submission package has been saved to: {}'.
-          format(os.path.join(package.package_folder, package.config.submission_packages)))
+          format(os.path.join(NDATools.NDA_TOOLS_SUB_PACKAGE_FOLDER, package.package_folder)))
 
     return[package.package_id, package.full_file_path]
 

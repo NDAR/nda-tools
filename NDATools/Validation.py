@@ -40,13 +40,10 @@ class Validation:
         self.w = False
         self.manifest_data_files = []
         self.manifest_path = self.config.manifest_path
-        self.validation_result_dir = os.path.join(os.path.expanduser('~'), self.config.validation_results)
-        if not os.path.exists(self.validation_result_dir):
-            os.mkdir(self.validation_result_dir)
         if self.config.JSON:
-            self.log_file = os.path.join(self.validation_result_dir, 'validation_results_{}.json'.format(self.date))
+            self.log_file = os.path.join(NDATools.NDA_TOOLS_VAL_FOLDER, 'validation_results_{}.json'.format(self.date))
         else:
-            self.log_file = os.path.join(self.validation_result_dir, 'validation_results_{}.csv'.format(self.date))
+            self.log_file = os.path.join(NDATools.NDA_TOOLS_VAL_FOLDER, 'validation_results_{}.csv'.format(self.date))
 
         self.field_names = ['FILE', 'ID', 'STATUS', 'EXPIRATION_DATE', 'ERRORS', 'COLUMN', 'MESSAGE', 'RECORD']
         self.validation_progress = None
@@ -157,11 +154,11 @@ class Validation:
                     'Expiration Date': response['expiration_date'],
                     'Warnings': response['warnings']
                 })
-                new_path = ''.join([self.validation_result_dir, '/validation_warnings_', self.date, '.json'])
+                new_path = ''.join([NDATools.NDA_TOOLS_VAL_FOLDER, '/validation_warnings_', self.date, '.json'])
                 with open(new_path, 'w') as outfile:
                     json.dump(json_data, outfile)
         else:
-            new_path = ''.join([self.validation_result_dir, '/validation_warnings_', self.date, '.csv'])
+            new_path = ''.join([NDATools.NDA_TOOLS_VAL_FOLDER, '/validation_warnings_', self.date, '.csv'])
             if sys.version_info[0] < 3:
                 csvfile = open(new_path, 'wb')
             else:

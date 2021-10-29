@@ -165,7 +165,7 @@ by the client.
 ## Downloading Data
 
 To download data, you should use the downloadcmd command. This provides several options to download your NDA packaged data 
-or a subset of the data. All files are downloaded automatically to the ~/AWS_downloads folder, but you can change this by
+or a subset of the data. All files are downloaded automatically to the ~/NDA/nda-tools/<package-id> folder, but you can change this by
 indicating a new directory in the command line to save files. 
 
 Please note, the maximum transfer limit of data is 5TB at one time. 

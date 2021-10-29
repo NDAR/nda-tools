@@ -55,9 +55,6 @@ class SubmissionPackage:
         self.get_custom_endpoints()
         self.validation_results = []
         self.no_read_access = set()
-        self.submission_packages_dir = os.path.join(os.path.expanduser('~'), self.config.submission_packages)
-        if not os.path.exists(self.submission_packages_dir):
-            os.mkdir(self.submission_packages_dir)
         self.exit = allow_exit
 
     def get_collections(self):
@@ -331,10 +328,9 @@ class SubmissionPackage:
                                     unit_scale=True,
                                     desc="Submission Package Download",
                                     ascii=os.name == 'nt')
-        print('dl_links: {}'.format(self.download_links))
+        # print('dl_links: {}'.format(self.download_links))
         for url, file_name, size in self.download_links:
-            new_path = os.path.join(os.path.expanduser('~'), self.config.submission_packages)
-            path = os.path.join(new_path, self.package_folder)
+            path = os.path.join(NDATools.NDA_TOOLS_SUB_PACKAGE_FOLDER, self.package_folder)
             if not os.path.exists(path):
                 os.mkdir(path)
             file_name = file_name.split('/')
