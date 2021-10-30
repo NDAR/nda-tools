@@ -12,8 +12,6 @@ else:
 import os
 from pkg_resources import resource_filename
 
-# TODO Make an __all__
-
 
 class ClientConfiguration:
 
@@ -145,9 +143,9 @@ class ClientConfiguration:
         if hasattr(args, 's3Prefix'):
             self.source_prefix = args.s3Prefix
         if hasattr(args, 'title') and args.title:
-            self.title = ' '.join(args.title)
+            self.title = args.title
         if hasattr(args, 'description') and args.description:
-            self.description = ' '.join(args.description)
+            self.description = args.description
         if hasattr(args, 'scope') and args.scope:
             self.scope = args.scope[0]
         if hasattr(args, 'validationAPI') and args.validationAPI:

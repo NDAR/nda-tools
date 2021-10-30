@@ -27,7 +27,7 @@ def parse_args():
     parser.add_argument('paths', metavar='<S3_path_list>', type=str, nargs='*', action='store',
                         help='Will download all S3 files to your local drive')
 
-    parser.add_argument('-dp', '--package', metavar='<package-id>', type=str, required=True, action='store',
+    parser.add_argument('-dp', '--package', metavar='<package-id>', type=int, required=True, action='store',
                         help='Flags to download all S3 files in package. Required.')
 
     parser.add_argument('-t', '--txt', metavar='<s3-links-file>', type=str, action='store',

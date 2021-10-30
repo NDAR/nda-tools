@@ -18,12 +18,12 @@ from NDATools.Utils import *
 
 
 class SubmissionPackage:
-    def __init__(self, uuid, associated_files, config, username=None, password=None, collection=None, title=None,
-                 description=None, alternate_location=None, allow_exit=False):
+    def __init__(self, validation_uuids, associated_files, config, username=None, password=None, collection=None, title=None,
+                 description=None, alternate_location=None):
         self.config = config
         self.api = self.config.submission_package_api
         self.validationtool_api = self.config.validationtool_api
-        self.uuid = uuid
+        self.validation_uuids = validation_uuids
         self.associated_files = associated_files
         self.full_file_path = {}
         self.no_match = []
@@ -40,7 +40,6 @@ class SubmissionPackage:
         self.credentials = S3Authentication(config)
         self.dataset_name = self.config.title
         self.dataset_description = self.config.description
-        self.package_info = {}
         self.download_links = []
         self.package_id = None
         self.package_folder = None
@@ -52,23 +51,42 @@ class SubmissionPackage:
         self.get_custom_endpoints()
         self.validation_results = []
         self.no_read_access = set()
-        self.exit = allow_exit
 
     def get_collections(self):
-        collections, session = api_request(self,
-                                           "GET",
-                                           "/".join([self.validationtool_api, "user/collection"]))
+        collections = advanced_request(self.validationtool_api + '/user/collection', username=self.username, password=self.password)
         if collections:
             for c in collections:
                 self.collections.update({c['id']: c['title']})
 
     def get_custom_endpoints(self):
-        endpoints, session = api_request(self,
-                                         "GET",
-                                         "/".join([self.validationtool_api, "user/customEndpoints"]))
+        endpoints = advanced_request(self.validationtool_api + '/user/customEndpoints',
+                                     username=self.username,
+                                     password=self.password)
         if endpoints:
             for endpoint in endpoints:
                 self.endpoints.append(endpoint['title'])
+
+    def post_package_request(self):
+        payload = {
+            "package_info": {
+                "dataset_description": self.dataset_description,
+                "dataset_name": self.dataset_name
+            },
+            "validation_results":
+                self.validation_uuids
+        }
+        if self.collection_id:
+            payload['package_info']['collection_id']=self.collection_id
+        else:
+            payload['package_info']['endpoint_title'] = self.endpoint_title
+
+        response = advanced_request(self.api, verb=Verb.POST, data=payload, username=self.username, password=self.password)
+        return response
+
+    def get_package(self):
+        # raise for status
+        response = advanced_request(self.api + '/{}', path_params=[self.package_id], username=self.username, password=self.password)
+        return response
 
     def set_upload_destination(self, hide_input=True):
         if len(self.collections) > 0 or len(self.endpoints) > 0:
@@ -114,11 +132,8 @@ class SubmissionPackage:
                             user_input = input('\nEnter -c <collection ID> OR -a <alternate endpoint> from the list above:')
                         else:
                             message = 'Incorrect/Missing collection ID or alternate endpoint.'
-                            if self.exit:
-                                exit_client(signal=signal.SIGTERM,
-                                            message=message)
-                            else:
-                                raise Exception(message)
+                            exit_client(signal=signal.SIGTERM, message=message)
+
                 except (AttributeError, ValueError, TypeError) as e:
                     message = 'Error: Input must start with either a -c or -a and be an integer or string value, respectively.'
                     if not hide_input:
@@ -126,16 +141,11 @@ class SubmissionPackage:
                         user_input = input('\nEnter -c <collection ID> OR -a <alternate endpoint>:')
                     else:
                         message = 'Incorrect/Missing collection ID or alternate endpoint.'
-                        if self.exit:
-                            exit_client(signal=signal.SIGTERM, message=message)
-                        else:
-                            raise Exception(message)
+                        exit_client(signal=signal.SIGTERM, message=message)
         else:
             message = 'The user {} does not have permission to submit to any collections or alternate upload locations.'.format(self.config.username)
-            if self.exit:
-                exit_client(signal=signal.SIGTERM, message=message)
-            else:
-                raise Exception(message)
+            exit_client(signal=signal.SIGTERM, message=message)
+
 
     def recollect_file_search_info(self):
         retry = input('Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
@@ -249,61 +259,30 @@ class SubmissionPackage:
         if self.collection_id is None and self.endpoint_title is None:
             raise_error('collection ID or alternate endpoint')
 
-        self.package_info = {
-            "package_info": {
-                "dataset_description": self.dataset_description,
-                "dataset_name": self.dataset_name,
-                "collection_id": self.collection_id,
-                "endpoint_title": self.endpoint_title
-            },
-            "validation_results":
-                self.uuid
-        }
+        package_response = self.post_package_request()
+        self.package_id = package_response['submission_package_uuid']
+        for r in package_response['validation_results']:
+            self.validation_results.append(r['id'])
+        self.submission_package_uuid = str(package_response['submission_package_uuid'])
+        self.create_date = str(package_response['created_date'])
+        self.expiration_date = str(package_response['expiration_date'])
 
-        json_data = json.dumps(self.package_info)
-        response, session = api_request(self, "POST", self.api, json_data)
-        if response:
-            try:
-                self.package_id = response['submission_package_uuid']
-                for r in response['validation_results']:
-                    self.validation_results.append(r['id'])
-                self.submission_package_uuid = str(response['submission_package_uuid'])
-                self.create_date = str(response['created_date'])
-                self.expiration_date = str(response['expiration_date'])
-            except KeyError:
-                message = 'There was an error creating your package.'
-                if response['status'] == Status.ERROR:
-                    message = response['errors'][0]['message']
-                if self.exit:
-                    exit_client(signal.SIGTERM, message=message)
-                else:
-                    raise Exception(message)
-
-            polling = 0
-            while response['package_info']['status'] == Status.PROCESSING:
-                response, session = api_request(self, "GET", "/".join([self.api, self.package_id]), session=session)
-                polling += 1
-                self.package_id = response['submission_package_uuid']
-            if response['package_info']['status'] == Status.COMPLETE:
-                for f in [f for f in response['files']
-                          if f['type'] in ('Submission Memento', 'Submission Data Package')]:
-                    for key, value in f['_links'].items():
-                        for k, v in value.items():
-                            self.download_links.append((v, "/".join(f['path'].split('/')[4:])))
-            else:
-                message = 'There was an error in building your package.'
-                if response['package_info']['status'] == Status.SYSERROR:
-                    message=response['errors']['system'][0]['message']
-                if self.exit:
-                    exit_client(signal.SIGTERM, message=message)
-                else:
-                    raise Exception(message)
+        polling = 0
+        while package_response['package_info']['status'] == Status.PROCESSING:
+            package_response = self.get_package()
+            polling += 1
+            self.package_id = package_response['submission_package_uuid']
+        if package_response['package_info']['status'] == Status.COMPLETE:
+            for f in [f for f in package_response['files']
+                      if f['type'] in ('Submission Memento', 'Submission Data Package')]:
+                for key, value in f['_links'].items():
+                    for k, v in value.items():
+                        self.download_links.append((v, "/".join(f['path'].split('/')[4:])))
         else:
-            message='There was an error with your package request.'
-            if self.exit:
-                exit_client(signal.SIGTERM, message=message)
-            else:
-                raise Exception(message)
+            message = 'There was an error in building your package.'
+            if package_response['package_info']['status'] == Status.SYSERROR:
+                message=package_response['errors']['system'][0]['message']
+            exit_client(signal.SIGTERM, message=message)
 
     def download_package(self, hide_progress):
         folder = self.download_links[0][1]

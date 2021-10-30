@@ -1,11 +1,7 @@
-from __future__ import absolute_import
-from __future__ import with_statement
+from __future__ import absolute_import, with_statement
 
 from enum import Enum
 import json as json_lib
-from __future__ import absolute_import, with_statement
-
-import json
 import logging
 import os
 import re
@@ -75,7 +71,7 @@ class Verb(Enum):
     UPDATE = 5
 
 
-def report_error(req, response):
+def print_http_error_response(req, response):
     if 'error' not in response and 'message' not in response:
         message = 'Error response from server: {}'.format(response)
     else:
@@ -89,57 +85,53 @@ def report_error(req, response):
 # This method was written as a replacement to api_request, it has been expanded to try and support as many
 # possible use-cases to make it an extremely versatile backbone for the client's HTTP requesting requirements
 def advanced_request(endpoint, verb=Verb.GET, content_type=ContentType.JSON, data=None, headers=None, num_retry=0,
-                     retry_codes=None, error_consumer=report_error, timeout=300, username=None, password=None,
-                     raise_on_error=True, path_params=None, query_params=None):
-
-    if retry_codes is None:
-        retry_codes = [504]
-
-    error_msg = '{} parameter is not of type {}'
+                     retry_codes=[504], error_consumer=print_http_error_response, timeout=300, username=None,
+                     password=None,
+                     path_params=None, query_params=None):
+    param_err_msg_template = '{} parameter is not of type {}'
 
     if endpoint and not isinstance(endpoint, str):
-        raise TypeError(error_msg.format('endpoint', 'str'))
+        raise TypeError(param_err_msg_template.format('endpoint', 'str'))
 
     if verb and not isinstance(verb, Verb):
-        raise TypeError(error_msg.format('verb', 'Verb'))
+        raise TypeError(param_err_msg_template.format('verb', 'Verb'))
 
     if headers is None:
         headers = {
-            'content-type': content_type.value
+            'Content-type': content_type.value,
+            'Accept': 'application/json',
+            'Accept-Encoding': 'gzip, compress, br, deflate'
         }
 
     if content_type and not isinstance(content_type, ContentType):
-        raise TypeError(error_msg.format('content_type', 'ContentType'))
+        raise TypeError(param_err_msg_template.format('content_type', 'ContentType'))
 
     if num_retry and not isinstance(num_retry, int):
-        raise TypeError(error_msg.format('num_retry', 'int'))
+        raise TypeError(param_err_msg_template.format('num_retry', 'int'))
 
     if retry_codes and not isinstance(retry_codes, list):
-        raise TypeError(error_msg.format('retry_codes', 'list'))
+        raise TypeError(param_err_msg_template.format('retry_codes', 'list'))
 
     if error_consumer and not callable(error_consumer):
         raise TypeError('error_consumer is not callable')
 
     if timeout and not isinstance(timeout, int):
-        raise TypeError(error_msg.format('timeout', 'int'))
+        raise TypeError(param_err_msg_template.format('timeout', 'int'))
 
     if username and not isinstance(username, str):
-        raise TypeError(error_msg.format('username', 'str'))
+        raise TypeError(param_err_msg_template.format('username', 'str'))
 
     if password and not isinstance(password, str):
-        raise TypeError(error_msg.format('password', 'str'))
+        raise TypeError(param_err_msg_template.format('password', 'str'))
 
     if headers and not isinstance(headers, dict):
-        raise TypeError(error_msg.format('headers', 'dict'))
-
-    if raise_on_error and not isinstance(raise_on_error, bool):
-        raise TypeError(error_msg.format('raise_on_error', 'bool'))
+        raise TypeError(param_err_msg_template.format('headers', 'dict'))
 
     if path_params and not isinstance(path_params, list):
-        raise TypeError(error_msg.format('path_params', 'list'))
+        raise TypeError(param_err_msg_template.format('path_params', 'list'))
 
     if query_params and not isinstance(query_params, dict):
-        raise TypeError(error_msg.format('query_params', 'dict'))
+        raise TypeError(param_err_msg_template.format('query_params', 'dict'))
 
     # This method is written like this because we don't want this error to
     # present if there is no authentication data supplied
@@ -178,14 +170,6 @@ def advanced_request(endpoint, verb=Verb.GET, content_type=ContentType.JSON, dat
 
         if appended_query_params:
             endpoint += '?' + '&'.join(appended_query_params)
-    elif not endpoint.endswith('/'):
-        endpoint = endpoint + '/'
-
-    if content_type is ContentType.JSON and data:
-        try:
-            data = json_lib.dumps(data)
-        except ValueError:
-            raise TypeError('data cannot be converted to json object')
 
     retry = None
 
@@ -213,27 +197,43 @@ def advanced_request(endpoint, verb=Verb.GET, content_type=ContentType.JSON, dat
     if len(sig.parameters) != 2:
         raise ValueError('error_consumer requires 2 parameters, but has {}'.format(len(sig.parameters)))
 
-    req = None
+    response = None
+    # method=None, url=None, headers=None, files=None, data=None, params=None, auth=None, cookies=None, hooks=None, json=None
+
+    req_params = {
+        'method': verb.name,
+        'url': endpoint,
+        'headers': headers,
+        'auth': auth
+    }
+
+    if content_type is ContentType.JSON and data:
+        if isinstance(data, str):
+            req_params['data'] = data
+        else:
+            req_params['json'] = data
+    elif data:
+        req_params['data'] = data
 
     try:
-        req = session.send(requests.Request(verb.name, endpoint, headers, auth=auth, data=data).prepare(), timeout=timeout, stream=False)
+        request = requests.Request(**req_params).prepare()
+        response = session.send(request, timeout=timeout, stream=False)
     except requests.exceptions.RequestException as e:
         print('\nAn error occurred while making {} request, check your endpoint configuration:\n'.
               format(e.request.method))
         exit_client(signal.SIGTERM)
 
-    try:
-        result = json_lib.loads(req.text)
-    except ValueError:
-        result = req.text
+    response.raise_for_status()
 
-    if req.ok:
+    try:
+        result = json_lib.loads(response.text)
+    except ValueError:
+        result = response.text
+
+    if response.ok:
         return result
 
-    error_consumer(req, result)
-
-    if raise_on_error:
-        req.raise_for_status()
+    error_consumer(response, result)
 
 
 def get_error():
@@ -242,7 +242,7 @@ def get_error():
         exc_type, exc_value, exc_tb,
     )
     ex = ''.join(tbe.format_exception_only())
-    #print('Error: {}'.format(ex))
+    # print('Error: {}'.format(ex))
     return ex
 
 
@@ -253,11 +253,11 @@ def get_stack_trace():
     )
     tb = ''.join(tbe.format())
     return tb
-    #print(tb)
+    # print(tb)
 
 
 def api_request(api, verb, endpoint, data=None, session=None, authorized=True):
-    retry = requests.packages.urllib3.util.retry.Retry(
+    retry_request = requests.packages.urllib3.util.retry.Retry(
         total=3,
         read=200,
         connect=20,
@@ -265,7 +265,7 @@ def api_request(api, verb, endpoint, data=None, session=None, authorized=True):
         status_forcelist=(502, 504)
     )
 
-    headers = {'accept': 'application/json', 'Accept-Encoding':'gzip, compress, br, deflate'}
+    headers = {'accept': 'application/json', 'Accept-Encoding': 'gzip, compress, br, deflate'}
     auth = None
     if isinstance(api, Protocol):
         if api.get_protocol(api) == Protocol.CSV:
@@ -284,7 +284,7 @@ def api_request(api, verb, endpoint, data=None, session=None, authorized=True):
     response = None
     try:
         r = session.send(requests.Request(verb, endpoint, headers, auth=auth, data=data).prepare(),
-                         timeout=timeout, stream=False)
+                         timeout=300, stream=False)
 
     except requests.exceptions.RequestException as e:
         print('\nAn error occurred while making {} request to {}, check your endpoint configuration'.
@@ -324,7 +324,7 @@ def api_request(api, verb, endpoint, data=None, session=None, authorized=True):
 
     else:
         # default error message
-        message ='Error occurred while processing request {} {}.\r\n'.format(verb, endpoint)
+        message = 'Error occurred while processing request {} {}.\r\n'.format(verb, endpoint)
         message += 'Error response from server: {}'.format(r.text)
 
         if is_valid_json(r.text):
@@ -332,7 +332,8 @@ def api_request(api, verb, endpoint, data=None, session=None, authorized=True):
             if 'error' not in response and 'message' not in response:
                 message = 'Error response from server: {}'.format(response)
             else:
-                e = response['error'] if 'error' in response else 'An error occurred during processing of the last request'
+                e = response[
+                    'error'] if 'error' in response else 'An error occurred during processing of the last request'
                 m = response['message'] if 'message' in response else 'No Error Message Available'
                 message = '{}: {}'.format(e, m)
         print(message)
@@ -420,13 +421,13 @@ def sanitize_file_path(file):
     """
     # Sanitize all backslashes (\) with forward slashes (/)
     if file.startswith('s3://'):
-            return file
+        return file
     file_key = file.replace('\\', '/').replace('//', '/')
     # If Mac/Linux full path
     if re.search(r'^/.+$', file):
         file_key = file.split('/', 1)[1]
     # If Windows full path
-    #TODO - correct regex. All single drive letters should be valid, (not just 'D'). Backslashes as file-separaters need to be added
+    # TODO - correct regex. All single drive letters should be valid, (not just 'D'). Backslashes as file-separaters need to be added
     elif re.search(r'^\D:/.+$', file_key):
         file_key = file_key.split(':/', 1)[1]
     return file_key
@@ -481,6 +482,7 @@ def deconstruct_s3_url(url):
 
     return bucket, path.lstrip('/')
 
+
 # converts . and .. and ~ in file-paths. (as well as variable names like %HOME%
 def convert_to_abs_path(file_name):
     return os.path.abspath(os.path.expanduser(os.path.expandvars(file_name)))
@@ -488,4 +490,4 @@ def convert_to_abs_path(file_name):
 
 def human_size(bytes, units=[' bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']):
     """ Returns a human readable string representation of bytes """
-    return str(round(bytes,2)) + units[0] if bytes < 1024 else human_size(bytes / 1024, units[1:])
+    return str(round(bytes, 2)) + units[0] if bytes < 1024 else human_size(bytes / 1024, units[1:])
