@@ -166,7 +166,7 @@ To view options available for the download python client, enter:
 `downloadcmd -h`
 
 To download data, you should use the downloadcmd command. This provides several options to download your NDA packaged data 
-or a subset of the data. All files are downloaded automatically to the ~/AWS_downloads folder, but you can change this by
+or a subset of the data. All files are downloaded automatically to the ~/NDA/nda-tools/<package-id> folder, but you can change this by
 indicating a new directory in the command line to save files. 
 
 Please note, the maximum transfer limit of data is 5TB at one time. 
@@ -233,6 +233,7 @@ mindar create --nickname <name here> --mpasword <mindar-password-here>
 After this command completes, an empty miNDAR for your user will have been created. The connection information required to connect directly to this DB will be output to the command line. 
  
 **Note** - In Oracle terminology, schema is equivalent to a DB user. In this document, we use the terms schema and username interchangeably. 
+`downloadcmd -dp <packageID> -t path/to/all/s3/txt/file/alls3.txt -r /Users/<your_user>/AWS_downloads`
  
 ##### Command line args  
 - **mpassword** - _required_ - the password entered here will be the password that you need to use in order to connect to the DB

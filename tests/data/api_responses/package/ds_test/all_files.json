@@ -1,0 +1,186 @@
+{
+	"results": [
+		{
+			"dataFile": false,
+			"associatedFile": false,
+			"documentFile": false,
+			"_links": {
+				"self": {
+					"href": "https://nda.nih.gov/api/package/1189934/files/3132764131"
+				},
+				"download_url": {
+					"href": "https://nda.nih.gov/api/package/1189934/files/3132764131/download_url"
+				},
+				"download_token": {
+					"href": "https://nda.nih.gov/api/package/1189934/files/3132764131/download_token"
+				}
+			},
+			"package_file_id": 3132764131,
+			"download_alias": "README.pdf",
+			"file_size": 103371,
+			"is_associated_file": false,
+			"created_date": "2021-06-30T20:32:48.000-0400",
+			"is_data_file": false,
+			"is_document_file": false,
+			"nda_file_type": "Package Metadata"
+		},
+		{
+			"dataFile": false,
+			"associatedFile": false,
+			"documentFile": false,
+			"_links": {
+				"self": {
+					"href": "https://nda.nih.gov/api/package/1189934/files/3132764127"
+				},
+				"download_url": {
+					"href": "https://nda.nih.gov/api/package/1189934/files/3132764127/download_url"
+				},
+				"download_token": {
+					"href": "https://nda.nih.gov/api/package/1189934/files/3132764127/download_token"
+				}
+			},
+			"package_file_id": 3132764127,
+			"download_alias": "package_info.txt",
+			"file_size": 1,
+			"is_associated_file": false,
+			"created_date": "2021-06-30T20:32:48.000-0400",
+			"is_data_file": false,
+			"is_document_file": false,
+			"nda_file_type": "Package Metadata"
+		},
+		{
+			"dataFile": false,
+			"associatedFile": false,
+			"documentFile": false,
+			"_links": {
+				"self": {
+					"href": "https://nda.nih.gov/api/package/1189934/files/3132764126"
+				},
+				"download_url": {
+					"href": "https://nda.nih.gov/api/package/1189934/files/3132764126/download_url"
+				},
+				"download_token": {
+					"href": "https://nda.nih.gov/api/package/1189934/files/3132764126/download_token"
+				}
+			},
+			"package_file_id": 3132764126,
+			"download_alias": "md5_values.txt",
+			"file_size": 1,
+			"is_associated_file": false,
+			"created_date": "2021-06-30T20:32:15.000-0400",
+			"is_data_file": false,
+			"is_document_file": false,
+			"nda_file_type": "Package Metadata"
+		},
+		{
+			"dataFile": true,
+			"associatedFile": true,
+			"documentFile": false,
+			"_links": {
+				"self": {
+					"href": "https://nda.nih.gov/api/package/1189934/files/3132764125"
+				},
+				"download_url": {
+					"href": "https://nda.nih.gov/api/package/1189934/files/3132764125/download_url"
+				},
+				"download_token": {
+					"href": "https://nda.nih.gov/api/package/1189934/files/3132764125/download_token"
+				}
+			},
+			"package_file_id": 3132764125,
+			"download_alias": "fmriresults01/1.png",
+			"file_size": 1,
+			"is_associated_file": true,
+			"created_date": "2021-06-30T20:28:45.000-0400",
+			"is_data_file": true,
+			"is_document_file": false,
+			"nda_file_type": "Associated"
+		},
+		{
+			"dataFile": true,
+			"associatedFile": true,
+			"documentFile": false,
+			"_links": {
+				"self": {
+					"href": "https://nda.nih.gov/api/package/1189934/files/3132764124"
+				},
+				"download_url": {
+					"href": "https://nda.nih.gov/api/package/1189934/files/3132764124/download_url"
+				},
+				"download_token": {
+					"href": "https://nda.nih.gov/api/package/1189934/files/3132764124/download_token"
+				}
+			},
+			"package_file_id": 3132764124,
+			"download_alias": "fmriresults01/2.png",
+			"file_size": 1,
+			"is_associated_file": true,
+			"created_date": "2021-06-30T20:28:45.000-0400",
+			"is_data_file": true,
+			"is_document_file": false,
+			"nda_file_type": "Associated"
+		},
+		{
+			"dataFile": true,
+			"associatedFile": true,
+			"documentFile": false,
+			"_links": {
+				"self": {
+					"href": "https://nda.nih.gov/api/package/1189934/files/3132764123"
+				},
+				"download_url": {
+					"href": "https://nda.nih.gov/api/package/1189934/files/3132764123/download_url"
+				},
+				"download_token": {
+					"href": "https://nda.nih.gov/api/package/1189934/files/3132764123/download_token"
+				}
+			},
+			"package_file_id": 3132764123,
+			"download_alias": "fmriresults01/3.png",
+			"file_size": 1,
+			"is_associated_file": true,
+			"created_date": "2021-06-30T20:28:45.000-0400",
+			"is_data_file": true,
+			"is_document_file": false,
+			"nda_file_type": "Associated"
+		},
+		{
+			"dataFile": false,
+			"associatedFile": false,
+			"documentFile": false,
+			"_links": {
+				"self": {
+					"href": "https://nda.nih.gov/api/package/1189934/files/3132764122"
+				},
+				"download_url": {
+					"href": "https://nda.nih.gov/api/package/1189934/files/3132764122/download_url"
+				},
+				"download_token": {
+					"href": "https://nda.nih.gov/api/package/1189934/files/3132764122/download_token"
+				}
+			},
+			"package_file_id": 3132764122,
+			"download_alias": "fmriresults01.txt",
+			"file_size": 1,
+			"is_associated_file": false,
+			"created_date": "2021-06-30T20:28:44.000-0400",
+			"is_data_file": false,
+			"is_document_file": false,
+			"nda_file_type": "Data"
+		}
+	],
+	"_links": {
+		"next": {
+			"href": "https://nda.nih.gov/api/package/1189934/files?page=1&size=7"
+		},
+		"previous": {
+			"href": "https://nda.nih.gov/api/package/1189934/files?page=1&size=7"
+		},
+		"first": {
+			"href": "https://nda.nih.gov/api/package/1189934/files?page=1&size=7"
+		},
+		"last": {
+			"href": "https://nda.nih.gov/api/package/1189934/files?page=1&size=7"
+		}
+	}
+}

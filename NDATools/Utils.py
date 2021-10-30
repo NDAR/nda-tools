@@ -3,6 +3,9 @@ from __future__ import with_statement
 
 from enum import Enum
 import json as json_lib
+from __future__ import absolute_import, with_statement
+
+import json
 import logging
 import os
 import re
@@ -21,23 +24,27 @@ try:
 except:
     from funcsigs import signature
 
+import NDATools
 from NDATools.Configuration import ClientConfiguration
 
-# TODO Make an __all__
+IS_PY2 = sys.version_info < (3, 0)
+
+if IS_PY2:
+    from io import open
+    from urlparse import urlparse
+else:
+    from urllib.parse import urlparse
 
 if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
     config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'))
 else:
     config = ClientConfiguration('clientscripts/config/settings.cfg')
-validation_results_dir = os.path.join(os.path.expanduser('~'), config.validation_results)
-if not os.path.exists(validation_results_dir):
-    os.mkdir(validation_results_dir)
-log_file = os.path.join(validation_results_dir, "debug_log_{}.txt").format(time.strftime("%Y%m%dT%H%M%S"))
-print('Opening log: {}'.format(log_file))
+
+log_file = os.path.join(NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER, "debug_log_{}.txt").format(time.strftime("%Y%m%dT%H%M%S"))
+# TODO - make the log level configurable by command line arg or env. variable. NDA_VTCMD_LOG_LEVEL=?
 logging.basicConfig(filename=log_file, level=logging.INFO, format="%(asctime)s:%(levelname)s:%(message)s")
 
 if sys.version_info[0] < 3:
-
     input = raw_input
     import thread
 else:
@@ -249,14 +256,8 @@ def get_stack_trace():
     #print(tb)
 
 
-def api_request(api, verb, endpoint, data=None, session=None, json=None, authorized=True, timeout=420):
-
-    if data and json:
-        raise Exception(ValueError)
-    elif json:
-        data = json_lib.dumps(json)
-
-    retry_request = requests.packages.urllib3.util.retry.Retry(
+def api_request(api, verb, endpoint, data=None, session=None, authorized=True):
+    retry = requests.packages.urllib3.util.retry.Retry(
         total=3,
         read=200,
         connect=20,
@@ -349,7 +350,7 @@ def is_valid_json(test_json):
         return False
 
 
-def exit_client(signal=None, frame=None, message=None):
+def exit_client(signal=signal.SIGTERM, frame=None, message=None):
     for t in threading.enumerate():
         try:
             t.shutdown_flag.set()
@@ -359,7 +360,6 @@ def exit_client(signal=None, frame=None, message=None):
         print('\n\n{}'.format(message))
     else:
         print('\n\nExit signal received, shutting down...')
-    print('Please contact NDAHelp@mail.nih.gov if you need assistance.')
     sys.exit(1)
 
 
@@ -376,11 +376,11 @@ def parse_local_files(directory_list, no_match, full_file_path, no_read_access, 
     files_to_match = len(no_match)
     print('Checking local file system for files...')
     logging.debug('Starting local directory search for {} files'.format(str(files_to_match)))
-    progress_counter = int(files_to_match*0.05)
+    progress_counter = int(files_to_match * 0.05)
     for file in no_match[:]:
         if progress_counter == 0:
             logging.debug('Found {} files out of {}'.format(str(files_to_match - len(no_match)), str(files_to_match)))
-            progress_counter = int(files_to_match*0.05)
+            progress_counter = int(files_to_match * 0.05)
         file_key = sanitize_file_path(file)
         for d in directory_list:
             if skip_local_file_check:
@@ -406,7 +406,9 @@ def parse_local_files(directory_list, no_match, full_file_path, no_read_access, 
                 full_file_path[file_key] = (file_name, os.path.getsize(file_name))
                 no_match.remove(file)
                 break
-    logging.debug('Local directory search complete, found {} files out of {}'.format(str(files_to_match - len(no_match)), str(files_to_match)))
+    logging.debug(
+        'Local directory search complete, found {} files out of {}'.format(str(files_to_match - len(no_match)),
+                                                                           str(files_to_match)))
 
 
 def sanitize_file_path(file):
@@ -424,6 +426,7 @@ def sanitize_file_path(file):
     if re.search(r'^/.+$', file):
         file_key = file.split('/', 1)[1]
     # If Windows full path
+    #TODO - correct regex. All single drive letters should be valid, (not just 'D'). Backslashes as file-separaters need to be added
     elif re.search(r'^\D:/.+$', file_key):
         file_key = file_key.split(':/', 1)[1]
     return file_key
@@ -437,3 +440,52 @@ def check_read_permissions(file):
         if err.errno == 13:
             print('Permission Denied: {}'.format(file))
     return False
+
+
+def get_error():
+    exc_type, exc_value, exc_tb = sys.exc_info()
+    tbe = traceback.TracebackException(
+        exc_type, exc_value, exc_tb,
+    )
+    ex = ''.join(tbe.format_exception_only())
+    return 'Error: {}'.format(ex)
+
+
+def get_traceback():
+    exc_type, exc_value, exc_tb = sys.exc_info()
+    tbe = traceback.TracebackException(
+        exc_type, exc_value, exc_tb,
+    )
+    tb = ''.join(tbe.format())
+    return tb
+
+
+# return bucket and key for url (handles http and s3 protocol)
+def deconstruct_s3_url(url):
+    tmp = urlparse(url)
+    if tmp.scheme == 's3':
+        bucket = tmp.netloc
+        path = tmp.path.lstrip('/')
+    elif tmp.scheme == 'https':
+        # presigned urls are either https://bucketname.s3.amazonaws.com/key... or
+        # https://s3.amazonaws.com/bucket/path
+        if tmp.hostname == 's3.amazonaws.com':
+            bucket = tmp.path.split('/')[1]
+            path = '/'.join(tmp.path.split('/')[2:])
+            path = '/' + path
+        else:
+            bucket = tmp.hostname.replace('.s3.amazonaws.com', '')
+            path = tmp.path
+    else:
+        raise Exception('Invalid URL passed to deconstruct_s3_url method: {}'.format(url))
+
+    return bucket, path.lstrip('/')
+
+# converts . and .. and ~ in file-paths. (as well as variable names like %HOME%
+def convert_to_abs_path(file_name):
+    return os.path.abspath(os.path.expanduser(os.path.expandvars(file_name)))
+
+
+def human_size(bytes, units=[' bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']):
+    """ Returns a human readable string representation of bytes """
+    return str(round(bytes,2)) + units[0] if bytes < 1024 else human_size(bytes / 1024, units[1:])

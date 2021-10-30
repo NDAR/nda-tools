@@ -1,3 +1,6 @@
+from __future__ import print_function
+import os
+
 import NDATools
 import requests
 import json
@@ -15,6 +18,11 @@ def check_version():
     except ImportError:
         from pip._vendor.packaging.version import parse
     # use https://test.pypi.org/pypi/{package}/json on test/release branches, use https://pypi.org on master
+    # Print Python 2 support dropping warning
+    if sys.version_info < (3, 0):
+        print()
+        print('''WARNING - Detected Python version 2. Support for Python 2 is being removed from nda-tools. It is recommended to upgrade to the latest version of Python 
+          before using the latest features in the downloadcmd''')
     print('Running NDATools Version {}'.format(NDATools.__version__))
     if parse(NDATools.__version__).is_devrelease:
         return
@@ -32,11 +40,10 @@ def check_version():
                 version = max(version, ver)
     NDATools.pypi_version = str(version)
 
-    if NDATools.__version__ <= NDATools.pypi_version:
-        print("Your version of nda-tools is out of date. Please install the latest version ({}) from PyPi or GitHub and "
-              "try again.".format(NDATools.pypi_version))
-    elif NDATools.__version__ >= NDATools.pypi_version:
-        print("You are running an experimental version of nda-tools. Please report any bugs you find.")
+    if parse(NDATools.__version__) < parse(NDATools.pypi_version):
+        print("Your version of nda-tools is out of date. Please upgrade to the latest version ({}) from PyPi or GitHub and "
+              "try again. \n\tTo upgrade using pip, run: \r\npip install nda-tools=={}".format(NDATools.pypi_version, NDATools.pypi_version))
+        sys.exit(1)
 
     NDATools.version_checked = True
 
@@ -44,3 +51,40 @@ def check_version():
 if not NDATools.version_checked:
     check_version()
 
+# init folder structure for program runtime files
+NDA_ORGINIZATION_ROOT_FOLDER = os.path.join(os.path.expanduser('~'), 'NDA')
+if not os.path.exists(NDA_ORGINIZATION_ROOT_FOLDER):
+    os.mkdir(NDA_ORGINIZATION_ROOT_FOLDER)
+
+NDA_TOOLS_ROOT_FOLDER = os.path.join(NDA_ORGINIZATION_ROOT_FOLDER, 'nda-tools')
+if not os.path.exists(NDA_TOOLS_ROOT_FOLDER):
+    os.mkdir(NDA_TOOLS_ROOT_FOLDER)
+
+NDA_TOOLS_VTCMD_FOLDER = os.path.join(NDA_TOOLS_ROOT_FOLDER, 'vtcmd')
+if not os.path.exists(NDA_TOOLS_VTCMD_FOLDER):
+    os.mkdir(NDA_TOOLS_VTCMD_FOLDER)
+
+NDA_TOOLS_DOWNLOADCMD_FOLDER = os.path.join(NDA_TOOLS_ROOT_FOLDER, 'downloadcmd')
+if not os.path.exists(NDA_TOOLS_DOWNLOADCMD_FOLDER):
+    os.mkdir(NDA_TOOLS_DOWNLOADCMD_FOLDER)
+
+
+NDA_TOOLS_DOWNLOADS_FOLDER = os.path.join(NDA_TOOLS_DOWNLOADCMD_FOLDER, 'packages')
+if not os.path.exists(NDA_TOOLS_DOWNLOADS_FOLDER):
+    os.mkdir(NDA_TOOLS_DOWNLOADS_FOLDER)
+
+NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER = os.path.join(NDA_TOOLS_DOWNLOADCMD_FOLDER, 'logs')
+if not os.path.exists(NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER):
+    os.mkdir(NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER)
+
+NDA_TOOLS_VTCMD_LOGS_FOLDER = os.path.join(NDA_TOOLS_VTCMD_FOLDER, 'logs')
+if not os.path.exists(NDA_TOOLS_VTCMD_LOGS_FOLDER):
+    os.mkdir(NDA_TOOLS_VTCMD_LOGS_FOLDER)
+
+NDA_TOOLS_VAL_FOLDER = os.path.join(NDA_TOOLS_VTCMD_FOLDER, 'validation_results')
+if not os.path.exists(NDA_TOOLS_VAL_FOLDER):
+    os.mkdir(NDA_TOOLS_VAL_FOLDER)
+
+NDA_TOOLS_SUB_PACKAGE_FOLDER = os.path.join(NDA_TOOLS_VTCMD_FOLDER, 'submission_package')
+if not os.path.exists(NDA_TOOLS_SUB_PACKAGE_FOLDER):
+    os.mkdir(NDA_TOOLS_SUB_PACKAGE_FOLDER)

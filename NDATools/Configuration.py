@@ -43,8 +43,8 @@ class ClientConfiguration:
             self.mindar = self.config.get("Endpoints", "mindar")
 
         self.package_api = self.config.get("Endpoints", "package")
-        self.validation_results = self.config.get("Files", "validation_results")
-        self.submission_packages = self.config.get("Files", "submission_packages")
+
+        self.datadictionary_api = self.config.get("Endpoints", "datadictionary")
         self.aws_access_key = self.config.get("User", "access_key")
         self.aws_secret_key = self.config.get("User", "secret_key")
         self.aws_session_token = self.config.get('User', 'session_token')
@@ -106,10 +106,7 @@ class ClientConfiguration:
         copy_config.set("Endpoints", "submission", self.submission_api)
         copy_config.set("Endpoints", "validationtool", self.validationtool_api)
         copy_config.set("Endpoints", "mindar", self.mindar)
-
-        copy_config.add_section("Files")
-        copy_config.set("Files", "validation_results", self.validation_results)
-        copy_config.set("Files", "submission_packages", self.submission_packages)
+        copy_config.set("Endpoints", "datadictionary", self.datadictionary_api)
 
         copy_config.add_section("User")
         copy_config.set("User", "username", self.username)

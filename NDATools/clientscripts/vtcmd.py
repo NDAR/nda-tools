@@ -8,10 +8,6 @@ import argparse
 import logging
 import os
 
-
-__all__ = ['build_package', 'validate_files', 'submit_package', 'resume_submission']
-
-
 def parse_args():
     parser = argparse.ArgumentParser(
         description='This application allows you to validate files and submit data into NDA. '
@@ -111,8 +107,33 @@ def configure(args):
                                      args.secretKey)
         config.read_user_credentials()
         config.make_config()
+    config.upd
+    if args.collectionID:
+        config.collection_id = args.collectionID
+    if args.alternateEndpoint:
+        config.endpoint_title = args.alternateEndpoint
+    if args.listDir:
+        config.directory_list = args.listDir
+    if args.manifestPath:
+        config.manifest_path = args.manifestPath
+    if args.s3Bucket:
+        config.source_bucket = args.s3Bucket
+    if args.s3Prefix:
+        config.source_prefix = args.s3Prefix
+    if args.title:
+        config.title = args.title
+    if args.description:
+        config.description = args.description
+    if args.scope:
+        config.scope = args.scope
+    if args.validationAPI:
+        config.validation_api = args.validationAPI[0]
+    if args.JSON:
+        config.JSON = True
+    config.hideProgress = args.hideProgress
+    if args.skipLocalAssocFileCheck:
+        config.skip_local_file_check = True
 
-    config.update_with_args(args)
     return config
 
 
@@ -161,7 +182,6 @@ def validate_files(file_list, warnings, build_package, threads, config=None):
     if warnings:
         validation.get_warnings()
         print('Warnings output to: {}'.format(validation.log_file))
-
     else:
         if validation.w:
             print('\nNote: Your data has warnings. To save warnings, run again with -w argument.')
@@ -195,7 +215,8 @@ def validate_files(file_list, warnings, build_package, threads, config=None):
             else:
                 print('Your answer <{}> was not recognized, please enter yes or no.'.format(str(proceed)))
                 continue
-    return [validation.uuid, validation.associated_files]
+
+    return validation.uuid, validation.associated_files
 
 
 def build_package(uuid, associated_files, config, download=True):
@@ -225,7 +246,7 @@ def build_package(uuid, associated_files, config, download=True):
         print('Downloading submission package.')
         package.download_package(hide_progress=config.hideProgress)
         print('\nA copy of your submission package has been saved to: {}'.
-              format(os.path.join(package.package_folder, package.config.submission_packages)))
+              format(os.path.join(NDATools.NDA_TOOLS_SUB_PACKAGE_FOLDER, package.package_folder)))
 
     return [package.package_id, package.full_file_path]
 

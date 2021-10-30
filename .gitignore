@@ -19,3 +19,10 @@
 /*.egg
 
 /tests/test_files/
+
+**/.idea/
+**/venv/
+
+failed_s3_links_file_*
+.project
+.pydevproject
