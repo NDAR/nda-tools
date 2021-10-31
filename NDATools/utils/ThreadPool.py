@@ -1,7 +1,7 @@
 from queue import Queue
 from threading import Thread
 
-from NDATools.Utils import get_traceback
+from NDATools.utils.Utils import get_traceback
 
 
 class Worker(Thread):

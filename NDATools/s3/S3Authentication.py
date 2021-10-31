@@ -1,4 +1,4 @@
-from NDATools.DataManager import DataManager
+from NDATools.vtmcd.DataManager import DataManager
 import boto3
 
 

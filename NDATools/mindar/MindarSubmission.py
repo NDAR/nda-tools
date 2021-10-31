@@ -1,13 +1,11 @@
 import enum
-from enum import Enum
-
 
 __all__ = ['MindarSubmission', 'MindarSubmissionStep']
 __incorrect_type__ = 'Incorrect type for {}, was expecting {}'
 
 from NDATools.clientscripts.vtcmd import *
-from NDATools.MindarManager import *
-from NDATools.MindarHelpers import *
+from NDATools.mindar.MindarManager import *
+from NDATools.mindar.MindarHelpers import *
 
 
 class MindarSubmission:

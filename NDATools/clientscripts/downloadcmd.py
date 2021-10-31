@@ -1,15 +1,14 @@
 from __future__ import with_statement, print_function
 from __future__ import absolute_import
 import sys
-import time
 
-from NDATools.Utils import exit_client
+from NDATools.utils.Utils import exit_client
 
 if sys.version_info[0] < 3:
     input = raw_input
 import argparse
-from NDATools.Download import Download
-from NDATools.Configuration import *
+from NDATools.downloadcmd.Download import Download
+from NDATools.vtmcd.Configuration import *
 import NDATools
 
 import logging
@@ -166,7 +165,7 @@ You may need to email your company/institution IT department to have this added 
 
 
 def configure(args):
-    NDATools.Utils.logging.getLogger().setLevel(logging.INFO)
+    NDATools.utils.Utils.logging.getLogger().setLevel(logging.INFO)
     if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
         config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'), args.username,
                                      args.password)

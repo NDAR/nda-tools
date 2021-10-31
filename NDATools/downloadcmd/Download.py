@@ -9,8 +9,8 @@ import uuid
 import boto3
 from requests import HTTPError
 
-from NDATools import Utils
-from NDATools.ThreadPool import ThreadPool
+from NDATools.utils import Utils
+from NDATools.utils.ThreadPool import ThreadPool
 
 IS_PY2 = sys.version_info < (3, 0)
 
@@ -22,10 +22,10 @@ else:
 import csv
 
 import multiprocessing
-from NDATools.Utils import *
+from NDATools.utils.Utils import *
 import requests
 
-class Download(Protocol):
+class Download():
 
     def __init__(self, download_config, args):
 
@@ -105,10 +105,6 @@ class Download(Protocol):
             'download_complete_time': None
         }
         self.download_progress_report_file_path = self.initialize_verification_files()
-
-    @staticmethod
-    def get_protocol(cls):
-        return cls.XML
 
     @staticmethod
     def request_header():

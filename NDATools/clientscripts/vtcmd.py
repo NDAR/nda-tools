@@ -1,12 +1,13 @@
-import NDATools
-from NDATools.Configuration import *
-from NDATools.Utils import *
-from NDATools.Validation import Validation
-from NDATools.BuildPackage import SubmissionPackage
-from NDATools.Submission import Submission
+from NDATools.utils import Utils
+from NDATools.vtmcd.Configuration import *
+from NDATools.utils.Utils import *
+from NDATools.vtmcd.Validation import Validation
+from NDATools.vtmcd.BuildPackage import SubmissionPackage
+from NDATools.vtmcd.Submission import Submission
 import argparse
 import logging
 import os
+
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -48,7 +49,7 @@ def parse_args():
     parser.add_argument('-c', '--collectionID', metavar='<arg>', type=int, action='store',
                         help='The NDA collection ID')
 
-    parser.add_argument('-d', '--description', metavar='<arg>', type=str,  action='store',
+    parser.add_argument('-d', '--description', metavar='<arg>', type=str, action='store',
                         help='The description of the submission')
 
     parser.add_argument('-t', '--title', metavar='<arg>', type=str, action='store',
@@ -88,7 +89,7 @@ def parse_args():
     parser.add_argument('--hideProgress', action='store_true', help='Hides upload/processing progress')
 
     parser.add_argument('--skipLocalAssocFileCheck', action='store_true', help='Not recommended UNLESS you have already'
-                        ' verified all paths for associated data files are correct')
+                                                                               ' verified all paths for associated data files are correct')
 
     args = parser.parse_args()
 
@@ -98,7 +99,7 @@ def parse_args():
 def configure(args):
     # create a new config file in user's home directory if one does not exist
 
-    NDATools.Utils.logging.getLogger().setLevel(logging.DEBUG)
+    Utils.logging.getLogger().setLevel(logging.DEBUG)
     if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
         config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'), args.username,
                                      args.password, args.accessKey, args.secretKey)
@@ -118,30 +119,19 @@ class Status:
 
 
 def resume_submission(submission_id, batch, config, thread_num=None):
-    submission = Submission(id=submission_id, full_file_path=None, submission_config=config, resume=True, thread_num=thread_num, batch_size=batch)
-    submission.check_status()
-    if submission.status == Status.UPLOADING:
-        directories = config.directory_list
-        source_bucket = config.source_bucket
-        source_prefix = config.source_prefix
-
-        if submission.incomplete_files and submission.found_all_files(directories, source_bucket, source_prefix,
-                                                                       retry_allowed=True):
-            # if not config.skip_local_file_check:
-            submission.check_submitted_files()
-            submission.complete_partial_uploads()
-            submission.submission_upload(hide_progress=config.hideProgress)
-        else:
-           submission.submission_upload(hide_progress=config.hideProgress)
-
+    submission = Submission(submission_id=submission_id, submission_config=config, thread_num=thread_num,
+                            batch_size=batch)
+    status = submission.get_submission_status()
+    if status == Status.UPLOADING:
+        submission.resume_submission()
     else:
         print('Submission Completed with status {}'.format(submission.status))
         return
 
 
 def validate_files(file_list, warnings, build_package, threads, config=None):
-
-    validation = Validation(file_list, config=config, hide_progress=config.hideProgress, thread_num=threads, allow_exit=True)
+    validation = Validation(file_list, config=config, hide_progress=config.hideProgress, thread_num=threads,
+                            allow_exit=True)
     print('\nValidating files...')
     validation.validate()
 
@@ -205,9 +195,19 @@ def build_package(uuid, associated_files, config, download=False):
     directories = config.directory_list
     source_bucket = config.source_bucket
     source_prefix = config.source_prefix
+
     if associated_files:
         print('\nSearching for associated files...')
-        package.file_search(directories, source_bucket, source_prefix, retry_allowed=True)
+
+        if source_bucket:
+            submission_files = Utils.s3_file_search(config.aws_access_key,
+                                                    config.aws_secret_key,
+                                                    source_bucket,
+                                                    source_prefix,
+                                                    Utils.flat_map(associated_files))
+        else:
+            submission_files = Utils.local_file_search(directories, Utils.flat_map(associated_files))
+
     print('Building Package')
     package.build_package()
     print('\n\nPackage Information:')
@@ -223,18 +223,18 @@ def build_package(uuid, associated_files, config, download=False):
         print('\nA copy of your submission package has been saved to: {}'.
               format(os.path.join(NDATools.NDA_TOOLS_SUB_PACKAGE_FOLDER, package.package_folder)))
 
-    return [package.package_id, package.full_file_path]
+    return package.package_id, submission_files
 
 
-def submit_package(package_id, full_file_path, associated_files, threads, batch, config):
-    submission = Submission(id=package_id, full_file_path=full_file_path, thread_num=threads, batch_size=batch, allow_exit=True, submission_config=config)
-    print('Requesting submission for package: {}'.format(submission.package_id))
-    submission.create_submission()
-    if submission.submission_id:
-        print('Submission ID: {}'.format(str(submission.submission_id)))
+# TODO - refactor
+def submit_package(package_id, associated_files, threads, batch, config, submission_files):
+    submission = Submission(submission_config=config, thread_num=threads, batch_size=batch, submission_files=submission_files)
+    print('Requesting submission for package: {}'.format(package_id))
+    submission.create_submission(package_id)
+    print('Submission ID: {}'.format(str(submission.submission_id)))
     if associated_files:
         print('Preparing to upload associated files.')
-        submission.submission_upload(hide_progress=config.hideProgress)
+        submission.resume_submission()
     if submission.status != Status.UPLOADING:
         print('\nYou have successfully completed uploading files for submission {} with status: {}'.format
               (submission.submission_id, submission.status))
@@ -263,9 +263,8 @@ def main():
             if bp:
                 package_results = build_package(uuid, associated_files, config=config)
                 package_id = package_results[0]
-                full_file_path = package_results[1]
-                submit_package(package_id=package_id, full_file_path=full_file_path, associated_files=associated_files,
-                               threads=args.workerThreads, batch=args.batch, config=config)
+                submission_files = package_results[1]
+                submit_package(package_id, associated_files, args.workerThreads, args.batch, config, submission_files)
 
 
 if __name__ == "__main__":

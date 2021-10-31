@@ -1,7 +1,7 @@
 from __future__ import with_statement
 from __future__ import absolute_import
 
-from NDATools.TokenGenerator import *
+from NDATools.utils.TokenGenerator import *
 
 class DataManager:
 

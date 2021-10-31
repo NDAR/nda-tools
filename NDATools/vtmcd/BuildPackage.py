@@ -1,20 +1,19 @@
 from __future__ import absolute_import
 from __future__ import with_statement
 
-import json
 import sys
 
 import botocore
 import requests.packages.urllib3.util
 
-from NDATools.S3Authentication import S3Authentication
+from NDATools.s3.S3Authentication import S3Authentication
 
 if sys.version_info[0] < 3:
     input = raw_input
 import requests.packages.urllib3.util
 from tqdm import tqdm
-from NDATools.Configuration import *
-from NDATools.Utils import *
+from NDATools.vtmcd.Configuration import *
+from NDATools.utils.Utils import *
 
 
 class SubmissionPackage:
@@ -146,105 +145,6 @@ class SubmissionPackage:
             message = 'The user {} does not have permission to submit to any collections or alternate upload locations.'.format(self.config.username)
             exit_client(signal=signal.SIGTERM, message=message)
 
-
-    def recollect_file_search_info(self):
-        retry = input('Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
-                      '<bucket name> to locate your associated files:')
-        response = retry.split(' ')
-        self.directory_list = response
-        if response[0] == '-s3':
-            self.source_bucket = response[1]
-            self.source_prefix = input('Enter any prefix for your S3 object, or hit "Enter": ')
-
-    def file_search(self, directories=None, source_bucket=None, source_prefix=None, retry_allowed=False):
-        def raise_error(error, l = []):
-            m = '\n'.join([error] + list(set(l)))
-            raise Exception(m)
-
-        self.directory_list = directories
-        self.source_bucket = source_bucket
-        self.source_prefix = source_prefix
-
-        if not self.directory_list and not self.source_bucket:
-            if retry_allowed:
-                self.recollect_file_search_info()
-            else:
-                error ='Missing directory and/or an S3 bucket.'
-                raise_error(error)
-
-        if not self.no_match:
-            for a in self.associated_files:
-                for file in a:
-                    self.no_match.append(file)
-
-        # local files
-        if self.directory_list:
-            parse_local_files(self.directory_list, self.no_match, self.full_file_path, self.no_read_access,
-                              config.skip_local_file_check)
-
-        # files in s3
-        no_access_buckets = []
-        if self.source_bucket:
-            s3_client = self.credentials.get_s3_client()
-            for file in tqdm(self.no_match[:]):
-                key = file
-                if self.source_prefix:
-                    key = '/'.join([self.source_prefix, file])
-                file_name = '/'.join(['s3:/', self.source_bucket, key])
-                try:
-                    response = s3_client.head_object(Bucket=self.source_bucket, Key=key)
-                    self.full_file_path[file] = (file_name, int(response['ContentLength']))
-                    self.no_match.remove(file)
-                except botocore.exceptions.ClientError as e:
-                    # If a client error is thrown, then check that it was a 404 error.
-                    # If it was a 404 error, then the bucket does not exist.
-                    error_code = int(e.response['Error']['Code'])
-                    if error_code == 404:
-                        pass
-                    if error_code == 403:
-                        no_access_buckets.append(self.source_bucket)
-                        pass
-
-        if self.no_match:
-            if no_access_buckets:
-                message = 'Your user does NOT have access to the following buckets. Please review the bucket ' \
-                          'and/or your AWS credentials and try again.'
-                if retry_allowed:
-                    print('\n', message)
-                    for b in no_access_buckets:
-                        print(b)
-                else:
-                    error = "".join(['Bucket Access:', message])
-                    raise_error(error, no_access_buckets)
-            message = 'You must make sure all associated files listed in your validation file' \
-                      ' are located in the specified directory or AWS bucket. Associated file not found in specified directory:\n'
-            if retry_allowed:
-                print('\n', message)
-                for file in self.no_match:
-                    print(file)
-                self.recollect_file_search_info()
-                self.file_search(self.directory_list, self.source_bucket, self.source_prefix, retry_allowed=True)
-            else:
-                error = "".join(['Missing Files:', message])
-                raise_error(error, self.no_match)
-
-        while self.no_read_access:
-            message = 'You must make sure you have read-access to all the of the associated files listed in your validation file. ' \
-                      'Please update your permissions for the following associated files:\n'
-            if retry_allowed:
-                print(message)
-                for file in self.no_read_access:
-                    print(file)
-                self.recollect_file_search_info()
-                [self.no_read_access.remove(i) for i in
-                    [file for file in self.no_read_access if check_read_permissions(file)]]
-            else:
-                error = "".join(['Read Permission Error:', message])
-                raise_error(error, self.no_match)
-
-        self.config.directory_list = self.directory_list
-        self.config.source_bucket = self.source_bucket
-        self.config.source_prefix = self.source_prefix
 
     def build_package(self):
         def raise_error(value):

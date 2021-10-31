@@ -1,47 +1,8 @@
-import boto3
-import botocore
 import hashlib
+import signal
 
-from NDATools.S3Authentication import S3Authentication
-from NDATools.Utils import *
-
-
-class MultiPartsUpload:
-    def __init__(self, bucket, prefix, config, access_key, secret_key, session_token):
-        self.bucket = bucket
-        self.prefix = prefix
-        self.config = config
-        self.access_key = access_key
-        self.secret_key = secret_key
-        self.session_token = session_token
-        self.client = S3Authentication.get_s3_client_with_config(self.access_key, self.secret_key, self.session_token)
-        self.incomplete_mpu = []
-        self.mpu_to_abort = {}
-
-    def get_multipart_uploads(self):
-        try:
-            uploads = self.client.list_multipart_uploads(Bucket=self.bucket, Prefix=self.prefix)['Uploads']
-            for u in uploads:
-                if u not in self.incomplete_mpu:
-                    self.incomplete_mpu.append(u)
-                else:
-                    self.mpu_to_abort[u['UploadId']] = u['Key']
-        except KeyError:
-            uploads = None
-
-        if self.mpu_to_abort:
-            self.abort_mpu()
-
-
-    def abort_mpu(self):
-        for upload_id, key in self.mpu_to_abort.items():
-            self.client.abort_multipart_upload(
-                Bucket=self.bucket, Key=key, UploadId=upload_id)
-class Constants:
-    PARTS = 'Parts'
-    SIZE = 'Size'
-    PART_NUM = 'PartNumber'
-    ETAG = 'ETag'
+from NDATools.s3.S3Authentication import S3Authentication
+from NDATools.utils.Utils import exit_client
 
 
 class UploadMultiParts:
@@ -54,6 +15,7 @@ class UploadMultiParts:
         self.full_file_path = full_file_path
         self.upload_id = self.upload_obj['UploadId']
         self.bucket = bucket
+        self.prefix = prefix
         self.key = self.upload_obj['Key']
         filename = self.key.split(prefix+'/')
         filename = "".join(filename[1:])
@@ -69,8 +31,7 @@ class UploadMultiParts:
         self.parts_completed = []
 
     def get_parts_information(self):
-        self.upload_obj = self.client.list_parts(Bucket=self.bucket, Key=self.key,
-                                                 UploadId=self.upload_id)
+        self.upload_obj = self.client.list_parts(Bucket=self.bucket, Key=self.key,UploadId=self.upload_id)
 
         if Constants.PARTS in self.upload_obj:
             chunk_size = self.upload_obj[Constants.PARTS][0][Constants.SIZE] # size of first part should be size of all subsequent parts
@@ -105,3 +66,73 @@ class UploadMultiParts:
             Key=self.key,
             UploadId=self.upload_id,
             MultipartUpload={Constants.PARTS: self.parts})
+
+    def resume_multipart_upload(self):
+        self.get_parts_information()
+        if not self.expired:
+            self.progress_queue.put(self.completed_bytes)
+        seq = 1
+
+        with open(self.full_file_path, 'rb') as f:
+            while True:
+                buffer_start = self.chunk_size * (seq - 1)
+                f.seek(buffer_start)
+                buffer = f.read(self.chunk_size)
+                if len(buffer) == 0:  # EOF
+                    break
+                if seq in self.parts_completed:
+                    part = self.parts[seq - 1]
+                    self.check_md5(part, buffer)
+                else:
+                    try:
+                        self.upload_part(buffer, seq)
+                        self.progress_queue.put(len(buffer))
+                    except Exception as error:
+                        e = str(error)
+                        if "ExpiredToken" in e:
+                            expired_error = True
+                            break
+                        else:
+                            raise error
+
+                seq += 1
+        if not expired_error:
+            self.complete()
+        self.progress_queue.put(None)
+
+class MultiPartsUpload:
+    def __init__(self, bucket, prefix, config, access_key, secret_key, session_token):
+        self.bucket = bucket
+        self.prefix = prefix
+        self.config = config
+        self.access_key = access_key
+        self.secret_key = secret_key
+        self.session_token = session_token
+        self.client = S3Authentication.get_s3_client_with_config(self.access_key, self.secret_key, self.session_token)
+        self.incomplete_mpu = []
+        self.mpu_to_abort = {}
+
+    def get_multipart_uploads(self):
+        try:
+            uploads = self.client.list_multipart_uploads(Bucket=self.bucket, Prefix=self.prefix)['Uploads']
+            for u in uploads:
+                if u not in self.incomplete_mpu:
+                    self.incomplete_mpu.append(u)
+                else:
+                    self.mpu_to_abort[u['UploadId']] = u['Key']
+        except KeyError:
+            uploads = None
+
+        if self.mpu_to_abort:
+            self.abort_mpu()
+
+
+    def abort_mpu(self):
+        for upload_id, key in self.mpu_to_abort.items():
+            self.client.abort_multipart_upload( Bucket=self.bucket, Key=key, UploadId=upload_id)
+
+class Constants:
+    PARTS = 'Parts'
+    SIZE = 'Size'
+    PART_NUM = 'PartNumber'
+    ETAG = 'ETag'

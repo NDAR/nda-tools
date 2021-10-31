@@ -9,7 +9,7 @@ import time
 
 from concurrent.futures._base import ALL_COMPLETED
 from concurrent.futures.thread import ThreadPoolExecutor
-from NDATools.Configuration import ClientConfiguration
+from NDATools.vtmcd.Configuration import ClientConfiguration
 
 
 __all__ = ['requires_mindar_password', 'get_export_dir', 'export_mindar_helper',
@@ -111,7 +111,7 @@ def load_config(args):
     if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
         config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'), args.username, args.password, ak, sk)
     else:
-        config = ClientConfiguration('clientscripts/config/settings.cfg', args.username, args.password, ak, sk)
+        config = ClientConfiguration('../clientscripts/config/settings.cfg', args.username, args.password, ak, sk)
         config_mutated = True
 
         config.read_user_credentials()

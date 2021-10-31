@@ -1,7 +1,7 @@
 import logging
 import os
 
-from NDATools.Utils import parse_local_files, sanitize_file_path, check_read_permissions
+from NDATools.utils.Utils import parse_local_files, sanitize_file_path, check_read_permissions
 from unittest import TestCase
 from mock import patch
 import mock

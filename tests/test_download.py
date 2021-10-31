@@ -1,12 +1,12 @@
 import json
 import os
-from unittest.mock import patch, Mock, MagicMock
+from unittest.mock import patch, MagicMock
 
 import pytest
 from requests import HTTPError
 
 import NDATools.clientscripts.downloadcmd
-import NDATools.Utils
+import NDATools.utils.Utils
 
 FAKE_FILE_BYTES = [0x10, 0x10]
 MISSING_FILE = 's3://NDAR_Central_1/submission_43568/4.png'

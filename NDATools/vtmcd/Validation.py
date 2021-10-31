@@ -7,15 +7,15 @@ import sys
 
 from tqdm import tqdm
 
-from NDATools.ThreadPool import ThreadPool
+from NDATools.utils.ThreadPool import ThreadPool
 
 if sys.version_info[0] < 3:
     import Queue as queue
     input = raw_input
 else:
     import queue
-from NDATools.Configuration import *
-from NDATools.Utils import *
+from NDATools.vtmcd.Configuration import *
+from NDATools.utils.Utils import *
 
 
 class Validation:

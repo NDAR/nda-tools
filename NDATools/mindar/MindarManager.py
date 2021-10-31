@@ -5,7 +5,7 @@ import logging
 
 from tqdm import tqdm
 from datetime import datetime
-from NDATools.Utils import advanced_request, Verb, ContentType, get_stack_trace
+from NDATools.utils.Utils import advanced_request, Verb, ContentType, get_stack_trace
 
 
 __all__ = ['MindarManager']

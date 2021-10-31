@@ -1,23 +1,15 @@
-import argparse
 import itertools
 import tempfile
 import csv
-import time
 import atexit
-import sys
-import os
-import signal
-import re
-
-from datetime import datetime
 
 from NDATools.clientscripts.vtcmd import *
-from NDATools.MindarManager import *
-from NDATools.MindarSubmission import *
-from NDATools.MindarHelpers import *
-from NDATools.Submission import *
-from NDATools.Utils import advanced_request
-from NDATools.Utils import get_stack_trace, exit_client
+from NDATools.mindar.MindarManager import *
+from NDATools.mindar.MindarSubmission import *
+from NDATools.mindar.MindarHelpers import *
+from NDATools.vtmcd.Submission import *
+from NDATools.utils.Utils import advanced_request
+from NDATools.utils.Utils import get_stack_trace, exit_client
 
 
 def parse_args():
@@ -351,7 +343,7 @@ def submit_mindar(args, config, mindar):
                     if mindar_submission.submission_id:
                         submission = Submission(id=mindar_submission.submission_id, full_file_path=None,
                                                 thread_num=args.workerThreads, submission_config=config, resume=True)
-                        submission.check_status()
+                        submission.get_submission_status()
 
                         if submission.status in complete_statuses:
                             print("Skipping submission for {}, already completed.".format(table))

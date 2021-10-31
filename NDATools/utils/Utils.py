@@ -1,5 +1,7 @@
 from __future__ import absolute_import, with_statement
 
+import concurrent
+from concurrent.futures import ALL_COMPLETED, ThreadPoolExecutor
 from enum import Enum
 import json as json_lib
 import logging
@@ -15,13 +17,16 @@ import requests
 from requests.adapters import HTTPAdapter
 import requests.packages.urllib3.util
 
+from NDATools.s3.S3Authentication import S3Authentication
+from NDATools.vtmcd.SubmissionFile import SubmissionFile
+
 try:
     from inspect import signature
 except:
     from funcsigs import signature
 
 import NDATools
-from NDATools.Configuration import ClientConfiguration
+from NDATools.vtmcd.Configuration import ClientConfiguration
 
 IS_PY2 = sys.version_info < (3, 0)
 
@@ -34,7 +39,7 @@ else:
 if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
     config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'))
 else:
-    config = ClientConfiguration('clientscripts/config/settings.cfg')
+    config = ClientConfiguration('../clientscripts/config/settings.cfg')
 
 log_file = os.path.join(NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER, "debug_log_{}.txt").format(time.strftime("%Y%m%dT%H%M%S"))
 # TODO - make the log level configurable by command line arg or env. variable. NDA_VTCMD_LOG_LEVEL=?
@@ -42,19 +47,8 @@ logging.basicConfig(filename=log_file, level=logging.INFO, format="%(asctime)s:%
 
 if sys.version_info[0] < 3:
     input = raw_input
-    import thread
 else:
-    import _thread as thread
-
-
-class Protocol(object):
-    CSV = "csv"
-    XML = "xml"
-    JSON = "json"
-
-    @staticmethod
-    def get_protocol(cls):
-        return cls.JSON
+    pass
 
 
 class ContentType(Enum):
@@ -159,18 +153,6 @@ def advanced_request(endpoint, verb=Verb.GET, content_type=ContentType.JSON, dat
     if path_params:
         endpoint = endpoint.format(*path_params)
 
-    appended_query_params = []
-
-    if query_params:
-        if endpoint.endswith('/'):
-            endpoint = endpoint.removesuffix('/')
-
-        for name, value in query_params.items():
-            appended_query_params.append(name + '=' + value)
-
-        if appended_query_params:
-            endpoint += '?' + '&'.join(appended_query_params)
-
     retry = None
 
     if num_retry and retry_codes:
@@ -206,6 +188,8 @@ def advanced_request(endpoint, verb=Verb.GET, content_type=ContentType.JSON, dat
         'headers': headers,
         'auth': auth
     }
+    if query_params:
+        req_params['params'] = query_params
 
     if content_type is ContentType.JSON and data:
         if isinstance(data, str):
@@ -256,93 +240,6 @@ def get_stack_trace():
     # print(tb)
 
 
-def api_request(api, verb, endpoint, data=None, session=None, authorized=True):
-    retry_request = requests.packages.urllib3.util.retry.Retry(
-        total=3,
-        read=200,
-        connect=20,
-        backoff_factor=3,
-        status_forcelist=(502, 504)
-    )
-
-    headers = {'accept': 'application/json', 'Accept-Encoding': 'gzip, compress, br, deflate'}
-    auth = None
-    if isinstance(api, Protocol):
-        if api.get_protocol(api) == Protocol.CSV:
-            headers.update({'content-type': 'text/csv'})
-        elif api.get_protocol(api) == Protocol.XML:
-            headers.update({'content-type': 'text/xml'})
-    else:
-        if authorized:
-            auth = requests.auth.HTTPBasicAuth(api.config.username, api.config.password)
-        headers.update({'content-type': 'application/json'})
-
-    if not session:
-        session = requests.session()
-        session.mount(endpoint, HTTPAdapter(max_retries=retry_request))
-    r = None
-    response = None
-    try:
-        r = session.send(requests.Request(verb, endpoint, headers, auth=auth, data=data).prepare(),
-                         timeout=300, stream=False)
-
-    except requests.exceptions.RequestException as e:
-        print('\nAn error occurred while making {} request to {}, check your endpoint configuration'.
-              format(e.request.method, endpoint))
-        logging.error(e)
-        print(get_error())
-        print(get_stack_trace())
-        if api.__class__.__name__.endswith('Task'):
-            api.shutdown_flag.set()
-            thread.interrupt_main()
-        exit_client(signal.SIGTERM)
-
-    if r.ok:
-        if api.__class__.__name__ == 'Download':
-            return r, session
-        else:
-            try:
-                response = json_lib.loads(r.text)
-            except ValueError:
-                logging.error(ValueError)
-                print('Your request returned an unexpected response, please check your endpoints.\n'
-                      'Action: {}\n'
-                      'Endpoint:{}\n'
-                      'Status:{}\n'
-                      'Reason:{}'.format(verb, endpoint, r.status_code, r.reason))
-                if api.__class__.__name__.endswith('Task'):
-                    api.shutdown_flag.set()
-                    thread.interrupt_main()
-                else:
-                    raise Exception(ValueError)
-
-    elif r.status_code == 401:
-        m = 'The NDA username or password is not recognized.'
-        print(m)
-        logging.error(m)
-        r.raise_for_status()
-
-    else:
-        # default error message
-        message = 'Error occurred while processing request {} {}.\r\n'.format(verb, endpoint)
-        message += 'Error response from server: {}'.format(r.text)
-
-        if is_valid_json(r.text):
-            response = json_lib.loads(r.text)
-            if 'error' not in response and 'message' not in response:
-                message = 'Error response from server: {}'.format(response)
-            else:
-                e = response[
-                    'error'] if 'error' in response else 'An error occurred during processing of the last request'
-                m = response['message'] if 'message' in response else 'No Error Message Available'
-                message = '{}: {}'.format(e, m)
-        print(message)
-        logging.error(message)
-        r.raise_for_status()
-
-    return response, session
-
-
 def is_valid_json(test_json):
     try:
         json_lib.loads(test_json)
@@ -364,53 +261,66 @@ def exit_client(signal=signal.SIGTERM, frame=None, message=None):
     sys.exit(1)
 
 
-def parse_local_files(directory_list, no_match, full_file_path, no_read_access, skip_local_file_check):
-    """
-    Iterates through associated files generate a dictionary of full filepaths and file sizes.
+def recollect_file_search_info():
+    retry = input('Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
+                  '<bucket name> to locate your associated files:')
+    response = retry.split(' ')
+    if response[0] == '-s3':
+        source_bucket = response[1]
+        source_prefix = input('Enter any prefix for your S3 object, or hit "Enter": ')
+        return None, source_bucket, source_prefix
+    else:
+        return response, None, None
 
-    :param directory_list: List of directories
-    :param no_match: Stores list of invalid paths
-    :param full_file_path: Dictionary of tuples that store full filepath and file size
-    :param no_read_access: List of files that user does not have access to
-    :return: Modifies references to no_match, full_file_path, no_read_access
-    """
-    files_to_match = len(no_match)
-    print('Checking local file system for files...')
-    logging.debug('Starting local directory search for {} files'.format(str(files_to_match)))
-    progress_counter = int(files_to_match * 0.05)
-    for file in no_match[:]:
-        if progress_counter == 0:
-            logging.debug('Found {} files out of {}'.format(str(files_to_match - len(no_match)), str(files_to_match)))
-            progress_counter = int(files_to_match * 0.05)
-        file_key = sanitize_file_path(file)
-        for d in directory_list:
-            if skip_local_file_check:
-                file_name = os.path.join(d, file)
-                try:
-                    full_file_path[file_key] = (file_name, os.path.getsize(file_name))
-                    no_match.remove(file)
-                    progress_counter -= 1
-                except (OSError, IOError) as err:
-                    if err.errno == 13:
-                        print('Permission Denied: {}'.format(file_name))
-                    continue
-                break
-            else:
-                if os.path.isfile(file):
-                    file_name = file
-                elif os.path.isfile(os.path.join(d, file)):
-                    file_name = os.path.join(d, file)
-                else:
-                    continue
-                if not check_read_permissions(file_name):
-                    no_read_access.add(file_name)
-                full_file_path[file_key] = (file_name, os.path.getsize(file_name))
-                no_match.remove(file)
-                break
-    logging.debug(
-        'Local directory search complete, found {} files out of {}'.format(str(files_to_match - len(no_match)),
-                                                                           str(files_to_match)))
 
+'''
+    Returns a set of SubmissionFile objects, initiated with abs-path, size and s3 url
+'''
+def local_file_search(directory_list, associated_file_names):
+    files = {SubmissionFile(a) for a in associated_file_names}
+    # if not provided, default to working directory
+    if not directory_list:
+        directory_list = ['.']
+
+    for f in files:
+        f.find_and_set_local_file_info(directory_list)
+    not_found = set(filter(lambda x: not x.abs_path, files))
+
+    while not_found:
+        message = 'You must make sure all associated files listed in your validation file' \
+                  ' are located in the specified directory or AWS bucket. Associated file not found in specified directory:\n'
+        print('\n', message)
+        for file in not_found:
+            print(file.csv_path)
+        directory_list, bucket, prefix = recollect_file_search_info()
+        for f in not_found:
+            f.find_and_set_local_file_info(directory_list)
+        not_found = set(filter(lambda x: not x.abs_path, not_found))
+    # TODO - raise error if any files are missing read access
+    return files
+
+'''
+    Returns a set of SubmissionFile objects, initiated with abs-path, size and s3 url
+'''
+def s3_file_search(ak, sk, bucket, prefix, associated_file_names):
+    client = S3Authentication.get_s3_client_with_config(aws_access_key=ak, aws_secret_key=sk)
+    files = {SubmissionFile(a) for a in associated_file_names}
+    for f in files:
+        f.find_and_set_s3_file_info(client, bucket, prefix, associated_file_names)
+    not_found = set(filter(lambda x: not x.abs_path, files))
+
+    while not_found:
+        message = 'You must make sure all associated files listed in your validation file' \
+                  ' are located in the specified directory or AWS bucket. Associated file not found in specified directory:\n'
+        print('\n', message)
+        for file in not_found:
+            print(file.csv_path)
+        directory_list, bucket, prefix = recollect_file_search_info()
+        for f in not_found:
+            f.find_and_set_s3_file_info(client, bucket, prefix, associated_file_names)
+        not_found = set(filter(lambda x: not x.abs_path, not_found))
+    # TODO - raise error if any files are missing read access
+    return files
 
 def sanitize_file_path(file):
     """
@@ -431,17 +341,6 @@ def sanitize_file_path(file):
     elif re.search(r'^\D:/.+$', file_key):
         file_key = file_key.split(':/', 1)[1]
     return file_key
-
-
-def check_read_permissions(file):
-    try:
-        open(file)
-        return True
-    except (OSError, IOError) as err:
-        if err.errno == 13:
-            print('Permission Denied: {}'.format(file))
-    return False
-
 
 def get_error():
     exc_type, exc_value, exc_tb = sys.exc_info()
@@ -491,3 +390,6 @@ def convert_to_abs_path(file_name):
 def human_size(bytes, units=[' bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']):
     """ Returns a human readable string representation of bytes """
     return str(round(bytes, 2)) + units[0] if bytes < 1024 else human_size(bytes / 1024, units[1:])
+
+def flat_map(list_of_lists):
+    return sum(list_of_lists, [])
