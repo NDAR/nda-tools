@@ -100,9 +100,7 @@ class MindarSubmission:
 
     def create_submission(self, args, config):
         print('Starting Submission Step for miNDAR table {}...'.format(self.table))
-        self.submission_id = submit_package(package_id=self.package_id, full_file_path=self.full_file_path,
-                                            associated_files=[], threads=args.workerThreads,
-                                            batch=args.batch, config=config)
+        self.submission_id = submit_package(self.package_id, args.workerThreads,args.batch,config, [])
 
         print('Updating status in mindar submission table - setting submission-id = {}'.format(self.submission_id))
         self.mindar.update_status(self.schema, self.table, submission_id=self.submission_id)

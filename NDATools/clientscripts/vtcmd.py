@@ -191,7 +191,7 @@ def build_package(uuid, associated_files, config, download=False):
     directories = config.directory_list
     source_bucket = config.source_bucket
     source_prefix = config.source_prefix
-
+    submission_files = []
     if associated_files:
         print('\nSearching for associated files...')
 
@@ -222,13 +222,13 @@ def build_package(uuid, associated_files, config, download=False):
     return package.package_id, submission_files
 
 
-def submit_package(package_id, associated_files, threads, batch, config, submission_files):
+def submit_package(package_id, threads, batch, config, submission_files):
     submission = Submission(submission_config=config, thread_num=threads, batch_size=batch, submission_files=submission_files)
     print('Requesting submission for package: {}'.format(package_id))
     submission.create_submission(package_id)
     print('Submission ID: {}'.format(str(submission.submission_id)))
 
-    if associated_files:
+    if submission_files:
         print('Preparing to upload associated files.')
         submission.resume_submission()
     if submission.status != Status.UPLOADING:
@@ -260,7 +260,7 @@ def main():
                 package_results = build_package(uuid, associated_files, config=config)
                 package_id = package_results[0]
                 submission_files = package_results[1]
-                submit_package(package_id, associated_files, args.workerThreads, args.batch, config, submission_files)
+                submit_package(package_id, args.workerThreads, args.batch, config, submission_files)
 
 
 if __name__ == "__main__":

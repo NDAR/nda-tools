@@ -13,14 +13,14 @@ from NDATools.utils.Utils import get_stack_trace, exit_client
 
 
 def parse_args():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
     parser.set_defaults(func=default)
 
     subparsers = parser.add_subparsers(dest='subparser_name')
 
     make_subcommand(subparsers, 'create', create_mindar, [create_mindar_args, mindar_password_args])  # mindar create
     make_subcommand(subparsers, 'delete', delete_mindar, [delete_mindar_args, require_schema])  # mindar delete
-    make_subcommand(subparsers, 'show', show_mindar, [show_mindar_args])  # mindar show
+    make_subcommand(subparsers, 'list', list_mindar, [list_mindar_args])  # mindar list
     make_subcommand(subparsers, 'describe', describe_mindar, [describe_mindar_args, require_schema])  # mindar describe
     make_subcommand(subparsers, 'submit', submit_mindar, [require_schema, submit_mindar_args])  # mindar submit
     make_subcommand(subparsers, 'validate', validate_mindar, [optional_schema, validate_mindar_args])  # mindar validate
@@ -37,7 +37,7 @@ def parse_args():
 
 
 def make_subcommand(subparser, command, method, provider=None):
-    result = subparser.add_parser(command)
+    result = subparser.add_parser(command, formatter_class=argparse.RawTextHelpFormatter)
     result.set_defaults(func=method)
 
     if isinstance(provider, list):
@@ -46,15 +46,15 @@ def make_subcommand(subparser, command, method, provider=None):
     elif provider:
         provider(result)
 
-    result.add_argument('--username', dest='username', help='NDA username')
-    result.add_argument('--password', dest='password', help='NDA password')
+    result.add_argument('-u','--username', dest='username', help='NDA username')
+    result.add_argument('-p','--password', dest='password', help='NDA password')
     result.add_argument('--url', dest='url', help='Change what miNDAR api url is being used')
     result.add_argument('--profile', action='store_true', help='Enable runtime profiling.')
 
     return result
 
 
-def show_mindar_args(parser):
+def list_mindar_args(parser):
     parser.add_argument('--include-deleted', dest='include_deleted', action='store_true',
                         help='Include deleted miNDARs in output')
 
@@ -123,8 +123,45 @@ def submit_mindar_args(parser):
                         help='Specifies the directories in which the associated files are files located.')
     parser.add_argument('-m', '--manifest-path', dest='manifestPath', type=str, nargs='+', action='store',
                         help='Specifies the directories in which the manifest files are located')
-    parser.add_argument('-s3', '--s3-bucket', dest='s3Bucket', type=str, action='store',
-                        help='Specifies the s3 bucket in which the associated files are files located.')
+    parser.add_argument('-s3', '--s3-bucket',
+                        dest='s3Bucket',
+                        type=str,
+                        action='store',
+                        help='''Specifies the s3 bucket in which the associated files are files located. In order for this option to work, the source AWS account and s3 bucket needs to be configured to allow file transfers from NDA's DownloadManager IAM user as well as from the federated-user of the NDA user running the command. 
+The following 2 statements needs to be present on the bucket policy of the source bucket
+
+{
+		"Sid": "AllowFederatedCredentialIssuer",
+		"Effect": "Allow",
+		"Principal": {
+			"AWS": "arn:aws:iam::618523879050:user/DownloadManager"
+		},
+		"Action": [
+			"s3:Get*",
+			"s3:List*"
+		],
+		"Resource": [
+			"arn:aws:s3:::<source-bucket>/*",
+			"arn:aws:s3:::<source-bucket>"
+		]
+},
+{
+	"Sid": "AllowFederatedCredentialConsumer",
+	"Effect": "Allow",
+	"Principal": {
+		"AWS": "*"
+	},
+	"Action": "s3:GetObject",
+	"Resource": "arn:aws:s3:::<source-bucket>/*",
+	"Condition": {
+		"StringEquals": {
+			"aws:principaltype": "FederatedUser"
+		},
+		"StringLike": {
+			"aws:userid": "618523879050:*"
+		}
+	}
+}''')
     parser.add_argument('-pre', '--s3-prefix', dest='s3Prefix', type=str, action='store', default='',
                         help='Specifies the s3 prefix in which the associated files are files located.')
     parser.add_argument('-w', '--warning', action='store_true', help='Returns validation warnings for list of files')
@@ -341,8 +378,7 @@ def submit_mindar(args, config, mindar):
                         mindar_submission.set_step(MindarSubmissionStep.UPLOAD_ASSOCIATED_FILES)
 
                     if mindar_submission.submission_id:
-                        submission = Submission(id=mindar_submission.submission_id, full_file_path=None,
-                                                thread_num=args.workerThreads, submission_config=config, resume=True)
+                        submission = Submission(config,thread_num=args.workerThreads, submission_id=mindar_submission.submission_id)
                         submission.get_submission_status()
 
                         if submission.status in complete_statuses:
@@ -375,7 +411,7 @@ def submit_mindar(args, config, mindar):
           .format(success_count, len(tables), args.schema))
 
 
-def show_mindar(args, config, mindar):
+def list_mindar(args, config, mindar):
     response = mindar.show_mindars(args.include_deleted)
     num_mindar = len(response)
 

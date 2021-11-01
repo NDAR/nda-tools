@@ -29,11 +29,14 @@ class S3Authentication:
         return boto3.session.Session(**self.credentials).client('s3')
 
     @staticmethod
-    def get_s3_client_with_config(aws_access_key, aws_secret_key, aws_session_token):
-        return boto3.session.Session(aws_access_key_id=aws_access_key,
-                                     aws_secret_access_key=aws_secret_key,
-                                     aws_session_token=aws_session_token,
-                                     region_name='us-east-1').client('s3')
+    def get_s3_client_with_config(aws_access_key, aws_secret_key, aws_session_token=None):
+        creds={
+            'aws_access_key_id' : aws_access_key,
+            'aws_secret_access_key' : aws_secret_key
+        }
+        if aws_session_token:
+            creds['aws_session_token']=aws_session_token
+        return boto3.session.Session(region_name='us-east-1',**creds).client('s3')
 
     def get_s3_resource(self, s3_config):
         return boto3.Session(**self.credentials).resource('s3', config=s3_config)

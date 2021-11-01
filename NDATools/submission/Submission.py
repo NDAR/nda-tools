@@ -99,21 +99,22 @@ class Submission:
         return status
 
     def get_credentials_for_files(self, file_ids):
+        q_params = None
+        s3_buck = self.config.source_bucket if hasattr(self.config, 'source_bucket') else ''
+        if s3_buck:
+            s3_pre = self.config.source_prefix if hasattr(self.config,
+                                                          'source_prefix') and self.config.source_prefix else ''
+            q_params = {'s3SourceBucket': s3_buck,
+                        's3SourcePrefix': s3_pre}
 
         def get_credentials_for_file(file_id):
             response = self.__authenticated_request(endpoint=self.api + '/{}/files/{}/multipartUploadCredentials',
-                                        path_params=[str(self.submission_id), file_id])
+                                        path_params=[str(self.submission_id), file_id],
+                                        query_params = q_params)
 
             return response
 
         def get_credentials_batch(file_ids):
-            s3_buck = self.config.source_bucket if hasattr(self.config, 'source_bucket') else ''
-            q_params = None
-            if s3_buck:
-                s3_pre = self.config.source_prefix if hasattr(self.config,
-                                                              'source_prefix') and self.config.source_prefix else ''
-                q_params = {'s3SourceBucket': s3_buck,
-                            's3SourcePrefix': s3_pre}
             return self.__authenticated_request(endpoint=self.api + '/{}/files/batchMultipartUploadCredentials',
                                     verb=Verb.POST,
                                     path_params=[self.submission_id],
@@ -219,36 +220,47 @@ class Submission:
         return partially_uploaded_files['Uploads'] if 'Uploads' in partially_uploaded_files else []
 
     def resume_submission(self):
+        total_upload_size = None
 
         def submit_task(file_resource, partially_submitted_files, progress_queue):
-            full_path = file_resource['file_user_path']
             self.update_submission_file_status(file_resource, Status.IN_PROGRESS)
 
-            if full_path.startswith('s3'):
-                if self.is_s3_to_s3_copy(file_resource):
-                    self.attempt_s3_to_s3_copy(file_resource, progress_queue)
-                else:
-                    # If the user didnt specify -s3 param, then we have to download and upload file
-                    # which is much more inefficient then performing a direct s3-to-s3 copy
-                    self.transfer_external_s3_file(file_resource, partially_submitted_files, progress_queue)
+            def progress_cb(bytes):
+                if progress_queue:
+                    if total_upload_size:
+                        progress_queue.update(bytes)
+                    else:
+                        progress_queue.update(1)
+
+            if self.is_s3_to_s3_copy():
+                self.attempt_s3_to_s3_copy(file_resource, progress_cb)
+            elif hasattr(self.config,'source_bucket') and self.config.source_bucket and self.config.aws_access_key:
+                # If the user provided an aws key to the command, it indicates that the user was not able to upload the
+                # bucket configuration (see output of mindar submit -h). In this case, we need to download the file
+                # with the credentials provided, and then upload with a different set of credentials
+                # This is much less efficient than a direct s3-to-s3 transfer.
+                self.transfer_external_s3_file(file_resource, partially_submitted_files, progress_cb)
             else:
-                self.transfer_local_file(file_resource, partially_submitted_files, progress_queue)
+                self.transfer_local_file(file_resource, partially_submitted_files, progress_cb)
             self.update_submission_file_status(file_resource, Status.COMPLETE)
 
         # START OF METHOD
         all_submission_files = self.get_submission_files()
         incomplete_files = [f for f in all_submission_files if f['status'] != Status.COMPLETE]
         # if not already set from the build package step, get file-info for associated files
-        if not self.submission_file_info and incomplete_files:
-            if self.config.source_bucket:
-                sf = Utils.s3_file_search(self.config.aws_access_key,
-                                                        self.config.aws_secret_key,
-                                                        self.config.source_bucket,
-                                                        self.config.source_prefix,
-                                                        {f['file_user_path'] for f in incomplete_files})
-            else:
-                sf = Utils.local_file_search(self.config.directory_list, {f['file_user_path'] for f in incomplete_files})
-            self.submission_file_info = {f.csv_path: f for f in sf}
+        if not self.submission_file_info and incomplete_files :
+            # TODO - consolidate these 2 settings into 1 option 'skip-file-check'
+            if not (self.config.skip_local_file_check or self.config.skip_s3_file_check):
+                if self.config.source_bucket:
+                    sf = Utils.s3_file_search(self.config.aws_access_key,
+                                                            self.config.aws_secret_key,
+                                                            self.config.source_bucket,
+                                                            self.config.source_prefix,
+                                                            {f['file_user_path'] for f in incomplete_files},
+                                                            all_submission_files, self)
+                else:
+                    sf = Utils.local_file_search(self.config.directory_list, {f['file_user_path'] for f in incomplete_files})
+                self.submission_file_info = {f.csv_path: f for f in sf}
 
         partially_uploaded_files = []
         if incomplete_files:
@@ -256,25 +268,27 @@ class Submission:
             partially_uploaded_files = self.get_all_incomplete_mpu(submission_file_credential)
 
         all_submission_files = self.get_submission_files()
-        total_upload_size = sum(
-            map(lambda x: self.submission_file_info[x['file_user_path']].size,
-                              filter(lambda x: x['status'] != Status.COMPLETE, all_submission_files))
 
-        )
+        # submission_file_info can be None if user provided 'skip-file-check' command line arg
+        if self.submission_file_info:
+            total_upload_size = sum(
+                map(lambda x: self.submission_file_info[x['file_user_path']].size,
+                                  filter(lambda x: x['status'] != Status.COMPLETE, all_submission_files))
+
+            )
 
         files_to_upload = [f for f in all_submission_files if f['status'] != Status.COMPLETE]
 
         if not self.config.hideProgress:
-            progress_queue = None
-            if self.is_s3_to_s3_copy():
-                progress_queue = tqdm(total=len(self.file_sizes),
+            if not total_upload_size:
+                progress_queue = tqdm(total=len(files_to_upload),
                                       position=0,
                                       unit_scale=True,
                                       unit="files",
                                       desc="Total Upload Progress",
                                       ascii=os.name == 'nt',
                                       dynamic_ncols=True)
-            elif total_upload_size:
+            else:
                 progress_queue = tqdm(total=total_upload_size,
                                       position=0,
                                       unit_scale=True,
@@ -297,19 +311,15 @@ class Submission:
         elif status in (Status.COMPLETE, Status.SUBMITTED_PROTOTYPE):
             print('Successfully created submission {}'.format(self.submission_id))
 
-    def is_s3_to_s3_copy(self, file_resource=None):
+    def is_s3_to_s3_copy(self):
         # TODO - this seems overly complicated - simplify this logic
-        if not file_resource:
-            return hasattr(self.config,'source_bucket') and self.config.source_bucket and not self.config.aws_access_key
-        else:
-            path = file_resource['file_user_path']
-            return path.startswith('s3') and not self.config.aws_access_key
+        return hasattr(self.config,'source_bucket') and self.config.source_bucket and not self.config.aws_access_key
 
     # TODO this is broken
-    def attempt_s3_to_s3_copy(self, file_resource, progress_queue):
-        creds = self.get_credentials_for_files([file_resource['file_id']])
-        bucket = file_resource['']
-        key = file_resource['']
+    def attempt_s3_to_s3_copy(self, file_resource, progress_cb):
+        creds = self.get_credentials_for_files([file_resource['id']])
+        s3_url = file_resource['file_remote_path']
+        bucket, key = Utils.deconstruct_s3_url(s3_url)
         local_path = sanitize_file_path(file_resource['file_user_path'])
 
         bytes_added = []
@@ -339,7 +349,7 @@ class Submission:
                     [self.config.source_prefix, source_key])
             }
             s3_resource.meta.client.copy(copy_source, bucket, key, Callback=callback)
-            progress_queue.update(1)
+            progress_cb(sum(bytes_added))
 
         except Exception as e:
             print('error during s3-to-s3 copy: {}'.format(e))
@@ -347,7 +357,7 @@ class Submission:
             raise e
 
     # TODO this is broken
-    def transfer_local_file(self, file_resource, partially_submitted_files, progress_queue):
+    def transfer_local_file(self, file_resource, partially_submitted_files, progress_cb):
         credentials = self.get_credentials_for_files([file_resource['id']])
         s3_url = file_resource['file_remote_path']
         bucket, key = Utils.deconstruct_s3_url(s3_url)
@@ -369,14 +379,11 @@ class Submission:
             s3_transfer = S3Transfer(s3, config)
             tqdm.monitor_interval = 0
 
-            def cb(bytes_amount):
-                if progress_queue:
-                    progress_queue.update(bytes_amount)
 
-            s3_transfer.upload_file(submission_file.abs_path, bucket, key, callback=cb)
+            s3_transfer.upload_file(submission_file.abs_path, bucket, key, callback=progress_cb)
 
     # TODO this is broken
-    def transfer_external_s3_file(self, file_resource, partially_submitted_files, progress_queue):
+    def transfer_external_s3_file(self, file_resource, partially_submitted_files, progress_cb):
         credentials = self.get_credentials_for_files([file_resource['file_id']])
         bucket = file_resource['']
         key = file_resource['']
@@ -410,15 +417,11 @@ class Submission:
             dest_bucket = bucket
             dest_key = key
 
-            def cb(bytes_amount):
-                if progress_queue:
-                    progress_queue.update(bytes_amount)
-
             dest.upload_fileobj(
                 fileobj,
                 dest_bucket,
                 dest_key,
-                Callback=cb,
+                Callback=progress_cb,
                 Config=transfer_config
             )
 

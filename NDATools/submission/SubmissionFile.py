@@ -34,7 +34,7 @@ class SubmissionFile():
         self.size = os.path.getsize(self.abs_path)
 
     def find_and_set_s3_file_info(self, s3_client, source_bucket, source_prefix=''):
-        if self.csv_path.lower().starts_with('s3://'):
+        if self.csv_path.lower().startswith('s3://'):
             self.abs_path = self.csv_path
         else:
             self.abs_path = 's3://{}/{}{}'.format(source_bucket, source_prefix, self.csv_path)
@@ -52,3 +52,6 @@ class SubmissionFile():
                 self.abs_path = None # reset abs path since we dont know where it is
             if error_code == 403:
                 self.has_read_access = False
+                raise Exception('Error while checking read access for {}.\n'
+                                'Does not have permission to read files in bucket {}\n'
+                                'Fix account configuration and re-run command'.format(self.abs_path, bucket))

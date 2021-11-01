@@ -134,14 +134,6 @@ def advanced_request(endpoint, verb=Verb.GET, content_type=ContentType.JSON, dat
             if not p or not isinstance(p, str):
                 raise TypeError('path_params must be list of type str with no Nones')
 
-    if query_params:
-        for n, q in query_params.items():
-            if not n or not isinstance(n, str):
-                raise TypeError('query_params must be dict of type str with no Nones')
-
-            if not q or not isinstance(q, str):
-                raise TypeError('query_params must be dict of type str with no Nones')
-
     if retry_codes:
         for c in retry_codes:
             if not c or not isinstance(c, int):
@@ -299,11 +291,26 @@ def local_file_search(directory_list, associated_file_names):
 '''
     Returns a set of SubmissionFile objects, initiated with abs-path, size and s3 url
 '''
-def s3_file_search(ak, sk, bucket, prefix, associated_file_names):
-    client = S3Authentication.get_s3_client_with_config(aws_access_key=ak, aws_secret_key=sk)
+def s3_file_search(ak, sk, bucket, prefix, associated_file_names, all_submission_files, submission):
+    # TODO - this method is overly complicated - refactor later to make it simpler
+    if ak:
+        client = S3Authentication.get_s3_client_with_config(aws_access_key=ak, aws_secret_key=sk)
+    else:
+        # this happens when doing an s3-to-s3 transfer
+        client = None
+        path_to_file_ids = {f['file_user_path']:f['id'] for f in all_submission_files}
+
     files = {SubmissionFile(a) for a in associated_file_names}
     for f in files:
-        f.find_and_set_s3_file_info(client, bucket, prefix, associated_file_names)
+        # TODO - revisit this logic to see if we can make it more efficient by removing need to instantiate many s3 clients
+        if not client:
+            file_id = path_to_file_ids[f.csv_path]
+            c = submission.get_credentials_for_files([file_id])
+            client = S3Authentication.get_s3_client_with_config(aws_access_key=c['access_key'],
+                                                                aws_secret_key=c['secret_key'],
+                                                                aws_session_token=c['session_token'])
+        f.find_and_set_s3_file_info(client, bucket, prefix)
+
     not_found = set(filter(lambda x: not x.abs_path, files))
 
     while not_found:
@@ -314,7 +321,7 @@ def s3_file_search(ak, sk, bucket, prefix, associated_file_names):
             print(file.csv_path)
         directory_list, bucket, prefix = recollect_file_search_info()
         for f in not_found:
-            f.find_and_set_s3_file_info(client, bucket, prefix, associated_file_names)
+            f.find_and_set_s3_file_info(client, bucket, prefix)
         not_found = set(filter(lambda x: not x.abs_path, not_found))
     # TODO - raise error if any files are missing read access
     return files

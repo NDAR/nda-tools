@@ -74,7 +74,7 @@ class Validation:
                 polling=0
                 while response and not response['done']:
                     response = self.get_validation_request(response['id'])
-                    time.sleep(0.1)
+                    time.sleep(5)
                     polling += 1
                     if polling >= 50:
                         raise Exception('File {} failed to validate.'.format(file_name))
