@@ -1,9 +1,9 @@
 from NDATools.utils import Utils
-from NDATools.vtmcd.Configuration import *
+from NDATools.submission.Configuration import *
 from NDATools.utils.Utils import *
-from NDATools.vtmcd.Validation import Validation
-from NDATools.vtmcd.BuildPackage import SubmissionPackage
-from NDATools.vtmcd.Submission import Submission
+from NDATools.submission.Validation import Validation
+from NDATools.submission.BuildPackage import SubmissionPackage
+from NDATools.submission.Submission import Submission, Status
 import argparse
 import logging
 import os
@@ -113,10 +113,6 @@ def configure(args):
     return config
 
 
-class Status:
-    UPLOADING = 'Uploading'
-    SYSERROR = 'SystemError'
-
 
 def resume_submission(submission_id, batch, config, thread_num=None):
     submission = Submission(submission_id=submission_id, submission_config=config, thread_num=thread_num,
@@ -125,7 +121,7 @@ def resume_submission(submission_id, batch, config, thread_num=None):
     if status == Status.UPLOADING:
         submission.resume_submission()
     else:
-        print('Submission Completed with status {}'.format(submission.status))
+        print('Submission {} Completed with status {}'.format(submission_id, status))
         return
 
 
@@ -226,12 +222,12 @@ def build_package(uuid, associated_files, config, download=False):
     return package.package_id, submission_files
 
 
-# TODO - refactor
 def submit_package(package_id, associated_files, threads, batch, config, submission_files):
     submission = Submission(submission_config=config, thread_num=threads, batch_size=batch, submission_files=submission_files)
     print('Requesting submission for package: {}'.format(package_id))
     submission.create_submission(package_id)
     print('Submission ID: {}'.format(str(submission.submission_id)))
+
     if associated_files:
         print('Preparing to upload associated files.')
         submission.resume_submission()

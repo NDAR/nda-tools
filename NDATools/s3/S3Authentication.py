@@ -1,5 +1,5 @@
-from NDATools.vtmcd.DataManager import DataManager
 import boto3
+from NDATools.submission.DataManager import DataManager
 
 
 class S3Authentication:

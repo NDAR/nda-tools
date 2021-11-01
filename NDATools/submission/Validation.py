@@ -14,7 +14,7 @@ if sys.version_info[0] < 3:
     input = raw_input
 else:
     import queue
-from NDATools.vtmcd.Configuration import *
+from NDATools.submission.Configuration import *
 from NDATools.utils.Utils import *
 
 

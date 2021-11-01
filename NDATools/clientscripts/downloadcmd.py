@@ -7,8 +7,8 @@ from NDATools.utils.Utils import exit_client
 if sys.version_info[0] < 3:
     input = raw_input
 import argparse
-from NDATools.downloadcmd.Download import Download
-from NDATools.vtmcd.Configuration import *
+from NDATools.submission.Download import Download
+from NDATools.submission.Configuration import *
 import NDATools
 
 import logging

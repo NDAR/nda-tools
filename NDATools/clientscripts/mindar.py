@@ -7,7 +7,7 @@ from NDATools.clientscripts.vtcmd import *
 from NDATools.mindar.MindarManager import *
 from NDATools.mindar.MindarSubmission import *
 from NDATools.mindar.MindarHelpers import *
-from NDATools.vtmcd.Submission import *
+from NDATools.submission.Submission import *
 from NDATools.utils.Utils import advanced_request
 from NDATools.utils.Utils import get_stack_trace, exit_client
 

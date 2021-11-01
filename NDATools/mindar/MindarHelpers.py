@@ -9,8 +9,7 @@ import time
 
 from concurrent.futures._base import ALL_COMPLETED
 from concurrent.futures.thread import ThreadPoolExecutor
-from NDATools.vtmcd.Configuration import ClientConfiguration
-
+from NDATools.submission.Configuration import ClientConfiguration
 
 __all__ = ['requires_mindar_password', 'get_export_dir', 'export_mindar_helper',
            'verify_no_tables_exist', 'verify_all_tables_exist', 'load_config', 'drop_table_helper', 'add_table_helper',

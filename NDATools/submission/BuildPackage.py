@@ -12,7 +12,7 @@ if sys.version_info[0] < 3:
     input = raw_input
 import requests.packages.urllib3.util
 from tqdm import tqdm
-from NDATools.vtmcd.Configuration import *
+from NDATools.submission.Configuration import *
 from NDATools.utils.Utils import *
 
 

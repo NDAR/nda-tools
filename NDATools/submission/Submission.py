@@ -14,7 +14,7 @@ import botocore
 from botocore.client import Config
 import requests
 
-from NDATools.s3.MultiPartUpload import MultiPartsUpload, UploadMultiParts
+from NDATools.s3.MultiPartUpload import UploadMultiParts
 from NDATools.s3.S3Authentication import S3Authentication
 from NDATools.utils import Utils
 from NDATools.utils.ThreadPool import ThreadPool
@@ -27,7 +27,7 @@ if sys.version_info[0] < 3:
 else:
     pass
 from tqdm import tqdm
-from NDATools.vtmcd.Configuration import *
+from NDATools.submission.Configuration import *
 
 
 class Status:
@@ -214,9 +214,9 @@ class Submission:
         secret_key = submission_file_credential['secret_key']
         session_token = submission_file_credential['session_token']
 
-        multipart_uploads = MultiPartsUpload(bucket, prefix, self.config, access_key, secret_key, session_token)
-        partially_uploaded_files = multipart_uploads.get_multipart_uploads() # TODO - add paging in case >1000
-        return partially_uploaded_files
+        client = S3Authentication.get_s3_client_with_config(access_key, secret_key, session_token)
+        partially_uploaded_files = client.list_multipart_uploads(Bucket=bucket, Prefix=prefix)# TODO - add paging in case >1000
+        return partially_uploaded_files['Uploads'] if 'Uploads' in partially_uploaded_files else []
 
     def resume_submission(self):
 
@@ -257,8 +257,9 @@ class Submission:
 
         all_submission_files = self.get_submission_files()
         total_upload_size = sum(
-            map(lambda x: int(x['size']),
+            map(lambda x: self.submission_file_info[x['file_user_path']].size,
                               filter(lambda x: x['status'] != Status.COMPLETE, all_submission_files))
+
         )
 
         files_to_upload = [f for f in all_submission_files if f['status'] != Status.COMPLETE]
@@ -293,6 +294,8 @@ class Submission:
         status = self.get_submission_status()
         if status == Status.UPLOADING:
             raise Exception('Error creating submission - contact NDAHelpdesk')
+        elif status in (Status.COMPLETE, Status.SUBMITTED_PROTOTYPE):
+            print('Successfully created submission {}'.format(self.submission_id))
 
     def is_s3_to_s3_copy(self, file_resource=None):
         # TODO - this seems overly complicated - simplify this logic
@@ -336,7 +339,7 @@ class Submission:
                     [self.config.source_prefix, source_key])
             }
             s3_resource.meta.client.copy(copy_source, bucket, key, Callback=callback)
-            progress_queue.put(1)
+            progress_queue.update(1)
 
         except Exception as e:
             print('error during s3-to-s3 copy: {}'.format(e))
@@ -345,15 +348,14 @@ class Submission:
 
     # TODO this is broken
     def transfer_local_file(self, file_resource, partially_submitted_files, progress_queue):
-        credentials = self.get_credentials_for_files([file_resource['file_id']])
+        credentials = self.get_credentials_for_files([file_resource['id']])
         s3_url = file_resource['file_remote_path']
         bucket, key = Utils.deconstruct_s3_url(s3_url)
-        file_size = None
-        full_file_path = self.submission_file_info[file_resource['file_user_path']]
-        mpu_to_complete = [f for f in partially_submitted_files if f['']==source_key]
+        submission_file = self.submission_file_info[file_resource['file_user_path']]
+        mpu_to_complete = [f for f in partially_submitted_files if f[''] == file_resource['file_user_path']]
 
         if mpu_to_complete:
-            u = UploadMultiParts(mpu_to_complete, self.file_sizes, bucket, prefix, self.config, credentials, file_size)
+            u = UploadMultiParts(mpu_to_complete, submission_file.abs_path, s3_url, self.config, credentials, submission_file.size)
             u.resume_multipart_upload()
         else:
             s3 = S3Authentication.get_s3_client_with_config(credentials['access_key'],
@@ -366,7 +368,12 @@ class Submission:
 
             s3_transfer = S3Transfer(s3, config)
             tqdm.monitor_interval = 0
-            s3_transfer.upload_file(full_file_path, bucket, key, callback=self.UpdateProgress(progress_queue))
+
+            def cb(bytes_amount):
+                if progress_queue:
+                    progress_queue.update(bytes_amount)
+
+            s3_transfer.upload_file(submission_file.abs_path, bucket, key, callback=cb)
 
     # TODO this is broken
     def transfer_external_s3_file(self, file_resource, partially_submitted_files, progress_queue):
@@ -402,11 +409,16 @@ class Submission:
                                                                    credentials['session_token'])
             dest_bucket = bucket
             dest_key = key
+
+            def cb(bytes_amount):
+                if progress_queue:
+                    progress_queue.update(bytes_amount)
+
             dest.upload_fileobj(
                 fileobj,
                 dest_bucket,
                 dest_key,
-                Callback=UpdateProgress(progress_queue),
+                Callback=cb,
                 Config=transfer_config
             )
 

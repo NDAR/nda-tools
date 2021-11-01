@@ -1,7 +1,5 @@
 from __future__ import absolute_import, with_statement
 
-import concurrent
-from concurrent.futures import ALL_COMPLETED, ThreadPoolExecutor
 from enum import Enum
 import json as json_lib
 import logging
@@ -18,7 +16,7 @@ from requests.adapters import HTTPAdapter
 import requests.packages.urllib3.util
 
 from NDATools.s3.S3Authentication import S3Authentication
-from NDATools.vtmcd.SubmissionFile import SubmissionFile
+from NDATools.submission.SubmissionFile import SubmissionFile
 
 try:
     from inspect import signature
@@ -26,12 +24,11 @@ except:
     from funcsigs import signature
 
 import NDATools
-from NDATools.vtmcd.Configuration import ClientConfiguration
+from NDATools.submission.Configuration import ClientConfiguration
 
 IS_PY2 = sys.version_info < (3, 0)
 
 if IS_PY2:
-    from io import open
     from urlparse import urlparse
 else:
     from urllib.parse import urlparse
