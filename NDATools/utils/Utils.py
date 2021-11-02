@@ -171,6 +171,9 @@ def advanced_request(endpoint, verb=Verb.GET, content_type=ContentType.JSON, dat
     response = None
     # method=None, url=None, headers=None, files=None, data=None, params=None, auth=None, cookies=None, hooks=None, json=None
 
+    if verb == Verb.POST and 'localhost' in endpoint and not endpoint.endswith('/'):
+        endpoint+='/'
+
     req_params = {
         'method': verb.name,
         'url': endpoint,

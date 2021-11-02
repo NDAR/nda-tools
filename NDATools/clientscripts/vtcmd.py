@@ -151,7 +151,7 @@ def validate_files(file_list, warnings, build_package, threads, config=None):
     # Test if no files passed validation, exit
     if not any(map(lambda x: not validation.uuid_dict[x]['errors'], validation.uuid_dict)):
         print('No files passed validation, please correct any errors and validate again.')
-        return None, None
+        exit_client()
     # If some files passed validation, show files with and without errors
     else:
         print('\nThe following files passed validation:')
@@ -193,15 +193,17 @@ def build_package(uuid, associated_files, config, download=False):
     source_prefix = config.source_prefix
     submission_files = []
     if associated_files:
-        print('\nSearching for associated files...')
 
-        if source_bucket:
+        if source_bucket and not config.skip_s3_file_check:
+            print('\nSearching for associated files in s3 at s3://{}{}...'
+                  .format(source_bucket, '' if not config.source_prefix else '/{}'.format(source_prefix)))
             submission_files = Utils.s3_file_search(config.aws_access_key,
                                                     config.aws_secret_key,
                                                     source_bucket,
                                                     source_prefix,
                                                     Utils.flat_map(associated_files))
-        else:
+        elif not config.skip_local_file_check:
+            print('\nSearching for associated files...')
             submission_files = Utils.local_file_search(directories, Utils.flat_map(associated_files))
 
     print('Building Package')
@@ -228,10 +230,10 @@ def submit_package(package_id, threads, batch, config, submission_files):
     submission.create_submission(package_id)
     print('Submission ID: {}'.format(str(submission.submission_id)))
 
-    if submission_files:
+    if submission.status == Status.UPLOADING:
         print('Preparing to upload associated files.')
         submission.resume_submission()
-    if submission.status != Status.UPLOADING:
+    elif submission.status in (Status.SUBMITTED_PROTOTYPE, Status.COMPLETE, Status.UPLOAD_COMPLETE):
         print('\nYou have successfully completed uploading files for submission {} with status: {}'.format
               (submission.submission_id, submission.status))
     return submission.submission_id
