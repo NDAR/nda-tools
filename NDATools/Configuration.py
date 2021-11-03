@@ -94,10 +94,6 @@ class ClientConfiguration:
         copy_config.set("Endpoints", "validationtool", self.validationtool_api)
         copy_config.set("Endpoints", "datadictionary", self.datadictionary_api)
 
-        copy_config.add_section("Files")
-        copy_config.set("Files", "validation_results", self.validation_results)
-        copy_config.set("Files", "submission_packages", self.submission_packages)
-
         copy_config.add_section("User")
         copy_config.set("User", "username", self.username)
         copy_config.set("User", "password", self.password)
