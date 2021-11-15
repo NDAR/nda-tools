@@ -7,6 +7,7 @@ import uuid
 from shutil import copyfile
 
 import boto3
+from boto3.s3.transfer import TransferConfig
 from requests import HTTPError
 
 from NDATools import Utils
@@ -472,17 +473,41 @@ class Download(Protocol):
                                              aws_secret_access_key=sk,
                                              aws_session_token=sess_token,
                                              region_name='us-east-1')
-                s3 = sess.resource('s3')
-                copy_source = {
-                    'Bucket': src_bucket,
-                    'Key': src_path
-                }
-                s3.meta.client.copy(copy_source, dest_bucket, dest_path)
+
                 s3_client = sess.client('s3')
                 response = s3_client.head_object(Bucket=src_bucket, Key=src_path)
                 return_value['actual_file_size'] = response['ContentLength']
                 return_value['e_tag'] = response['ETag'].replace('"', '')
                 return_value['nda_s3_url'] = 's3://{}/{}'.format(src_bucket, src_path)
+
+                s3 = sess.resource('s3')
+                copy_source = {
+                    'Bucket': src_bucket,
+                    'Key': src_path
+                }
+
+                def print_upload_part_info(bytes):
+                    print('Transferred {} for {}'.format(Utils.human_size(bytes), return_value['nda_s3_url']))
+
+                KB = 1024
+                MB = KB * KB
+                GB = KB**3
+                LARGE_OBJECT_THRESHOLD = 5 * GB
+                args = {
+                    'ExtraArgs' : {'ACL': 'bucket-owner-full-control'}
+                }
+
+                if int(return_value['actual_file_size']) >= LARGE_OBJECT_THRESHOLD:
+                    print('Transferring large object {} ({}) in multiple parts'
+                          .format(return_value['nda_s3_url'], Utils.human_size(int(return_value['actual_file_size']))))
+                    config = TransferConfig(multipart_threshold=LARGE_OBJECT_THRESHOLD, multipart_chunksize=1 * GB)
+                    args['Config'] = config
+                    args['Callback'] = print_upload_part_info
+
+                s3.meta.client.copy(copy_source,
+                                    dest_bucket,
+                                    dest_path,
+                                    **args)
 
             else:
                 # downloading to local machine
