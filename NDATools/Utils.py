@@ -77,6 +77,8 @@ def api_request(api, verb, endpoint, data=None, session=None):
     r = None
     response = None
     try:
+        if data is not None:
+            data = data.encode('utf-8')
         r = session.send(requests.Request(verb, endpoint, headers, auth=auth, data=data).prepare(),
                          timeout=300, stream=False)
 
