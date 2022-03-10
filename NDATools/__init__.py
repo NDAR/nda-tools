@@ -6,7 +6,7 @@ import requests
 import json
 import sys
 
-__version__ = '0.2.14'
+__version__ = '0.2.15.dev1'
 pypi_version = None
 version_checked = False
 

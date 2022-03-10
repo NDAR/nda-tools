@@ -31,7 +31,7 @@ else:
     config = ClientConfiguration('clientscripts/config/settings.cfg')
 
 log_file = os.path.join(NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER, "debug_log_{}.txt").format(time.strftime("%Y%m%dT%H%M%S"))
-# TODO - make the log level configurable by command line arg or env. variable. NDA_VTCMD_LOG_LEVEL=?
+# TODO - make the log level configurable by command line arg or env. variable. NDA_TOOLS_LOG_LEVEL=?
 logging.basicConfig(filename=log_file, level=logging.INFO, format="%(asctime)s:%(levelname)s:%(message)s")
 
 if sys.version_info[0] < 3:
@@ -49,6 +49,24 @@ class Protocol(object):
     @staticmethod
     def get_protocol(cls):
         return cls.JSON
+
+
+def handle_http_error(r):
+    # handle json and plain-text errors
+    try:
+        if 'json' in r.headers['Content-Type']:
+            message = r.json()['message']
+    except (ValueError, json.JSONDecodeError):
+        message = r.text
+
+    if r.status_code == 401:
+        #provide default message if one doesnt already exist
+        message = message or 'The NDA username or password is not recognized.'
+    print()
+    print(message)
+    logging.error(message)
+    print()
+    r.raise_for_status()
 
 
 def api_request(api, verb, endpoint, data=None, session=None):
@@ -110,25 +128,8 @@ def api_request(api, verb, endpoint, data=None, session=None):
                 else:
                     raise Exception(ValueError)
 
-    if r.status_code == 401:
-        m = 'The NDA username or password is not recognized.'
-        print(m)
-        logging.error(m)
-        r.raise_for_status()
-
-    elif r.status_code == 400:
-        response = json.loads(r.text)
-        m = response['error'] + ': ' + response['message']
-        print(m)
-        logging.error(m)
-        r.raise_for_status()
-
-    elif r.status_code in (500, 502, 503, 504):
-        response = r.text
-        m = response
-        print(m)
-        logging.error(m)
-        r.raise_for_status()
+    if not r.ok:
+        handle_http_error(r)
 
     return response, session
 
