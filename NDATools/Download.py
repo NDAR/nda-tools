@@ -512,15 +512,16 @@ class Download(Protocol):
             else:
                 # downloading to local machine
                 s3_link = self.get_presigned_urls([package_file_id])
-                s = requests.session()
-                if resume_header:
-                    s.headers.update(resume_header)
-                with open(partial_download, "ab" if downloaded else "wb") as download_file:
-                    with s.get(s3_link, stream=True) as response:
-                        response.raise_for_status()
-                        for chunk in response.iter_content(chunk_size=1024 * 1024 * 5): # iterate 5MB chunks
-                            if chunk:
-                                bytes_written += download_file.write(chunk)
+                with requests.session() as s:
+                    s.mount(s3_link,HTTPAdapter(max_retries=10))
+                    if resume_header:
+                        s.headers.update(resume_header)
+                    with open(partial_download, "ab" if downloaded else "wb") as download_file:
+                        with s.get(s3_link, stream=True) as response:
+                            response.raise_for_status()
+                            for chunk in response.iter_content(chunk_size=1024 * 1024 * 5): # iterate 5MB chunks
+                                if chunk:
+                                    bytes_written += download_file.write(chunk)
                 os.rename(partial_download, completed_download)
                 self.verbose_print('Completed download {}'.format(completed_download))
                 return_value['actual_file_size'] = bytes_written
@@ -870,7 +871,7 @@ class Download(Protocol):
             exit_client(signal=signal.SIGTERM, message='Illegal Argument - path_list cannot be empty')
         url = self.package_url + '/{}/files'.format(self.package_id)
         try:
-            response = requests.post(url, auth=self.auth, json=list(path_list))
+            response = post_request(url,list(path_list), auth=self.auth)
             response.raise_for_status()
             return response.json()
         except HTTPError as e:
@@ -904,16 +905,14 @@ class Download(Protocol):
             url += '?s3SourceBucket={}'.format(s3_dest_bucket)
             if s3_dest_prefix:
                 url += '&s3SourcePrefix={}'.format(s3_dest_prefix)
-        tmp = requests.get(url, self.request_header(), auth=self.auth)
-        tmp.raise_for_status()
+        tmp = get_request(url, headers=self.request_header(), auth=self.auth)
         return json.loads(tmp.text)
 
     def get_files_from_datastructure(self, data_structure):
         data_structure_regex = quote_plus('{}/.*'.format(data_structure))
         url = self.package_url + \
               '/{}/files?page=1&size=all&regex={}'.format(self.package_id, data_structure_regex)
-        tmp = requests.get(url, self.request_header(), auth=self.auth)
-        tmp.raise_for_status()
+        tmp = get_request(url, headers=self.request_header(), auth=self.auth)
         results = json.loads(tmp.text)['results']
         return results
 
@@ -921,8 +920,7 @@ class Download(Protocol):
         url = self.package_url + \
               '/{}/files?page=1&size=all&types=Package%20Metadata&regex={}'.format(self.package_id,
                                                                                    'datastructure_manifest.txt')
-        tmp = requests.get(url, self.request_header(), auth=self.auth)
-        tmp.raise_for_status()
+        tmp = get_request(url, headers=self.request_header(), auth=self.auth)
         results = json.loads(tmp.text)['results']
         # return None instead of empty list, since this method is always supposed to return 1 thing
         return results[0] if results else None
@@ -930,7 +928,7 @@ class Download(Protocol):
     def get_data_structure_files(self):
         url = self.package_url + \
               '/{}/files?page=1&size=all&types=Data'.format(self.package_id)
-        tmp = requests.get(url, self.request_header(), auth=self.auth)
+        tmp = get_request(url, headers=self.request_header(), auth=self.auth)
         tmp.raise_for_status()
         results = json.loads(tmp.text)['results']
         return [r for r in results if r['nda_file_type'] == 'Data']
@@ -939,7 +937,7 @@ class Download(Protocol):
         url = self.package_url + \
               '/{}/files?page=1&size=all&types=Package%20Metadata&types=Data&regex={}'.format(self.package_id,
                                                                                               short_name)
-        tmp = requests.get(url, self.request_header(), auth=self.auth)
+        tmp = get_request(url, headers=self.request_header(), auth=self.auth)
         tmp.raise_for_status()
         results = json.loads(tmp.text)['results']
         # return None instead of empty list, since this method is always supposed to return 1 thing
@@ -947,18 +945,12 @@ class Download(Protocol):
 
     def get_package_file_info(self, file_id):
         url = self.package_url + '/{}/files/{}'.format(self.package_id, file_id)
-        with requests.session() as session:
-            session.mount(url, HTTPAdapter(max_retries=5))
-            tmp = session.get(url, headers=self.request_header(), auth=self.auth)
-            tmp.raise_for_status()
+        tmp = get_request(url,headers=self.request_header(),auth=self.auth)
         return json.loads(tmp.text)
 
     def get_package_info(self):
         url = self.package_url + '/{}'.format(self.package_id)
-        with requests.session() as session:
-            session.mount(url, HTTPAdapter(max_retries=5))
-            tmp = session.get(url, headers=self.request_header(), auth=self.auth)
-            tmp.raise_for_status()
+        tmp = get_request(url,headers=self.request_header(),auth=self.auth)
         return json.loads(tmp.text)
 
     def get_package_files_by_page(self, page, batch_size):
@@ -966,7 +958,7 @@ class Download(Protocol):
         if self.regex_file_filter:
             url += '&regex={}'.format(self.regex_file_filter)
         try:
-            tmp = requests.get(url, self.request_header(), auth=self.auth)
+            tmp = get_request(url, headers=self.request_header(), auth=self.auth)
             tmp.raise_for_status()
             response = json.loads(tmp.text)
             return response['results']
@@ -988,10 +980,7 @@ class Download(Protocol):
         if len(id_list) == 1:
             file_id = id_list[0]
             url = self.package_url + '/{}/files/{}/download_url'.format(self.package_id, file_id)
-            with requests.session() as session:
-                session.mount(url, HTTPAdapter(max_retries=5))
-                tmp = session.get(url, headers=self.request_header(), json=id_list, auth=self.auth)
-                tmp.raise_for_status()
+            tmp = get_request(url,headers=self.request_header(),_json=id_list,auth=self.auth)
             response = json.loads(tmp.text)
             return response['downloadURL']
         else:
@@ -999,10 +988,7 @@ class Download(Protocol):
             if not self.verify_flg:
                 self.verbose_print('Retrieving credentials for {} files'.format(len(id_list)))
             url = self.package_url + '/{}/files/batchGeneratePresignedUrls'.format(self.package_id)
-            with requests.session() as session:
-                session.mount(url, HTTPAdapter(max_retries=5))
-                tmp = session.post(url, headers=self.request_header(), json=id_list, auth=self.auth)
-                tmp.raise_for_status()
+            tmp = get_request(url,headers=self.request_header(),_json=id_list,auth=self.auth)
             response = json.loads(tmp.text)
             creds = {e['package_file_id']: e['downloadURL'] for e in response['presignedUrls']}
             if not self.verify_flg:

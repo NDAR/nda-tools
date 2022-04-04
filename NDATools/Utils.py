@@ -1,4 +1,5 @@
 from __future__ import absolute_import, with_statement
+from email.policy import HTTP
 
 import json
 import logging
@@ -9,7 +10,7 @@ import sys
 import threading
 import time
 import traceback
-
+import random 
 import requests
 from requests.adapters import HTTPAdapter
 import requests.packages.urllib3.util
@@ -270,3 +271,32 @@ def convert_to_abs_path(file_name):
 def human_size(bytes, units=[' bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']):
     """ Returns a human readable string representation of bytes """
     return str(round(bytes,2)) + units[0] if bytes < 1024 else human_size(bytes / 1024, units[1:])
+
+def get_request(url,headers=None,auth=None, _json=None):
+    tmp=None
+    for i in range(10):
+        try:
+            with requests.Session() as session:
+                session.mount(url,HTTPAdapter(max_retries=10))
+                tmp = session.get(url,headers=headers,auth=auth,json=_json)
+                tmp.raise_for_status()
+            return tmp
+        except requests.exceptions.ConnectionError as e:
+            if i == 9:
+                raise e
+            time.sleep(random.randint(10,30))
+    
+def post_request(url,_json,headers=None,auth=None):
+    tmp=None
+    for i in range(10):
+        try:
+            with requests.Session() as session:
+                session.mount(url,HTTPAdapter(max_retries=10))
+                tmp = session.post(url,json=_json,headers=headers,auth=auth)
+                tmp.raise_for_status()
+            return tmp
+        except requests.exceptions.ConnectionError as e:
+            if i == 9:
+                raise e
+            time.sleep(random.randint(10,30))
+        
