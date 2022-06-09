@@ -51,7 +51,7 @@ Thi will automatically install the nda-tools package, including the command line
 
 ### Credentials
 While not needed for just validation, if you would like to create a package and submit your data to the NDA, you must 
-have an active account with us. This can be requested from the [NDA website](https://nda.nih.gov/user/create_account.html).
+have an active account with us. This can be requested from the [NDA website](https://nda.nih.gov/nda/contact-us.html).
 You can read more about what is needed for contributing data into NDA [here](https://nda.nih.gov/contribute.html). 
 
 ##### You are now ready to run the client.
