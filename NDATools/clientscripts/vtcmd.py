@@ -8,6 +8,7 @@ import argparse
 import logging
 import os
 
+logger = logging.getLogger(__name__)
 def parse_args():
     parser = argparse.ArgumentParser(
         description='This application allows you to validate files and submit data into NDA. '
@@ -51,6 +52,9 @@ def parse_args():
     parser.add_argument('-d', '--description', metavar='<arg>', type=str, nargs='+', action='store',
                         help='The description of the submission')
 
+    parser.add_argument('-p', '--password', metavar='<arg>', type=str, action='store',
+                        help='NDA password')
+
     parser.add_argument('-t', '--title', metavar='<arg>', type=str, nargs='+', action='store',
                         help='The title of the submission')
 
@@ -62,9 +66,6 @@ def parse_args():
 
     parser.add_argument('-sk', '--secretKey', metavar='<arg>', type=str, action='store',
                         help='AWS secret key')
-
-    parser.add_argument('-p', '--password', metavar='<arg>', type=str, action='store',
-                        help='NDA password')
 
     parser.add_argument('-s', '--scope', metavar='<arg>', type=str, action='store',
                         help='Flag whether to validate using a custom scope. Must enter a custom scope')
@@ -92,20 +93,26 @@ def parse_args():
 
     args = parser.parse_args()
 
+    # leaving this code snippet here in case we decide to move ahead with plan to drop support for -p flag
+    # if args.password:
+    #     print('Warning: Support for the password flag (-p, --password) has been removed from nda-tools due to security concerns and its value will be ignored.')
+
     return args
 
 
 def configure(args):
     # create a new config file in user's home directory if one does not exist
 
-    NDATools.Utils.logging.getLogger().setLevel(logging.DEBUG)
+    auth_req = True if args.buildPackage or args.resume else False
+
     if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
         config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'), args.username,
                                      args.password, args.accessKey, args.secretKey)
+        config.read_user_credentials(auth_req)
     else:
         config = ClientConfiguration('clientscripts/config/settings.cfg', args.username, args.password, args.accessKey,
                                      args.secretKey)
-        config.read_user_credentials()
+        config.read_user_credentials(auth_req)
         config.make_config()
 
     if args.collectionID:
@@ -130,9 +137,12 @@ def configure(args):
         config.validation_api = args.validationAPI[0]
     if args.JSON:
         config.JSON = True
+    config.workerThreads = args.workerThreads
     config.hideProgress = args.hideProgress
     if args.skipLocalAssocFileCheck:
         config.skip_local_file_check = True
+
+    LoggingConfiguration.load_config(NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER)
 
     return config
 
@@ -143,7 +153,7 @@ class Status:
 
 
 def resume_submission(submission_id, batch, config=None):
-    submission = Submission(id=submission_id, full_file_path=None, config=config, resume=True, batch_size=batch)
+    submission = Submission(id=submission_id, full_file_path=None, config=config, resume=True, batch_size=batch, thread_num=config.workerThreads)
     submission.check_status()
     if submission.status == Status.UPLOADING:
         directories = config.directory_list
@@ -159,49 +169,52 @@ def resume_submission(submission_id, batch, config=None):
         else:
            submission.submission_upload(hide_progress=config.hideProgress)
 
+        if submission.status != Status.UPLOADING:
+            print_submission_complete_message(submission)
+
     else:
-        print('Submission Completed with status {}'.format(submission.status))
+        logger.info('Submission Completed with status {}'.format(submission.status))
         return
 
 
 def validate_files(file_list, warnings, build_package, threads, config=None):
 
     validation = Validation(file_list, config=config, hide_progress=config.hideProgress, thread_num=threads, allow_exit=True)
-    print('\nValidating files...')
+    logger.info('\nValidating files...')
     validation.validate()
 
     for (response, file) in validation.responses:
         if response['status'] == Status.SYSERROR:
-            print('\nSystemError while validating: {}'.format(file))
-            print('Please contact NDAHelp@mail.nih.gov')
+            logger.error('\nSystemError while validating: {}'.format(file))
+            logger.error('Please contact NDAHelp@mail.nih.gov')
         elif response['errors'] != {}:
-            print('\nError! Check file: {}'.format(file))
+            logger.info('\nError! Check file: {}'.format(file))
     validation.output()
-    print('Validation report output to: {}'.format(validation.log_file))
+    logger.info('Validation report output to: {}'.format(validation.log_file))
 
     if warnings:
         validation.get_warnings()
-        print('Warnings output to: {}'.format(validation.log_file))
+        logger.info('Warnings output to: {}'.format(validation.log_file))
     else:
         if validation.w:
-            print('\nNote: Your data has warnings. To save warnings, run again with -w argument.')
-    print('\nAll files have finished validating.')
+            logger.info('\nNote: Your data has warnings. To save warnings, run again with -w argument.')
+    logger.info('\nAll files have finished validating.')
 
     # Test if no files passed validation, exit
     if not any(map(lambda x: not validation.uuid_dict[x]['errors'], validation.uuid_dict)):
-        print('No files passed validation, please correct any errors and validate again.')
+        logger.info('No files passed validation, please correct any errors and validate again.')
         return
     # If some files passed validation, show files with and without errors
     else:
-        print('\nThe following files passed validation:')
+        logger.info('\nThe following files passed validation:')
         for uuid in validation.uuid_dict:
             if not validation.uuid_dict[uuid]['errors']:
-                print('UUID {}: {}'.format(uuid, validation.uuid_dict[uuid]['file']))
+                logger.info('UUID {}: {}'.format(uuid, validation.uuid_dict[uuid]['file']))
         if validation.e:
-            print('\nThese files contain errors:')
+            logger.info('\nThese files contain errors:')
             for uuid in validation.uuid_dict:
                 if validation.uuid_dict[uuid]['errors']:
-                    print('UUID {}: {}'.format(uuid, validation.uuid_dict[uuid]['file']))
+                    logger.info('UUID {}: {}'.format(uuid, validation.uuid_dict[uuid]['file']))
     # If some files had errors, give option to submit just the files that passed
     if validation.e and build_package:
         while True:
@@ -213,7 +226,7 @@ def validate_files(file_list, warnings, build_package, threads, config=None):
                 validation.uuid = validation.verify_uuid()
                 break
             else:
-                print('Your answer <{}> was not recognized, please enter yes or no.'.format(str(proceed)))
+                logger.info('Your answer <{}> was not recognized, please enter yes or no.'.format(str(proceed)))
                 continue
 
     return validation.uuid, validation.associated_files
@@ -231,38 +244,41 @@ def build_package(uuid, associated_files, config):
     source_bucket = config.source_bucket
     source_prefix = config.source_prefix
     if associated_files:
-        print('\nSearching for associated files...')
+        logger.info('\nSearching for associated files...')
         package.file_search(directories, source_bucket, source_prefix, retry_allowed=True)
-    print('Building Package')
+    logger.info('Building Package')
     package.build_package()
-    print('\n\nPackage Information:')
-    print('validation results: {}'.format(package.validation_results))
-    print('submission_package_uuid: {}'.format(package.submission_package_uuid))
-    print('created date: {}'.format(package.create_date))
-    print('expiration date: {}'.format(package.expiration_date))
-    print('\nPackage finished building.\n')
+    logger.info('\n\nPackage Information:')
+    logger.info('validation results: {}'.format(package.validation_results))
+    logger.info('submission_package_uuid: {}'.format(package.submission_package_uuid))
+    logger.info('created date: {}'.format(package.create_date))
+    logger.info('expiration date: {}'.format(package.expiration_date))
+    logger.info('\nPackage finished building.\n')
 
-    print('Downloading submission package.')
+    logger.info('Downloading submission package.')
     package.download_package(hide_progress=config.hideProgress)
-    print('\nA copy of your submission package has been saved to: {}'.
+    logger.info('\nA copy of your submission package has been saved to: {}'.
           format(os.path.join(NDATools.NDA_TOOLS_SUB_PACKAGE_FOLDER, package.package_folder)))
 
     return[package.package_id, package.full_file_path]
 
 
+def print_submission_complete_message(submission):
+    logger.info('\nYou have successfully completed uploading files for submission {} with status: {}'.format
+                (submission.submission_id, submission.status))
+
+
 def submit_package(package_id, full_file_path, associated_files, threads, batch, config=None):
     submission = Submission(id=package_id, full_file_path=full_file_path, thread_num=threads, batch_size=batch, allow_exit=True, config=config)
-    print('Requesting submission for package: {}'.format(submission.package_id))
+    logger.info('Requesting submission for package: {}'.format(submission.package_id))
     submission.submit()
     if submission.submission_id:
-        print('Submission ID: {}'.format(str(submission.submission_id)))
+        logger.info('Submission ID: {}'.format(str(submission.submission_id)))
     if associated_files:
-        print('Preparing to upload associated files.')
+        logger.info('Preparing to upload associated files.')
         submission.submission_upload(hide_progress=config.hideProgress)
     if submission.status != Status.UPLOADING:
-        print('\nYou have successfully completed uploading files for submission {} with status: {}'.format
-              (submission.submission_id, submission.status))
-               #do we want to include this??
+        print_submission_complete_message(submission)
 
 
 def main():

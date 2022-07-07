@@ -1,24 +1,21 @@
-from __future__ import with_statement
 from __future__ import absolute_import
+from __future__ import with_statement
 
-import re
 import sys
-import requests.packages.urllib3.util
-from tqdm import tqdm
-import boto3
-import botocore
-import signal
 
-from NDATools.S3Authentication import S3Authentication
+import botocore
+import requests.packages.urllib3.util
+
+import NDATools
 
 if sys.version_info[0] < 3:
     input = raw_input
 import requests.packages.urllib3.util
-import signal
 from tqdm import tqdm
 from NDATools.Configuration import *
 from NDATools.Utils import *
 
+logger = logging.getLogger(__name__)
 
 class SubmissionPackage:
     def __init__(self, uuid, associated_files, config, username=None, password=None, collection=None, title=None,
@@ -40,7 +37,6 @@ class SubmissionPackage:
             self.config.description = description
         self.username = self.config.username
         self.password = self.config.password
-        self.credentials = S3Authentication(config)
         self.dataset_name = self.config.title
         self.dataset_description = self.config.description
         self.package_info = {}
@@ -77,7 +73,7 @@ class SubmissionPackage:
         if len(self.collections) > 0 or len(self.endpoints) > 0:
             user_input = None
             if self.config.collection_id and self.config.endpoint_title:
-                print('You selected both a collection and an alternate endpoint.\n'
+                logger.info('You selected both a collection and an alternate endpoint.\n'
                       'These options are mutually exclusive, please specify only one.')
             elif self.config.endpoint_title:
                 self.endpoint_title = self.config.endpoint_title
@@ -98,7 +94,7 @@ class SubmissionPackage:
                             self.endpoint_title = endpoint_title[1]
                             self.collection_id = ""
                     except IndexError:
-                        print('Do not leave this section blank.')
+                        logger.info('Do not leave this section blank.')
                 try:
                     if self.collection_id and int(self.collection_id) in self.collections:
                         break
@@ -108,12 +104,12 @@ class SubmissionPackage:
                         if not hide_input:
                             print ('Collection IDs:')
                             for k, v in self.collections.items():
-                                print('{}: {}'.format(k, v.encode('ascii', 'ignore')))
-                            print('\nAlternate Endpoints:')
+                                logger.info('{}: {}'.format(k, v.encode('ascii', 'ignore')))
+                            logger.info('\nAlternate Endpoints:')
                             for endpoint in self.endpoints:
-                                print(endpoint.encode('ascii', 'ignore'))
+                                logger.info(endpoint.encode('ascii', 'ignore'))
                             message = '\nYou do not have access to submit to the collection or alternate upload location: {} '.format(self.collection_id or self.endpoint_title)
-                            print(message)
+                            logger.info(message)
                             user_input = input('\nEnter -c <collection ID> OR -a <alternate endpoint> from the list above:')
                         else:
                             message = 'Incorrect/Missing collection ID or alternate endpoint.'
@@ -125,7 +121,7 @@ class SubmissionPackage:
                 except (AttributeError, ValueError, TypeError) as e:
                     message = 'Error: Input must start with either a -c or -a and be an integer or string value, respectively.'
                     if not hide_input:
-                        print(message)
+                        logger.info(message)
                         user_input = input('\nEnter -c <collection ID> OR -a <alternate endpoint>:')
                     else:
                         message = 'Incorrect/Missing collection ID or alternate endpoint.'
@@ -175,12 +171,15 @@ class SubmissionPackage:
         # local files
         if self.directory_list:
             parse_local_files(self.directory_list, self.no_match, self.full_file_path, self.no_read_access,
-                              config.skip_local_file_check)
+                              self.config.skip_local_file_check)
 
         # files in s3
         no_access_buckets = []
         if self.source_bucket:
-            s3_client = self.credentials.get_s3_client()
+            if not self.config.aws_access_key:
+                self.config.read_aws_credentials()
+
+            s3_client = get_s3_client_with_config(self.config.aws_access_key, self.config.aws_secret_key, self.config.aws_session_token)
             for file in self.no_match[:]:
                 key = file
                 if self.source_prefix:
@@ -203,20 +202,25 @@ class SubmissionPackage:
         if self.no_match:
             if no_access_buckets:
                 message = 'Your user does NOT have access to the following buckets. Please review the bucket ' \
-                          'and/or your AWS credentials and try again.'
+                          'and/or your AWS credentials and re-run the command.'
                 if retry_allowed:
-                    print('\n', message)
-                    for b in no_access_buckets:
-                        print(b)
+                    logger.info('\n%s', message)
+                    for b in set(no_access_buckets):
+                        logger.info(b)
+                    exit_client()
                 else:
                     error = "".join(['Bucket Access:', message])
                     raise_error(error, no_access_buckets)
             message = 'You must make sure all associated files listed in your validation file' \
                       ' are located in the specified directory or AWS bucket. Associated file not found in specified directory:\n'
             if retry_allowed:
-                print('\n', message)
-                for file in self.no_match:
-                    print(file)
+                logger.info('\n%s', message)
+
+                for idx, file in enumerate(self.no_match):
+                    logger.info(file)
+                    if idx >= 49:
+                        logger.info('...and (%d) other files', len(self.no_match)-50)
+                        break
                 self.recollect_file_search_info()
                 self.file_search(self.directory_list, self.source_bucket, self.source_prefix, retry_allowed=True)
             else:
@@ -227,9 +231,9 @@ class SubmissionPackage:
             message = 'You must make sure you have read-access to all the of the associated files listed in your validation file. ' \
                       'Please update your permissions for the following associated files:\n'
             if retry_allowed:
-                print(message)
+                logger.info(message)
                 for file in self.no_read_access:
-                    print(file)
+                    logger.info(file)
                 self.recollect_file_search_info()
                 [self.no_read_access.remove(i) for i in
                     [file for file in self.no_read_access if check_read_permissions(file)]]
@@ -328,7 +332,7 @@ class SubmissionPackage:
                                     unit_scale=True,
                                     desc="Submission Package Download",
                                     ascii=os.name == 'nt')
-        # print('dl_links: {}'.format(self.download_links))
+        # logger.info('dl_links: {}'.format(self.download_links))
         for url, file_name, size in self.download_links:
             path = os.path.join(NDATools.NDA_TOOLS_SUB_PACKAGE_FOLDER, self.package_folder)
             if not os.path.exists(path):

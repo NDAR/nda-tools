@@ -1,15 +1,14 @@
-from __future__ import with_statement
 from __future__ import absolute_import
+from __future__ import with_statement
 
-import re
 import sys
 import multiprocessing
+import sys
+
 from boto3.exceptions import S3UploadFailedError
 from boto3.s3.transfer import S3Transfer, TransferConfig
 from botocore.client import Config
 from botocore.exceptions import ClientError
-
-from NDATools.S3Authentication import S3Authentication
 
 if sys.version_info[0] < 3:
     import Queue as queue
@@ -18,11 +17,9 @@ else:
     import queue
 from tqdm import tqdm
 from NDATools.Configuration import *
-from NDATools.DataManager import *
 from NDATools.MultiPartUploads import *
-from NDATools.TokenGenerator import *
 
-
+logger = logging.getLogger(__name__)
 class Status:
     UPLOADING = 'Uploading'
     SYSERROR = 'SystemError'
@@ -43,7 +40,6 @@ class Submission:
             self.config.password = password
         self.username = self.config.username
         self.password = self.config.password
-        self.credentials = S3Authentication(config)
         self.full_file_path = full_file_path
         self.total_upload_size = 0
         self.upload_queue = queue.Queue()
@@ -63,7 +59,6 @@ class Submission:
         self.total_progress = None
         self.upload_tries = 0
         self.max_submit_time = 120
-        self.url = self.config.datamanager_api
         self.resume = resume
         if self.resume:
             self.submission_id = id
@@ -239,7 +234,10 @@ class Submission:
         # files in s3
         no_access_buckets = []
         if self.source_bucket:
-            s3_client = self.credentials.get_s3_client()
+            if not self.config.aws_access_key:
+                self.config.read_aws_credentials()
+
+            s3_client = get_s3_client_with_config(self.config.aws_access_key, self.config.aws_secret_key, self.config.aws_session_token)
             for file in self.no_match[:]:
                 key = file
                 if self.source_prefix:
@@ -264,18 +262,18 @@ class Submission:
                 message = 'Your user does NOT have access to the following buckets. Please review the bucket ' \
                           'and/or your AWS credentials and try again.'
                 if retry_allowed:
-                    print('\n', message)
+                    logger.info('\n', message)
                     for b in no_access_buckets:
-                        print(b)
+                        logger.info(b)
                 else:
                     error = "".join(['Bucket Access:', message])
                     raise_error(error, no_access_buckets)
             message = 'You must make sure all associated files listed in your validation file' \
                       ' are located in the specified directory or AWS bucket. Associated file not found in specified directory:\n'
             if retry_allowed:
-                print('\n', message)
+                logger.info('\n', message)
                 for file in self.no_match:
-                    print(file)
+                    logger.info(file)
                 self.recollect_file_search_info()
                 self.found_all_files(self.directory_list, self.source_bucket, self.source_prefix, retry_allowed=True)
             else:
@@ -286,9 +284,9 @@ class Submission:
             message = 'You must make sure you have read-access to all the of the associated files listed in your validation file. ' \
                       'Please update your permissions for the following associated files:\n'
             if retry_allowed:
-                print(message)
+                logger.info(message)
                 for file in self.no_read_access:
-                    print(file)
+                    logger.info(file)
                 self.recollect_file_search_info()
                 [self.no_read_access.remove(i) for i in
                     [file for file in self.no_read_access if check_read_permissions(file)]]
@@ -395,8 +393,8 @@ class Submission:
         self.batch_update_status()
 
         if not hide_progress:
-            print('\nUploads complete.')
-            print('Checking Submission Status.')
+            logger.info('\nUploads complete.')
+            logger.info('Checking Submission Status.')
         self.check_status()
         if self.status == Status.UPLOADING:
             if not self.incomplete_files:
@@ -414,7 +412,7 @@ class Submission:
                         raise Exception("{}\n{}".format('TimeOutError', timeout_message))
 
             else:
-                print('There was an error transferring some files, trying again')
+                logger.info('There was an error transferring some files, trying again')
                 if self.found_all_files and self.upload_tries < 5:
                     self.submission_upload(hide_progress)
         if self.status != Status.UPLOADING and hide_progress:
@@ -424,6 +422,7 @@ class Submission:
         def __init__(self, index, config, upload_queue, full_file_path, submission_id, progress_queue, credentials_list,
                      all_mpus):
             threading.Thread.__init__(self)
+            logger.debug('Starting S3Upload thread-%d', index)
             self.config = config
             self.upload_queue = upload_queue
             self.upload = None
@@ -433,7 +432,6 @@ class Submission:
             self.password = self.config.password
             self.source_bucket = self.config.source_bucket
             self.source_prefix = self.config.source_prefix
-            self.credentials = S3Authentication(self.config)
             self.full_file_path = full_file_path
             self.credentials_list = credentials_list
             self.submission_id = submission_id
@@ -572,7 +570,10 @@ class Submission:
                     tqdm.monitor_interval = 0
 
                     s3_config = Config(connect_timeout=240, read_timeout=240)
-                    self.source_s3 = self.credentials.get_s3_resource(s3_config)
+                    self.source_s3 = get_s3_resource(self.config.aws_access_key,
+                                                     self.config.aws_secret_key,
+                                                     self.config.aws_session_token,
+                                                     s3_config)
 
                     source_key = key.split('/')[1:]
                     source_key = '/'.join(source_key)
@@ -617,7 +618,7 @@ class Submission:
                         transfer_config = TransferConfig(multipart_threshold=100 * 1024 * 1024,
                                                          multipart_chunksize=multipart_chunk_size)
 
-                        self.dest = S3Authentication.get_s3_client_with_config(credentials['access_key'],
+                        self.dest = get_s3_client_with_config(credentials['access_key'],
                                                                                credentials['secret_key'],
                                                                                credentials['session_token'])
                         self.dest_bucket = bucket
@@ -636,7 +637,6 @@ class Submission:
                             e = str(error)
                             if "ExpiredToken" in e:
                                 self.add_back_to_queue(bucket, prefix)
-                                self.credentials = S3Authentication(self.config)
                             else:
                                 raise error
                     self.progress_queue.put(None)
@@ -683,7 +683,7 @@ class Submission:
                         self.progress_queue.put(None)
                     else:
                         if credentials:
-                            s3 = S3Authentication.get_s3_client_with_config(credentials['access_key'],
+                            s3 = get_s3_client_with_config(credentials['access_key'],
                                                                             credentials['secret_key'],
                                                                             credentials['session_token'])
                             config = TransferConfig(
@@ -700,14 +700,13 @@ class Submission:
                                 e = str(error)
                                 if "ExpiredToken" in e:
                                     self.add_back_to_queue(bucket, prefix)
-                                    self.credentials = S3Authentication(self.config)
                                 else:
                                     raise error
 
                             self.progress_queue.put(None)
 
                         else:
-                            print('There was an error uploading {} after {} retry attempts'.format(full_path,
+                            logger.info('There was an error uploading {} after {} retry attempts'.format(full_path,
                                                                                                    self.upload_tries))
                             continue
 

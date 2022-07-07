@@ -1,9 +1,13 @@
-from __future__ import with_statement
-from __future__ import absolute_import
-import sys
+from __future__ import absolute_import, with_statement
+
 import csv
 import multiprocessing
+import sys
+
 from tqdm import tqdm
+
+import NDATools
+
 if sys.version_info[0] < 3:
     import Queue as queue
     input = raw_input
@@ -14,7 +18,7 @@ from NDATools.Utils import *
 import threading
 import signal
 
-
+logger = logging.getLogger(__name__)
 class Validation:
     def __init__(self, file_list, config, hide_progress, allow_exit=False, thread_num=None):
         self.config = config
@@ -205,7 +209,7 @@ class Validation:
 
         return uuid_list
 
-    def process_manifests(self, r, validation_results = None, yes_manifest = None, bulk_upload=False):
+    def process_manifests(self, r, validation_results=None, yes_manifest=None, bulk_upload=False):
         if not self.manifest_path:
             if not self.exit:
                 error = 'Missing Manifest File: You must include the path to your manifests files'
@@ -224,8 +228,10 @@ class Validation:
         if validation_results:
             self.validation_result = validation_results
         else:
-            self.validation_result = Validation.ValidationManifestResult(r, self.hide_progress)
+            self.validation_result = Validation.ValidationManifestResult(r, self.hide_progress, self.config)
         if not bulk_upload:
+            files_to_upload = len(self.validation_result.manifests) - len(yes_manifest)
+            uploaded_count = 0
 
             for validation_manifest in self.validation_result.manifests:
                 for m in self.manifest_path:
@@ -236,6 +242,9 @@ class Validation:
                             yes_manifest.append(validation_manifest.local_file_name)
                             if validation_manifest.local_file_name in no_manifest:
                                 no_manifest.remove(validation_manifest.local_file_name)
+                            uploaded_count += 1
+                            sys.stdout.write('\rUploaded manifest file {} of {}\r'.format(uploaded_count, files_to_upload))
+                            sys.stdout.flush()
                             break
                         except IOError:
                             no_manifest.add(validation_manifest.local_file_name)
@@ -248,10 +257,10 @@ class Validation:
                             raise Exception(error)
 
         for file in no_manifest:
-            print('Manifest file not found:',file)
+            logger.info('Manifest file not found: %s',file)
 
         if no_manifest:
-            print(
+            logger.info(
                 '\nYou must make sure all manifest files listed in your validation file'
                 ' are located in the specified directory. Please try again.')
 
@@ -261,7 +270,7 @@ class Validation:
 
         while not self.validation_result.status.startswith(Status.COMPLETE):
             response, session = api_request(self, "GET", "/".join([self.api, r['id']]))
-            self.validation_result = Validation.ValidationManifestResult(response, self.hide_progress)
+            self.validation_result = Validation.ValidationManifestResult(response, self.hide_progress, self.config)
             for m in self.validation_result.manifests:
                 if m.status == Status.ERROR:
                     error = 'JSON Error: There was an error in your json file: {}\nPlease review and try again: {}\n'.format(m.local_file_name, m.errors[0])
@@ -269,8 +278,8 @@ class Validation:
 
     class ValidationManifest:
 
-        def __init__(self, _manifest, hide):
-            self.config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'))
+        def __init__(self, _manifest, hide, config=None):
+            self.config = config
             self.status = _manifest['status']
             self.local_file_name = _manifest['localFileName']
             self.manifestUuid = _manifest['manifestUuid']
@@ -285,7 +294,7 @@ class Validation:
 
     class ValidationManifestResult:
 
-        def __init__(self, _validation_result, hide):
+        def __init__(self, _validation_result, hide, config):
             self.done = _validation_result['done']
             self.id = _validation_result['id']
             self.status = _validation_result['status']
@@ -294,7 +303,7 @@ class Validation:
             self.scope = _validation_result['scope']
             manifests = []
             for _manifest in _validation_result['manifests']:
-                manifests.append(Validation.ValidationManifest(_manifest, hide))
+                manifests.append(Validation.ValidationManifest(_manifest, hide, config))
             self.manifests = manifests
 
     class ValidationTask(threading.Thread, Protocol):
@@ -324,14 +333,12 @@ class Validation:
                 try:
                     file = open(file_name, 'r')
                 except IOError:
-                    message = 'This file does not exist in current directory: {}'.format(file_name)
                     if self.progress_bar:
                         self.progress_bar.close()
-                    if self.exit:
-                        exit_client(signal=signal.SIGTERM, message=message)
-                    else:
-                        error = " ".join(['FileNotFound:', message])
-                        raise Exception(error)
+                    message = 'This file does not exist in current directory: {}'.format(file_name)
+                    logger.error(message)
+
+                    exit_client()
 
                 data = file.read()
 

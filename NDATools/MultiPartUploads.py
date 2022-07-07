@@ -1,10 +1,8 @@
-import boto3
-import botocore
 import hashlib
 
-from NDATools.S3Authentication import S3Authentication
 from NDATools.Utils import *
 
+logger = logging.getLogger(__name__)
 
 class MultiPartsUpload:
     def __init__(self, bucket, prefix, config, access_key, secret_key, session_token):
@@ -14,7 +12,7 @@ class MultiPartsUpload:
         self.access_key = access_key
         self.secret_key = secret_key
         self.session_token = session_token
-        self.client = S3Authentication.get_s3_client_with_config(self.access_key, self.secret_key, self.session_token)
+        self.client = get_s3_client_with_config(self.access_key, self.secret_key, self.session_token)
         self.incomplete_mpu = []
         self.mpu_to_abort = {}
 
@@ -62,7 +60,7 @@ class UploadMultiParts:
         self.access_key = credentials['access_key']
         self.secret_key = credentials['secret_key']
         self.session_token = credentials['session_token']
-        self.client = S3Authentication.get_s3_client_with_config(self.access_key, self.secret_key, self.session_token)
+        self.client = get_s3_client_with_config(self.access_key, self.secret_key, self.session_token)
         self.completed_bytes = 0
         self.completed_parts = 0
         self.parts = []

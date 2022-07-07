@@ -1,0 +1,21 @@
+version: 1
+disable_existing_loggers: false
+formatters:
+  basic:
+    format: '%(message)s'
+  detailed:
+    format: '%(asctime)s:%(levelname)s:%(module)s:%(thread)d:%(message)s'
+handlers:
+  console:
+    class: logging.StreamHandler
+    formatter: basic
+    stream: ext://sys.stdout
+  file:
+    class: logging.FileHandler
+    formatter: detailed
+loggers:
+  NDATools:
+    level: INFO
+root:
+  level: INFO
+  handlers: [console]

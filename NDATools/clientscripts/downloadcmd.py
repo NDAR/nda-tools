@@ -1,8 +1,8 @@
-from __future__ import with_statement, print_function
-from __future__ import absolute_import
-import sys
-import time
+from __future__ import absolute_import, print_function, with_statement
 
+import sys
+
+import NDATools
 from NDATools.Utils import exit_client
 
 if sys.version_info[0] < 3:
@@ -10,11 +10,8 @@ if sys.version_info[0] < 3:
 import argparse
 from NDATools.Download import Download
 from NDATools.Configuration import *
-import NDATools
 
-import logging
-
-
+logger = logging.getLogger(__name__)
 def parse_args():
     parser = argparse.ArgumentParser(
         description='This application allows you to enter a list of aws S3 paths and will download the files to your '
@@ -61,9 +58,6 @@ cause the program to download a maximum of 10 files simultaneously until all of 
 A default value is calculated based on the number of cpus found on the machine, however a higher value can be chosen to decrease download times. 
 If this value is set too high the download will slow. With 32 GB of RAM, a value of '10' is probably close to the maximum number of 
 parallel downloads that the computer can handle''')
-
-    parser.add_argument('-q', '--quiet', action='store_true',
-                        help='Option to suppress output of detailed messages as the program runs.')
 
     parser.add_argument('--file-regex', metavar='<regular expression>',
                         help='''Option can be used to download only a subset of the files in a package.  This command line arg can be used with
@@ -133,7 +127,7 @@ If the user runs:
 The download-verification-report.csv file will contain a record for each file in the package's image03 data-structure which also matches the file-regex and will check 
 for the existance of files in /foo/bar
 
-NOTE - at the moment, this option cannot be used to verify downlods to s3 locations (see -s3 option below). That will be implemented in the near
+NOTE - at the moment, this option cannot be used to verify downloads to s3 locations (see -s3 option below). That will be implemented in the near
 future.''')
 
     parser.add_argument('-s3', '--s3-destination', metavar='<s3 bucket>',
@@ -164,18 +158,23 @@ You may need to email your company/institution IT department to have this added 
 
     args = parser.parse_args()
 
+    # leaving this code snippet here in case we decide to move ahead with plan to drop support for -p flag
+    # if args.password:
+    #     print('Warning: The password flag (-p, --password) has been removed from nda-tools due to security concerns')
+
     return args
 
 
 def configure(args):
-    NDATools.Utils.logging.getLogger().setLevel(logging.INFO)
     if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
-        config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'), args.username,
-                                     args.password)
+        config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'), args.username, args.password)
+        config.read_user_credentials()
     else:
         config = ClientConfiguration('clientscripts/config/settings.cfg', args.username, args.password)
         config.read_user_credentials()
         config.make_config()
+
+    LoggingConfiguration.load_config(NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER)
 
     return config
 
@@ -183,11 +182,12 @@ def configure(args):
 def main():
     args = parse_args()
     config = configure(args)
+
     if args.s3_destination and not args.s3_destination.startswith('s3://'):
         raise Exception(
             'Invalid argument for -s3 option :{}. Argument must start with "s3://"'.format(args.s3_destination))
     if sys.version_info < (3, 5):
-        print('ERROR: "--verify" only works with python 3.5 or later. Please upgrade Python in order to continue')
+        logger.error('ERROR: "--verify" only works with python 3.5 or later. Please upgrade Python in order to continue')
         exit_client()
 
     s3Download = Download(config, args)

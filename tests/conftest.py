@@ -17,7 +17,7 @@ def download_config_factory():
         with mock.patch.object(sys, 'argv', test_args):
             test_args.insert(0, 'downloadcmd')
             args = download_parse_args()
-            config = download_configure(args.username, args.password)
+            config = download_configure(args.username)
         return args, config
 
     return _make_config

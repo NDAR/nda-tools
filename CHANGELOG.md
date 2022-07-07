@@ -1,5 +1,10 @@
 
 # CHANGELOG
+## 0.2.17 - 2022-06-23
+* [`nda-tools`] Updated logging mechanism from print statements to using the logging module
+* [`nda-tools`] fixed bug with resuming submision where the -wt flag was not having the intended effect.
+* [`nda-tools`] removed obsolete DataManager classes and related logic
+
 ## 0.2.5 - 2021-06-03
 * [`nda-tools`] Replaced calls to legacy Download Manager with calls to new package service.
 

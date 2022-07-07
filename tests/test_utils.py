@@ -6,9 +6,10 @@ from unittest import TestCase
 from mock import patch
 import mock
 
+logging.basicConfig(level=logging.DEBUG, format="%(asctime)s:%(levelname)s:%(message)s")
+logger = logging.getLogger(__name__)
 
 class TestUtils(TestCase):
-    logging.basicConfig(level=logging.DEBUG, format="%(asctime)s:%(levelname)s:%(message)s")
 
     def test_sanitize_file_path(self):
         windows_path = r'C:\\Users\\test\\path\\file.csv'
@@ -43,9 +44,9 @@ class TestUtils(TestCase):
 
         parse_local_files(directory_list, file_list, file_size_full_path_dict, invalid_file_array, True)
 
-        logging.debug(file_list)
-        logging.debug(invalid_file_array)
-        logging.debug(file_size_full_path_dict)
+        logger.debug(file_list)
+        logger.debug(invalid_file_array)
+        logger.debug(file_size_full_path_dict)
 
         self.assertEqual(len(invalid_file_array), 0)
         self.assertEqual(len(file_list), 0)
@@ -60,9 +61,9 @@ class TestUtils(TestCase):
 
         parse_local_files(directory_list, file_list, file_size_full_path_dict, invalid_file_array, False)
 
-        logging.debug(file_list)
-        logging.debug(invalid_file_array)
-        logging.debug(file_size_full_path_dict)
+        logger.debug(file_list)
+        logger.debug(invalid_file_array)
+        logger.debug(file_size_full_path_dict)
 
         self.assertEqual(len(invalid_file_array), 0)
         self.assertEqual(len(file_list), 0)

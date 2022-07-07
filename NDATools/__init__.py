@@ -6,9 +6,10 @@ import requests
 import json
 import sys
 
-__version__ = '0.2.16'
+__version__ = '0.2.17.dev41'
 pypi_version = None
 version_checked = False
+
 
 def check_version():
     try:
@@ -44,7 +45,6 @@ def check_version():
         sys.exit(1)
 
     NDATools.version_checked = True
-
 
 if not NDATools.version_checked:
     check_version()
@@ -86,3 +86,9 @@ if not os.path.exists(NDA_TOOLS_VAL_FOLDER):
 NDA_TOOLS_SUB_PACKAGE_FOLDER = os.path.join(NDA_TOOLS_VTCMD_FOLDER, 'submission_package')
 if not os.path.exists(NDA_TOOLS_SUB_PACKAGE_FOLDER):
     os.mkdir(NDA_TOOLS_SUB_PACKAGE_FOLDER)
+
+NDA_TOOLS_DEFAULT_LOG_FORMAT='%(asctime)s:%(levelname)s:%(message)s'
+
+NDA_TOOLS_LOGGING_YML_FILE = os.path.join(os.path.expanduser('~'), '.NDATools/logging.yml')
+
+os.environ['PYTHONWARNINGS']='ignore' # MAC users sometimes see output from python warnings module. Suppress these msgs
