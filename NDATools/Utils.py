@@ -92,7 +92,7 @@ def api_request(api, verb, endpoint, data=None, session=None, error_handler=Http
         elif api.get_protocol(api) == Protocol.XML:
             headers.update({'content-type': 'text/xml'})
     else:
-        if api.config.username is not None and api.config.password is not None:
+        if api.config.username and api.config.password:
             auth = requests.auth.HTTPBasicAuth(api.config.username, api.config.password)
 
         headers.update({'content-type': 'application/json'})

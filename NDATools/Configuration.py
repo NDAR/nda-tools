@@ -8,6 +8,8 @@ import sys
 import getpass
 import time
 
+import keyring
+import platform
 import requests
 from requests import HTTPError
 
@@ -28,6 +30,7 @@ import os
 from pkg_resources import resource_filename
 
 logger = logging.getLogger(__name__)
+
 
 class LoggingConfiguration:
 
@@ -56,15 +59,17 @@ class LoggingConfiguration:
 
 class ClientConfiguration:
 
-    def __init__(self, settings_file, username=None, password=None, access_key=None, secret_key=None):
+    SERVICE_NAME = 'nda-tools'
+
+    def __init__(self, settings_file, username=None, access_key=None, secret_key=None):
         self.config = configparser.ConfigParser()
         if settings_file == os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'):
-            config_location = settings_file
-            self._check_and_fix_missing_options(config_location)
+            self.config_location = settings_file
+            self._check_and_fix_missing_options(self.config_location)
         else:
-            config_location = resource_filename(__name__, settings_file)
+            self.config_location = resource_filename(__name__, settings_file)
 
-        self.config.read(config_location)
+        self.config.read(self.config_location)
         self.validation_api = self.config.get("Endpoints", "validation")
         self.submission_package_api = self.config.get("Endpoints", "submission_package")
         self.submission_api = self.config.get("Endpoints", "submission")
@@ -76,18 +81,14 @@ class ClientConfiguration:
         self.aws_secret_key = self.config.get("User", "secret_key")
         self.aws_session_token = self.config.get('User', 'session_token')
         self.username = self.config.get("User", "username")
-        self.password = self.config.get("User", "password")
 
-        # self.check_deprecated_settings()
+        self.check_deprecated_settings()
 
         if username:
             self.username = username
         elif self.username:
             logger.warning("-u/--username argument not provided. Using default value of '%s' which was saved in %s",
-                        self.username, os.path.join(os.path.expanduser('~'), '.NDATools' + os.sep + 'settings.cfg'))
-        if password:
-            self.password = password
-
+                           self.username, os.path.join(os.path.expanduser('~'), '.NDATools' + os.sep + 'settings.cfg'))
 
         if access_key:
             self.aws_access_key = access_key
@@ -141,7 +142,6 @@ class ClientConfiguration:
 
         copy_config.add_section("User")
         copy_config.set("User", "username", self.username)
-        copy_config.set("User", "password", self.password)
         copy_config.set("User", "access_key", self.aws_access_key)
         copy_config.set("User", "secret_key", self.aws_secret_key)
         copy_config.set("User", "session_token", self.aws_session_token)
@@ -151,17 +151,34 @@ class ClientConfiguration:
 
     def read_user_credentials(self, auth_req=True):
 
+        self.password = None
+
         if auth_req:
             while True:
-                while not self.username:
-                    self.username = input('Enter your NIMH Data Archives username:')
-                while not self.password:
-                    self.password = getpass.getpass('Enter your NIMH Data Archives password:')
-                if not self.is_valid_nda_credentials():
+                try:
+                    while not self.username:
+                        self.username = input('Enter your NIMH Data Archives username:')
+                        with open(self.config_location, 'w') as configfile:
+                            self.config.set('User', 'username', self.username)
+                            self.config.write(configfile)
+                    self.password = keyring.get_password(self.SERVICE_NAME, self.username)
+                    while not self.password:
+                        self.password = getpass.getpass('Enter your NIMH Data Archives password:')
+                    while not self.is_valid_nda_credentials():
                         logger.error("The password that was entered for user '%s' is invalid ...", self.username)
-                        self.password = None
-                else:
-                    break
+                        logger.error('If your username was previously entered incorrectly, you may update it in your '
+                                     'settings.cfg located at \n{}'.format(self.config_location))
+                        self.password = getpass.getpass('Enter your NIMH Data Archives password:')
+                        while self.password == '':
+                            self.password = getpass.getpass('Enter your NIMH Data Archives password:')
+                    else:
+                        keyring.set_password(self.SERVICE_NAME, self.username, self.password)
+                        break
+                except RuntimeError as e:
+                    if platform.system() == 'Linux':
+                        print('If there is no backend set up for keyring, you may try\n'
+                              'pip install secretstorage --upgrade keyrings.alt')
+                    raise e
 
         # Only ask for access-key/secret-key when needed (which is only when a user is creating a submission
         # and the files are stored in an s3 bucket.
@@ -175,19 +192,17 @@ class ClientConfiguration:
         if not self.aws_secret_key:
             self.aws_secret_key = getpass.getpass('Enter your aws_secret_key:')
 
-    '''
-    leaving this method here in case we decide to move ahead with plan to drop support for -p flag
     def check_deprecated_settings(self):
-        if self.config.has_option('User','password') and self.config.get("User", "password"):
-            print('Warning: Detected non-empty value for "password" in settings.cfg. Support for this setting has been deprecated and will no longer be used by this '
-                  'tool. Password storage is not recommended for security considerations')
-    '''
+        if self.config.has_option('User', 'password') and self.config.get("User", "password"):
+            print('Warning: Detected non-empty value for "password" in settings.cfg. Support for this setting has been '
+                  'deprecated and will no longer be used by this tool. Password storage is not recommended for security'
+                  ' considerations')
 
     def is_valid_nda_credentials(self):
         try:
             # will raise HTTP error 401 if invalid creds
             tmp = Utils.get_request(self.user_api, headers={'content-type': 'application/json'},
-                          auth=requests.auth.HTTPBasicAuth(self.username, self.password),
+                                    auth=requests.auth.HTTPBasicAuth(self.username, self.password),
                                     error_handler=HttpErrorHandlingStrategy.reraise_status)
             return True
         except HTTPError as e:

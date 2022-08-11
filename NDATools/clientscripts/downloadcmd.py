@@ -42,8 +42,10 @@ and always ends in a 2 digit number. (For example, see the data-structure page f
     parser.add_argument('-u', '--username', metavar='<username>', type=str, action='store',
                         help='NDA username')
 
-    parser.add_argument('-p', '--password', metavar='<password>', type=str, action='store',
-                        help='NDA password')
+    parser.add_argument('-p', '--password', help='Warning: Detected non-empty value for the -p/--password argument. '
+                                                 'Support for this setting has been deprecated and will no longer be '
+                                                 'used by this tool. Password storage is not recommended for security'
+                                                 ' considerations')
 
     parser.add_argument('-r', '--resume', action='store_true',
                         help='Flags to restart a download process. If you already have some files downloaded, you must '
@@ -158,19 +160,20 @@ You may need to email your company/institution IT department to have this added 
 
     args = parser.parse_args()
 
-    # leaving this code snippet here in case we decide to move ahead with plan to drop support for -p flag
-    # if args.password:
-    #     print('Warning: The password flag (-p, --password) has been removed from nda-tools due to security concerns')
+    if args.password:
+        print('Warning: Support for the password flag (-p, --password) has been removed from nda-tools due to security '
+              'concerns and has been replaced with keyring.')
+        args.__dict__.pop('password')
 
     return args
 
 
 def configure(args):
     if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
-        config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'), args.username, args.password)
+        config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'), args.username)
         config.read_user_credentials()
     else:
-        config = ClientConfiguration('clientscripts/config/settings.cfg', args.username, args.password)
+        config = ClientConfiguration('clientscripts/config/settings.cfg', args.username)
         config.read_user_credentials()
         config.make_config()
 

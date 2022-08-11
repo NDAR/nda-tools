@@ -72,7 +72,7 @@ class Validation:
             self.file_queue.put(file)
         self.file_queue.put("STOP")
         while any(map(lambda x: x.is_alive(), workers)):
-            time.sleep(0.1)
+            time.sleep(2)
         if not self.hide_progress:
             self.validation_progress.close()
         while True:
@@ -341,14 +341,11 @@ class Validation:
                     exit_client()
 
                 data = file.read()
-
                 response, session = api_request(self, "POST", self.api_scope, data)
                 while response and not response['done']:
                     response, session = api_request(self, "GET", "/".join([self.api, response['id']]), session=session)
-                    time.sleep(0.1)
+                    time.sleep(polling)
                     polling += 1
-                    if polling == 50:
-                        polling = 0
                 if response:
                     response, session = api_request(self, "GET", "/".join([self.api, response['id']]), session=session)
                     self.result_queue.put((response, file_name))

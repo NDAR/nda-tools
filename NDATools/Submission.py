@@ -375,7 +375,7 @@ class Submission:
                         if (self.total_progress.n < self.total_progress.total
                                 and progress <= (self.total_progress.total - self.total_progress.n)):
                             self.total_progress.update(progress)
-                time.sleep(0.1)
+                time.sleep(2)
             if not hide_progress:
                 if self.total_progress.n < self.total_progress.total:
                     self.total_progress.update(self.total_progress.total - self.total_progress.n)

@@ -52,8 +52,10 @@ def parse_args():
     parser.add_argument('-d', '--description', metavar='<arg>', type=str, nargs='+', action='store',
                         help='The description of the submission')
 
-    parser.add_argument('-p', '--password', metavar='<arg>', type=str, action='store',
-                        help='NDA password')
+    parser.add_argument('-p', '--password', help='Warning: Detected non-empty value for the -p/--password argument. '
+                                                 'Support for this setting has been deprecated and will no longer be '
+                                                 'used by this tool. Password storage is not recommended for security'
+                                                 ' considerations')
 
     parser.add_argument('-t', '--title', metavar='<arg>', type=str, nargs='+', action='store',
                         help='The title of the submission')
@@ -93,9 +95,10 @@ def parse_args():
 
     args = parser.parse_args()
 
-    # leaving this code snippet here in case we decide to move ahead with plan to drop support for -p flag
-    # if args.password:
-    #     print('Warning: Support for the password flag (-p, --password) has been removed from nda-tools due to security concerns and its value will be ignored.')
+    if args.password:
+        print('Warning: Support for the password flag (-p, --password) has been removed from nda-tools due to security '
+              'concerns and has been replaced with keyring.')
+        args.__dict__.pop('password')
 
     return args
 
@@ -107,10 +110,10 @@ def configure(args):
 
     if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
         config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'), args.username,
-                                     args.password, args.accessKey, args.secretKey)
+                                     args.accessKey, args.secretKey)
         config.read_user_credentials(auth_req)
     else:
-        config = ClientConfiguration('clientscripts/config/settings.cfg', args.username, args.password, args.accessKey,
+        config = ClientConfiguration('clientscripts/config/settings.cfg', args.username, args.accessKey,
                                      args.secretKey)
         config.read_user_credentials(auth_req)
         config.make_config()
