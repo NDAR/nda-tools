@@ -196,6 +196,45 @@ A local version of the package will be saved automatically to **~\nda-tools\vtcm
 and can be found on the collection submission tab on the NDA site.
 
 
+
+### Fixing QA Errors
+A QA check is performed on all data after it has been submitted to NDA for inconsistencies in data-points including sex, 
+subjeckey, interview age and interview date. If any problems are found with the data, an email will be sent to the users
+who created the submission along with a UUID called a QA Token which can be used to fix the errors in the submission. 
+
+To fix the data in NDA for your submission, you need to replace all of the csv files which contained errors in your original submission.
+To do this you must:
+    <ol>
+        <li>Retrieve the csv files with that were used to create the original submission and which contain data that needs to be corrected. 
+        This includes all csv files where data needs to be added, removed or updated.</li>
+        <li>Correct the files by adding, removing or updating information as needed.</li>
+        <li>Run the vtcmd with the -qa command line argument. Specify the value of the QA token which you should have 
+        received via email with the -qa argument. Then list all of the csv files that you made corrections to. If there was a csv 
+        file from the original submission that did not contain any changes, it is not necessary to supply the file as an argument at this time.         
+        </li>
+    </ol>
+     
+For example, if the original submission consisted of file1.csv, file2.csv and file3.csv, and corrections needed to be made to 
+file1.csv and file2.csv, the command to fix qa errors will look like:    
+<code>
+    vtcmd -b -qa f0d8ff08-cc38-4cb3-b6a4-39aff6f07f0e corrected-file1.csv corrected-file2.csv
+</code>
+
+Notice that file3.csv is excluded from the command because no changes needed to be made to that particular file.
+    
+**Please note this command should be run once for a submission and should include all of the files that contain
+corrections to data**. i.e do not run the vtcmd once for corrected-file1.csv and another time for corrected-file2.csv.
+If you accidentally omit files containing necessary changes when running the command, please contact the 
+HelpDesk at NDAHelp@mail.nih.gov. 
+
+Also note that the csv files should contain all of the data that was submitted originally. i.e. **if a csv originally had 800 rows and only 3 rows 
+needed to be changed, all 800 rows should be present in the csv when running the vtcmd**, not just the 3 rows that
+contain changes. Any data that is left out of the csv will be reflected in data-expected numbers for the collection. 
+
+The script will not upload any associated files that were uploaded during the original submission. It will only be necessary 
+to upload associated files if they appear in corrected csv files but not in any of the csv files from the original submission. This saves 
+time during genomic and imaging submissions where associated files can take days to upload.  
+
 ## Downloading Data
 
 To download data, you should use the downloadcmd command. 

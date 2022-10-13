@@ -1,31 +1,27 @@
-from __future__ import with_statement
-from __future__ import absolute_import
+from __future__ import absolute_import, with_statement
 
+import getpass
 import json
 import logging
+import logging.config
+import platform
 import shutil
 import sys
-import getpass
 import time
 
 import keyring
-import platform
 import requests
 from requests import HTTPError
-
-from NDATools import NDA_TOOLS_LOGGING_YML_FILE, Utils
-import logging.config
 import yaml
 
+from NDATools import NDA_TOOLS_LOGGING_YML_FILE, Utils
 from NDATools.Utils import exit_client, HttpErrorHandlingStrategy
 
 if sys.version_info[0] < 3:
     import ConfigParser as configparser
     input = raw_input
-    import thread
 else:
     import configparser
-    import _thread as thread
 import os
 from pkg_resources import resource_filename
 
@@ -68,6 +64,7 @@ class ClientConfiguration:
             self._check_and_fix_missing_options(self.config_location)
         else:
             self.config_location = resource_filename(__name__, settings_file)
+        logger.info('Using configuration file from {}'.format(self.config_location))
 
         self.config.read(self.config_location)
         self.validation_api = self.config.get("Endpoints", "validation")
@@ -106,6 +103,7 @@ class ClientConfiguration:
         self.JSON = False
         self.hideProgress = False
         self.skip_local_file_check = False
+        logger.info('proceeding as nda user: {}'.format(self.username))
 
     def _check_and_fix_missing_options(self, config_location):
         default_config = configparser.ConfigParser()

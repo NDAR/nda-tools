@@ -1,5 +1,7 @@
 
 # CHANGELOG
+## 0.2.19 - 2022-09-16
+* [`vtcmd`] added -rs feature to allow users to fix QA errors. 
 
 ## 0.2.18 - 2022-08-10
 * [`nda-tools`] Removed password from settings.cfg and --password / -p flags.

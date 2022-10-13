@@ -1,14 +1,11 @@
-from __future__ import absolute_import
-from __future__ import with_statement
+from __future__ import absolute_import, with_statement
 
-import sys
 import multiprocessing
 import sys
 
 from boto3.exceptions import S3UploadFailedError
 from boto3.s3.transfer import S3Transfer, TransferConfig
 from botocore.client import Config
-from botocore.exceptions import ClientError
 
 if sys.version_info[0] < 3:
     import Queue as queue
@@ -31,7 +28,7 @@ class Status:
 
 class Submission:
     def __init__(self, id, full_file_path, config, resume=False, allow_exit=False, username=None, password=None,
-                 thread_num=None, batch_size=None):
+                 thread_num=None, batch_size=None, original_submission_id=None):
         self.config = config
         self.api = self.config.submission_api
         if username:
@@ -68,6 +65,20 @@ class Submission:
             self.package_id = id
         self.exit = allow_exit
         self.all_mpus = []
+        self.original_submission_id = original_submission_id
+
+    def replace_submission(self):
+        response, session = api_request(self, "PUT", "/".join([self.api, self.original_submission_id]) + "?submissionPackageUuid={}".format(self.package_id))
+        if response:
+            self.status = response['submission_status']
+            self.submission_id = response['submission_id']
+        else:
+            message = 'There was an error creating your submission'
+            if self.exit:
+                exit_client(signal=signal.SIGTERM,
+                        message=message)
+            else:
+                raise Exception("{}\n{}".format('SubmissionError', message))
 
     def submit(self):
         response, session = api_request(self, "POST", "/".join([self.api, self.package_id]))
@@ -105,8 +116,13 @@ class Submission:
         batched_ids = [file_ids[i:i + self.batch_size] for i in range(0, len(file_ids), self.batch_size)]
 
         for ids in batched_ids:
+            query_params = ''
+            if self.config.source_bucket is not None:
+                query_params = '?s3SourceBucket={}'.format(self.config.source_bucket)
+                query_params += '&s3Prefix={}'.format(self.config.source_prefix) if self.config.source_prefix is not None else ''
+
             credentials_list, session = api_request(self, "POST", "/".join(
-                [self.api, self.submission_id, 'files/batchMultipartUploadCredentials']), data=json.dumps(ids))
+                [self.api, self.submission_id, 'files/batchMultipartUploadCredentials']) + query_params, data=json.dumps(ids))
             all_credentials = all_credentials + credentials_list['credentials']
             time.sleep(2)
 
@@ -366,8 +382,8 @@ class Submission:
 
             for file in response:
                 if file['status'] != Status.COMPLETE:
-                    self.upload_queue.put([file, False])
-            self.upload_queue.put(["STOP", False])
+                    self.upload_queue.put([file, False, True])
+            self.upload_queue.put(["STOP", False, True])
             self.upload_tries += 1
             while any(map(lambda w: w.is_alive(), workers)):
                 if not hide_progress:
@@ -448,7 +464,7 @@ class Submission:
             for cred in self.credentials_list:
                 if str(cred['submissionFileId']) == file_id:
                     credentials = {'access_key': cred['access_key'], 'secret_key': cred['secret_key'],
-                                   'session_token': cred['session_token']}
+                                   'session_token': cred['session_token'], 'source_uri': cred['source_uri'] }
                     break
             paths = remote_path.split('/')
             bucket = paths[2]
@@ -468,11 +484,11 @@ class Submission:
 
             return credentials
 
-        def add_back_to_queue(self, bucket, prefix):
+        def add_back_to_queue(self, bucket, prefix, try_nda_creds=True):
             # If expired token:
             #  1. Add to upload_queue so it is picked up by another thread again
-            self.upload_queue.put([self.upload, True])  # need to figure out how to test this and if it is the best way to retry a single file upload
-            self.upload_queue.put(["STOP", False])  # need to add the sentinel value again
+            self.upload_queue.put([self.upload, True, try_nda_creds])  # need to figure out how to test this and if it is the best way to retry a single file upload
+            self.upload_queue.put(["STOP", False, try_nda_creds])  # need to add the sentinel value again
 
             # 2. Add a function to get new credentials and update self.credentials_list AND
             # 3. In upload.config, edit it so it knows we need new credentials
@@ -503,9 +519,10 @@ class Submission:
 
                 self.upload = upload[0]
                 self.expired = upload[1]
+                self.try_nda_credentials = upload[2]
                 if self.upload == "STOP":
                     if self.upload_queue.qsize() == 0:
-                        self.upload_queue.put(["STOP", False])
+                        self.upload_queue.put(["STOP", False, True])
                         self.shutdown_flag.set()
                         break
                     else:
@@ -516,6 +533,7 @@ class Submission:
                         upload = self.upload_queue.get()
                         self.upload = upload[0]
                         self.expired = upload[1]
+                        self.try_nda_credentials = upload[2]
 
                 file_id, credentials, bucket, key, full_path, file_size = self.upload_config()
                 prefix = 'submission_{}'.format(self.submission_id)
@@ -578,9 +596,22 @@ class Submission:
                     source_key = key.split('/')[1:]
                     source_key = '/'.join(source_key)
                     self.source_key = '/'.join([self.source_prefix, source_key])
-                    self.fileobj = self.source_s3.Object(self.source_bucket, self.source_key).get()['Body']
 
-                    if mpu_exist:
+                    # try the original file credentials to perform a cp from source to dest
+                    # Note - this is faster than downloading and uploading but may not work if NDA doenst have access
+                    # to source bucket
+                    if self.try_nda_credentials :
+                        s3_client = self.credentials.get_s3_client_with_config(credentials['access_key'],
+                                                                                    credentials['secret_key'],
+                                                                                    credentials['session_token'])
+                        try:
+                            s3_client.copy({'Bucket': self.source_bucket, 'Key': self.source_key},
+                                                            bucket, prefix + '/' + source_key)
+                        except botocore.exceptions.ClientError as error:
+                            self.add_back_to_queue(bucket, prefix, False)
+                    elif mpu_exist:
+                        self.fileobj = self.source_s3.Object(self.source_bucket, self.source_key).get()['Body']
+
                         u = UploadMultiParts(mpu_to_complete, self.full_file_path, bucket, prefix, self.config, credentials, file_size)
                         u.get_parts_information()
                         if not self.expired:
@@ -609,6 +640,7 @@ class Submission:
                         self.progress_queue.put(None)
 
                     else:
+                        self.fileobj = self.source_s3.Object(self.source_bucket, self.source_key).get()['Body']
 
                         # set chunk size dynamically to based on file size
                         if file_size > 9999:

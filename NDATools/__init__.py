@@ -1,15 +1,16 @@
 from __future__ import print_function
-import os
 
-import NDATools
-import requests
 import json
+import os
 import sys
 
-__version__ = '0.2.24.dev1'
+import requests
+
+import NDATools
+
+__version__ = '0.2.19'
 pypi_version = None
 version_checked = False
-
 
 def check_version():
     try:

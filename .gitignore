@@ -10,6 +10,15 @@
 /*.egg
 
 /tests/test_files/
+/tests/integration_tests/
+*.zip
+
+# Pycharm IDE
+.idea
+.project
+venv
+.pydevproject
+
 
 **/.idea/
 **/venv/

@@ -7,6 +7,7 @@ import sys
 import uuid
 
 from boto3.s3.transfer import TransferConfig
+from requests import HTTPError
 
 import NDATools
 from NDATools import Utils

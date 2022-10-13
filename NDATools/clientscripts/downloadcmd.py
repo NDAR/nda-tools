@@ -3,7 +3,6 @@ from __future__ import absolute_import, print_function, with_statement
 import sys
 
 import NDATools
-from NDATools.Utils import exit_client
 
 if sys.version_info[0] < 3:
     input = raw_input

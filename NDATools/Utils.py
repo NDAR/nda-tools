@@ -1,20 +1,18 @@
 from __future__ import absolute_import, with_statement
-from email.policy import HTTP
 
 import json
 import logging
 import os
+import random
 import re
 import signal
 import sys
 import threading
 import time
 import traceback
-import random
 
 import boto3
 import requests
-from requests import HTTPError
 from requests.adapters import HTTPAdapter
 import requests.packages.urllib3.util
 
@@ -52,6 +50,7 @@ class HttpErrorHandlingStrategy():
     def ignore(r):
         pass
 
+
     @staticmethod
     def print_and_exit(r):
         # handle json and plain-text errors
@@ -81,7 +80,7 @@ def api_request(api, verb, endpoint, data=None, session=None, error_handler=Http
         read=20,
         connect=20,
         backoff_factor=3,
-        status_forcelist=(500, 502, 503, 504)
+        status_forcelist=(502, 503, 504)
     )
 
     headers = {'accept': 'application/json'}
@@ -106,7 +105,7 @@ def api_request(api, verb, endpoint, data=None, session=None, error_handler=Http
         if data is not None:
             data = data.encode('utf-8')
         r = session.send(requests.Request(verb, endpoint, headers, auth=auth, data=data).prepare(),
-                         timeout=300, stream=False)
+                         timeout=600, stream=False)
 
     except requests.exceptions.RequestException as e:
         logger.info('\nAn error occurred while making {} request, check your endpoint configuration:\n'.
@@ -212,7 +211,6 @@ def sanitize_file_path(file):
     if re.search(r'^/.+$', file):
         file_key = file.split('/', 1)[1]
     # If Windows full path
-    # TODO - correct regex. All single drive letters should be valid, (not just 'D'). Backslashes as file-separaters need to be added
     elif re.search(r'^\D:/.+$', file_key):
         file_key = file_key.split(':/', 1)[1]
     return file_key
@@ -226,6 +224,16 @@ def check_read_permissions(file):
         if err.errno == 13:
             logger.info('Permission Denied: {}'.format(file))
     return False
+
+
+def evaluate_yes_no_input(message, default_input=None):
+    while True:
+        default_print = ' (Y/n)' if default_input.upper() == 'Y' else  ' (y/N)' if default_input.upper() == 'N' else ''
+        user_input = input('{}{}'.format(message, default_print)) or default_input
+        if str(user_input).upper() in ['Y', 'N']:
+            return user_input.lower()
+        else:
+            print('Input not recognized.')
 
 
 def get_error():

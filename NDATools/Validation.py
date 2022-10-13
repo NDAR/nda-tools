@@ -10,6 +10,7 @@ import NDATools
 
 if sys.version_info[0] < 3:
     import Queue as queue
+
     input = raw_input
 else:
     import queue
@@ -20,7 +21,8 @@ import signal
 
 logger = logging.getLogger(__name__)
 class Validation:
-    def __init__(self, file_list, config, hide_progress, allow_exit=False, thread_num=None):
+    def __init__(self, file_list, config, hide_progress, allow_exit=False, thread_num=None,
+                 pending_changes=None, original_uuids=None):
         self.config = config
         self.hide_progress = hide_progress
         self.api = self.config.validation_api.strip('/')
@@ -31,11 +33,12 @@ class Validation:
         self.api_scope = self.api
         if self.scope is not None:
             self.api_scope = "".join([self.api, '/?scope={}'.format(self.scope)])
+
         self.file_queue = queue.Queue()
         self.result_queue = queue.Queue()
         self.file_list = file_list
         self.directory_list = self.config.directory_list
-        self.associated_files = []
+        self.associated_files_to_upload = set()
         self.uuid = []
         self.uuid_dict = {}
         self.responses = []
@@ -51,7 +54,10 @@ class Validation:
 
         self.field_names = ['FILE', 'ID', 'STATUS', 'EXPIRATION_DATE', 'ERRORS', 'COLUMN', 'MESSAGE', 'RECORD']
         self.validation_progress = None
+        self.pending_changes = pending_changes
         self.exit = allow_exit
+        self.original_uuids = original_uuids
+        self.data_structures_with_missing_rows = None
 
     """
     Validates a list of csv files and saves a new csv file with the results in the Home directory.
@@ -64,7 +70,8 @@ class Validation:
             self.validation_progress = tqdm(total=len(self.file_list), position=0, ascii=os.name == 'nt')
         workers = []
         for x in range(self.thread_num):
-            worker = Validation.ValidationTask(self.file_queue, self.result_queue, self.api, self.api_scope, self.responses, self.validation_progress, self.exit)
+            worker = Validation.ValidationTask(self.file_queue, self.result_queue, self.api, self.api_scope,
+                                               self.responses, self.validation_progress, self.exit)
             workers.append(worker)
             worker.daemon = True
             worker.start()
@@ -92,16 +99,98 @@ class Validation:
             elif response['errors'] != {}:
                 self.e = True
             if response['associated_file_paths'] and response['errors'] == {}:
-                self.associated_files.append(response['associated_file_paths'])
+                self.associated_files_to_upload.update(set(response['associated_file_paths']))
             if response['warnings'] != {}:
                 self.w = True
             if response['status'] == Status.PENDING_MANIFEST and response['errors'] == {}:
                 self.process_manifests(response)
                 response, session = api_request(self, "GET", "/".join([self.api, response['id']]))
-                self.associated_files.append(response['associated_file_paths'])
+                self.associated_files_to_upload.update(set(response['associated_file_paths']))
 
             self.uuid.append(response['id'])
-            self.uuid_dict[response['id']] = {'file': file, 'errors': response['errors'] != {}}
+            self.uuid_dict[response['id']] = {
+                'file': file, 'errors': response['errors'] != {},
+                'short_name': response['short_name'],
+                'associated_file_paths': set(response['associated_file_paths']),
+                'rows': response['rows'],
+                'manifests': {manifest['localFileName'] for manifest in response['manifests']}
+            }
+
+        if self.pending_changes:
+            # remove the associated_files that have already been uplaoded
+            structure_to_new_associated_files = {}
+            unrecognized_ds = set()
+            for uuid in self.uuid_dict:
+                short_name = self.uuid_dict[uuid]['short_name']
+                structure_to_new_associated_files[short_name] = set()
+            for uuid in self.uuid_dict:
+                short_name = self.uuid_dict[uuid]['short_name']
+                structure_to_new_associated_files[short_name].update(
+                    {file for file in self.uuid_dict[uuid]['associated_file_paths']})
+
+            files_to_upload = set()
+            for data_structure in structure_to_new_associated_files:
+                expected_change_for_data_structure = next(
+                    filter(lambda pending_change: pending_change['shortName'] == data_structure, self.pending_changes),
+                    None)
+                if expected_change_for_data_structure is not None:
+                    original_associated_file_set = {associated_file for associated_file in
+                                                    expected_change_for_data_structure['associatedFiles']}
+                    for new_asssociated_file in structure_to_new_associated_files[data_structure]:
+                        if new_asssociated_file not in original_associated_file_set:
+                            files_to_upload.update({new_asssociated_file})
+                else:
+                    unrecognized_ds.update({data_structure})
+
+
+            self.associated_files_to_upload = set(files_to_upload)
+            if len(files_to_upload) > 0:
+                logger.info ('\nDetected {} new files that need to be uploaded for submission.\n'.format(len(files_to_upload)))
+            else:
+                logger.info('\nDetected that all associated files have been previously uploaded from previous submission\n')
+
+            # Find datastructures with missing data
+            # create a map of short_name to num-rows for files that the user uploaded
+            structure_to_new_row_count = {}
+            for uuid in self.uuid_dict:
+                short_name = self.uuid_dict[uuid]['short_name']
+                structure_to_new_row_count[short_name] = 0
+            for uuid in self.uuid_dict:
+                short_name = self.uuid_dict[uuid]['short_name']
+                structure_to_new_row_count[short_name] += self.uuid_dict[uuid]['rows']
+
+            data_structures_with_missing_rows = []
+            for data_structure in structure_to_new_row_count:
+                expected_change_for_data_structure = next(
+                    filter(lambda pending_change: pending_change['shortName'] == data_structure, self.pending_changes),
+                    None)
+                if expected_change_for_data_structure is not None:
+                    if structure_to_new_row_count[data_structure] < expected_change_for_data_structure['rows']:
+                        data_structures_with_missing_rows.append((data_structure,
+                                                                  expected_change_for_data_structure['rows'],
+                                                                  structure_to_new_row_count[data_structure]))
+                else:
+                    unrecognized_ds.update({data_structure})
+
+            # update list of validation-uuids to be used during the packaging step
+            new_uuids, unrecognized_ds = self.generate_uuids_for_qa_workflow(unrecognized_ds)
+
+            if unrecognized_ds:
+                message = 'ERROR - The following datastructures cannot be used with the qa token provided: '
+                message += "\r\n" + "\r\n".join(unrecognized_ds)
+                exit_client(signal=signal.SIGTERM, message=message)
+            else:
+                self.data_structures_with_missing_rows = data_structures_with_missing_rows
+                self.uuid = new_uuids
+
+    def get_existing_manifests(self):
+        if not self.pending_changes:
+            return set()
+        # create a set of manifest files from the set of pending changes to enforce no duplicates
+        # convert back into a list because the process_manifests method expects a list
+        return {manifest for manifests in list(map(lambda change: change['manifests'], self.pending_changes)) for manifest
+             in manifests}
+
 
     def output(self):
         if self.config.JSON:
@@ -130,7 +219,7 @@ class Validation:
                     writer.writerow(
                         {'FILE': file_name, 'ID': response['id'], 'STATUS': response['status'],
                          'EXPIRATION_DATE': response['expiration_date'], 'ERRORS': 'None', 'COLUMN': 'None',
-                         'MESSAGE':'None','RECORD': 'None'})
+                         'MESSAGE': 'None', 'RECORD': 'None'})
                 else:
                     for error, value in response['errors'].items():
                         for v in value:
@@ -192,8 +281,12 @@ class Validation:
                                 m[message] = count
                         for x in m:
                             writer.writerow(
-                                {'FILE': file_name, 'ID': response['id'], 'STATUS': response['status'],
-                                 'EXPIRATION_DATE': response['expiration_date'], 'WARNINGS': warning, 'MESSAGE': x,
+                                {'FILE': file_name,
+                                 'ID': response['id'],
+                                 'STATUS': response['status'],
+                                 'EXPIRATION_DATE': response['expiration_date'],
+                                 'WARNINGS': warning,
+                                 'MESSAGE': x,
                                  'COUNT': m[x]})
             csvfile.close()
 
@@ -206,10 +299,36 @@ class Validation:
         for response in self.manifest_data_files:
             if response['id'] not in uuid_list:
                 self.manifest_data_files.remove(response)
-
+        if self.original_uuids:
+            uuid_list = self.generate_uuids_for_qa_workflow()[0]
         return uuid_list
 
-    def process_manifests(self, r, validation_results=None, yes_manifest=None, bulk_upload=False):
+    def generate_uuids_for_qa_workflow(self, unrecognized_ds=set()):
+        unrecognized_structures = set(unrecognized_ds)
+        new_uuids = set(self.original_uuids)
+        val_by_short_name = {}
+        for uuid in self.uuid_dict:
+            short_name = self.uuid_dict[uuid]['short_name']
+            val_by_short_name[short_name] = set()
+        for uuid in self.uuid_dict:
+            short_name = self.uuid_dict[uuid]['short_name']
+            val_by_short_name[short_name].update({uuid})
+        for short_name in val_by_short_name:
+            # find the pending change with the same short name
+            matching_change = {}
+            for change in self.pending_changes:
+                if change['shortName'] == short_name:
+                    matching_change = change
+            if not matching_change:
+                unrecognized_structures.add(short_name)
+            else:
+                # prevValidationUuids is the set of validation-uuids on the pending changes resource
+                new_uuids = new_uuids.difference(set(matching_change['validationUuids']))
+                new_uuids.update({res for res in val_by_short_name[short_name]})
+
+        return list(new_uuids), unrecognized_structures
+
+    def process_manifests(self, r, validation_results=None, yes_manifest=set(), bulk_upload=False):
         if not self.manifest_path:
             if not self.exit:
                 error = 'Missing Manifest File: You must include the path to your manifests files'
@@ -219,31 +338,25 @@ class Validation:
                                             "the complete paths to the folder where your manifests are located,"
                                             "separated by a space:")
                 self.manifest_path = manifest_path_input.split(' ')
-
-        if not yes_manifest:
-            yes_manifest = []
-
         no_manifest = set()
 
         if validation_results:
             self.validation_result = validation_results
         else:
-            self.validation_result = Validation.ValidationManifestResult(r, self.hide_progress, self.config)
+            self.validation_result = Validation.ValidationManifestResult(r, self)
         if not bulk_upload:
             files_to_upload = len(self.validation_result.manifests) - len(yes_manifest)
             uploaded_count = 0
-
             for validation_manifest in self.validation_result.manifests:
                 for m in self.manifest_path:
                     if validation_manifest.local_file_name not in yes_manifest:
                         try:
                             manifest_path = os.path.join(m, validation_manifest.local_file_name)
                             validation_manifest.upload_manifest(open(manifest_path, 'rb'))
-                            yes_manifest.append(validation_manifest.local_file_name)
-                            if validation_manifest.local_file_name in no_manifest:
-                                no_manifest.remove(validation_manifest.local_file_name)
+                            yes_manifest.add(validation_manifest.local_file_name)
+                            no_manifest.discard(validation_manifest.local_file_name)
                             uploaded_count += 1
-                            sys.stdout.write('\rUploaded manifest file {} of {}\r'.format(uploaded_count, files_to_upload))
+                            sys.stdout.write('\rUploaded manifest file {} of {}'.format(uploaded_count, files_to_upload))
                             sys.stdout.flush()
                             break
                         except IOError:
@@ -252,7 +365,7 @@ class Validation:
                             no_manifest.add(validation_manifest.local_file_name)
 
                         except json.decoder.JSONDecodeError as e:
-                            error = 'JSON Error: There was an error in your json file: {}\nPlease review and try again: {}\n'.format\
+                            error = 'JSON Error: There was an error in your json file: {}\nPlease review and try again: {}\n'.format \
                                 (validation_manifest.local_file_name, e)
                             raise Exception(error)
 
@@ -266,27 +379,29 @@ class Validation:
 
             retry = input('Press the "Enter" key to specify location(s) for manifest files and try again:')
             self.manifest_path = retry.split(' ')
-            self.process_manifests(r, yes_manifest=yes_manifest, validation_results = self.validation_result)
-
+            self.process_manifests(r, yes_manifest=yes_manifest, validation_results=self.validation_result)
+        else:
+            logger.info('\r\nFinished uploading all manifest files')
         while not self.validation_result.status.startswith(Status.COMPLETE):
             response, session = api_request(self, "GET", "/".join([self.api, r['id']]))
-            self.validation_result = Validation.ValidationManifestResult(response, self.hide_progress, self.config)
+            self.validation_result = Validation.ValidationManifestResult(response, self)
             for m in self.validation_result.manifests:
                 if m.status == Status.ERROR:
-                    error = 'JSON Error: There was an error in your json file: {}\nPlease review and try again: {}\n'.format(m.local_file_name, m.errors[0])
+                    error = 'JSON Error: There was an error in your json file: {}\nPlease review and try again: {}\n'.format(
+                        m.local_file_name, m.errors[0])
                     raise Exception(error)
 
     class ValidationManifest:
 
-        def __init__(self, _manifest, hide, config=None):
-            self.config = config
+
+        def __init__(self, _manifest, validation):
+            self.config = validation.config
             self.status = _manifest['status']
             self.local_file_name = _manifest['localFileName']
             self.manifestUuid = _manifest['manifestUuid']
             self.errors = _manifest['errors']
             self.url = _manifest['_links']['self']['href']
-            self.associated_files = []
-            self.hide_progress = hide
+            self.hide_progress = validation.hide_progress
 
         def upload_manifest(self, _fp):
             manifest_object = json.load(_fp)
@@ -294,7 +409,7 @@ class Validation:
 
     class ValidationManifestResult:
 
-        def __init__(self, _validation_result, hide, config):
+        def __init__(self, _validation_result, validation):
             self.done = _validation_result['done']
             self.id = _validation_result['id']
             self.status = _validation_result['status']
@@ -303,7 +418,7 @@ class Validation:
             self.scope = _validation_result['scope']
             manifests = []
             for _manifest in _validation_result['manifests']:
-                manifests.append(Validation.ValidationManifest(_manifest, hide, config))
+                manifests.append(Validation.ValidationManifest(_manifest, validation))
             self.manifests = manifests
 
     class ValidationTask(threading.Thread, Protocol):

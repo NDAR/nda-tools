@@ -1,5 +1,4 @@
-from __future__ import absolute_import
-from __future__ import with_statement
+from __future__ import absolute_import, with_statement
 
 import sys
 
@@ -19,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 class SubmissionPackage:
     def __init__(self, uuid, associated_files, config, username=None, password=None, collection=None, title=None,
-                 description=None, alternate_location=None, allow_exit=False):
+                 description=None, alternate_location=None, allow_exit=False, pending_changes=None, original_uuids=None):
         self.config = config
         self.api = self.config.submission_package_api
         self.validationtool_api = self.config.validationtool_api
@@ -52,6 +51,8 @@ class SubmissionPackage:
         self.validation_results = []
         self.no_read_access = set()
         self.exit = allow_exit
+        self.pending_changes = pending_changes
+        self.original_validation_uuids = original_uuids
 
     def get_collections(self):
         collections, session = api_request(self,
@@ -164,9 +165,8 @@ class SubmissionPackage:
                 raise_error(error)
 
         if not self.no_match:
-            for a in self.associated_files:
-                for file in a:
-                    self.no_match.append(file)
+            for file in self.associated_files:
+                self.no_match.append(file)
 
         # local files
         if self.directory_list:
@@ -268,6 +268,14 @@ class SubmissionPackage:
             "validation_results":
                 self.uuid
         }
+        if hasattr(self.config, 'replace_submission'):
+            self.package_info['package_info']['replacement_submission'] = self.config.replace_submission
+            self.print_replacement_summary()
+            if not self.config.force:
+                user_input = evaluate_yes_no_input("Are you sure you want to continue?", 'n')
+                if user_input.lower() == 'n':
+                    exit_client(signal.SIGTERM, message='Exiting...')
+
 
         json_data = json.dumps(self.package_info)
         response, session = api_request(self, "POST", self.api, json_data)
@@ -303,6 +311,8 @@ class SubmissionPackage:
                 message = 'There was an error in building your package.'
                 if response['package_info']['status'] == Status.SYSERROR:
                     message=response['errors']['system'][0]['message']
+                elif 'has changed since validation' in response['errors']:
+                    message = response['errors']
                 if self.exit:
                     exit_client(signal.SIGTERM, message=message)
                 else:
@@ -352,6 +362,15 @@ class SubmissionPackage:
             if package_download.total > package_download.n:
                 package_download.update(package_download.total - package_download.n)
             package_download.close()
+
+    def print_replacement_summary(self):
+        logger.info('Below is a summary of what your submission will look like with the validation files provided:')
+        logger.info('')
+        logger.info ('Short-Name, Number of Rows')
+        for change in self.pending_changes:
+            logger.info ('{},{}'.format(change['shortName'], change['rows']))
+        logger.info('')
+        logger.info('')
 
 
 class Status:
