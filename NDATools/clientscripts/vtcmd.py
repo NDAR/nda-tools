@@ -98,6 +98,10 @@ def parse_args():
     parser.add_argument('-f', '--force', action='store_true',
                         help='Ignores all warnings and continues without prompting for input from the user.')
 
+    parser.add_argument('--validation-timeout', default=300, type=int, action='store', help='Timeout in seconds until the program errors out with an error. '
+                                                                               'In most cases the default value of ''300'' seconds should be sufficient to validate submissions however it may'
+                                                                               'be necessary to increase this value to a specific duration.')
+
     args = parser.parse_args()
 
     if args.password:
@@ -135,6 +139,8 @@ def configure(args):
         config.source_bucket = args.s3Bucket
     if args.s3Prefix:
         config.source_prefix = args.s3Prefix
+    if args.validation_timeout:
+        config.validation_timeout = args.validation_timeout
     if args.title:
         config.title = ' '.join(args.title)
     if args.description:
