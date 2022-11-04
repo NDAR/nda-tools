@@ -66,9 +66,10 @@ class Submission:
         self.exit = allow_exit
         self.all_mpus = []
         self.original_submission_id = original_submission_id
+        self.auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
 
     def replace_submission(self):
-        response, session = api_request(self, "PUT", "/".join([self.api, self.original_submission_id]) + "?submissionPackageUuid={}".format(self.package_id))
+        response = put_request("/".join([self.api, self.original_submission_id]) + "?submissionPackageUuid={}".format(self.package_id), auth=self.auth)
         if response:
             self.status = response['submission_status']
             self.submission_id = response['submission_id']
@@ -81,7 +82,7 @@ class Submission:
                 raise Exception("{}\n{}".format('SubmissionError', message))
 
     def submit(self):
-        response, session = api_request(self, "POST", "/".join([self.api, self.package_id]))
+        response = post_request("/".join([self.api, self.package_id]), auth=self.auth)
         if response:
             self.status = response['submission_status']
             self.submission_id = response['submission_id']
@@ -94,7 +95,7 @@ class Submission:
                 raise Exception("{}\n{}".format('SubmissionError', message))
 
     def check_status(self):
-        response, session = api_request(self, "GET", "/".join([self.api, self.submission_id]))
+        response = get_request("/".join([self.api, self.submission_id]), auth=self.auth)
 
         if response:
             self.status = response['submission_status']
@@ -121,8 +122,8 @@ class Submission:
                 query_params = '?s3SourceBucket={}'.format(self.config.source_bucket)
                 query_params += '&s3Prefix={}'.format(self.config.source_prefix) if self.config.source_prefix is not None else ''
 
-            credentials_list, session = api_request(self, "POST", "/".join(
-                [self.api, self.submission_id, 'files/batchMultipartUploadCredentials']) + query_params, data=json.dumps(ids))
+            credentials_list = post_request("/".join(
+                [self.api, self.submission_id, 'files/batchMultipartUploadCredentials']) + query_params, payload=json.dumps(ids), auth=self.auth)
             all_credentials = all_credentials + credentials_list['credentials']
             time.sleep(2)
 
@@ -152,7 +153,7 @@ class Submission:
     @property
     def incomplete_files(self):
 
-        response, session = api_request(self, "GET", "/".join([self.api, self.submission_id, 'files']))
+        response = get_request("/".join([self.api, self.submission_id, 'files']), auth=self.auth)
         self.full_file_path = {}
         self.associated_files = []
         if response:
@@ -169,7 +170,7 @@ class Submission:
                 raise Exception("{}\n{}".format('SubmissionError', message))
 
     def check_submitted_files(self):
-        response, session = api_request(self, "GET", "/".join([self.api, self.submission_id, 'files']))
+        response = get_request("/".join([self.api, self.submission_id, 'files']), auth=self.auth)
 
         file_info = self.create_file_info_list(response)
 
@@ -325,7 +326,7 @@ class Submission:
         data_to_dump = [list_data[i:i + self.batch_size] for i in range(0, len(list_data), self.batch_size)]
         for d in data_to_dump:
             data = json.dumps(d)
-            api_request(self, "PUT", url, data=data)
+            put_request(url, payload=data, auth=self.auth)
 
     def complete_partial_uploads(self):
 
@@ -354,7 +355,7 @@ class Submission:
             path, file_size = self.full_file_path[associated_file]
             self.total_upload_size += file_size
 
-        response, session = api_request(self, "GET", "/".join([self.api, self.submission_id, 'files']))
+        response = get_request("/".join([self.api, self.submission_id, 'files']), auth=self.auth)
         if response:
             if not self.resume:
                 file_id_info = self.create_file_info_list(response)
@@ -474,7 +475,7 @@ class Submission:
 
         def update_tokens(self):
             link = self.upload['_links']['multipartUploadCredentials']['href']
-            credentials, session = api_request(self, "GET", link)
+            credentials = get_request(link)
 
             for creds in self.credentials_list:
                 if creds['fileId'] == credentials['fileId']:

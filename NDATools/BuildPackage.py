@@ -46,6 +46,7 @@ class SubmissionPackage:
         self.endpoint_title = alternate_location
         self.collections = {}
         self.endpoints = []
+        self.auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
         self.get_collections()
         self.get_custom_endpoints()
         self.validation_results = []
@@ -55,17 +56,13 @@ class SubmissionPackage:
         self.original_validation_uuids = original_uuids
 
     def get_collections(self):
-        collections, session = api_request(self,
-                                           "GET",
-                                           "/".join([self.validationtool_api, "user/collection"]))
+        collections = get_request("/".join([self.validationtool_api, "user/collection"]), auth=self.auth, headers={'Accept':'application/json'})
         if collections:
             for c in collections:
                 self.collections.update({c['id']: c['title']})
 
     def get_custom_endpoints(self):
-        endpoints, session = api_request(self,
-                                         "GET",
-                                         "/".join([self.validationtool_api, "user/customEndpoints"]))
+        endpoints = get_request("/".join([self.validationtool_api, "user/customEndpoints"]), auth=self.auth, headers={'Accept':'application/json'})
         if endpoints:
             for endpoint in endpoints:
                 self.endpoints.append(endpoint['title'])
@@ -278,7 +275,7 @@ class SubmissionPackage:
 
 
         json_data = json.dumps(self.package_info)
-        response, session = api_request(self, "POST", self.api, json_data)
+        response = post_request(self.api, json_data, auth=self.auth)
         if response:
             try:
                 self.package_id = response['submission_package_uuid']
@@ -298,7 +295,7 @@ class SubmissionPackage:
 
             polling = 0
             while response['package_info']['status'] == Status.PROCESSING:
-                response, session = api_request(self, "GET", "/".join([self.api, self.package_id]), session=session)
+                response = get_request("/".join([self.api, self.package_id]), auth=self.auth)
                 polling += 1
                 self.package_id = response['submission_package_uuid']
             if response['package_info']['status'] == Status.COMPLETE:

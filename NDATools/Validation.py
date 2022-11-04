@@ -58,6 +58,7 @@ class Validation:
         self.exit = allow_exit
         self.original_uuids = original_uuids
         self.data_structures_with_missing_rows = None
+        self.auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
 
     """
     Validates a list of csv files and saves a new csv file with the results in the Home directory.
@@ -71,7 +72,9 @@ class Validation:
         workers = []
         for x in range(self.thread_num):
             worker = Validation.ValidationTask(self.file_queue, self.result_queue, self.api, self.api_scope,
-                                               self.responses, self.validation_progress, self.exit)
+                                               self.responses, self.validation_progress, self.exit,
+                                               self.config.validation_timeout, self.auth)
+
             workers.append(worker)
             worker.daemon = True
             worker.start()
@@ -104,7 +107,7 @@ class Validation:
                 self.w = True
             if response['status'] == Status.PENDING_MANIFEST and response['errors'] == {}:
                 self.process_manifests(response)
-                response, session = api_request(self, "GET", "/".join([self.api, response['id']]))
+                response = get_request("/".join([self.api, response['id']]), auth=self.auth)
                 self.associated_files_to_upload.update(set(response['associated_file_paths']))
 
             self.uuid.append(response['id'])
@@ -383,7 +386,7 @@ class Validation:
         else:
             logger.info('\r\nFinished uploading all manifest files')
         while not self.validation_result.status.startswith(Status.COMPLETE):
-            response, session = api_request(self, "GET", "/".join([self.api, r['id']]))
+            response = get_request("/".join([self.api, r['id']]), auth=self.auth)
             self.validation_result = Validation.ValidationManifestResult(response, self)
             for m in self.validation_result.manifests:
                 if m.status == Status.ERROR:
@@ -402,10 +405,11 @@ class Validation:
             self.errors = _manifest['errors']
             self.url = _manifest['_links']['self']['href']
             self.hide_progress = validation.hide_progress
+            self.auth = validation.auth
 
         def upload_manifest(self, _fp):
             manifest_object = json.load(_fp)
-            api_request(self, "PUT", self.url, data=json.dumps(manifest_object))
+            put_request(self.url, payload=manifest_object, auth=self.auth)
 
     class ValidationManifestResult:
 
@@ -422,7 +426,7 @@ class Validation:
             self.manifests = manifests
 
     class ValidationTask(threading.Thread, Protocol):
-        def __init__(self, file_queue, result_queue, api, scope, responses, validation_progress, exit):
+        def __init__(self, file_queue, result_queue, api, scope, responses, validation_progress, exit, validation_timeout, auth):
             threading.Thread.__init__(self)
             self.file_queue = file_queue
             self.result_queue = result_queue
@@ -432,6 +436,8 @@ class Validation:
             self.progress_bar = validation_progress
             self.shutdown_flag = threading.Event()
             self.exit = exit
+            self.validation_timeout = validation_timeout
+            self.auth = auth
 
         @staticmethod
         def get_protocol(cls):
@@ -456,13 +462,14 @@ class Validation:
                     exit_client()
 
                 data = file.read()
-                response, session = api_request(self, "POST", self.api_scope, data)
+
+                response = post_request(self.api_scope, data, timeout=self.validation_timeout, headers = {'content-type':'text/csv'}, auth=self.auth)
                 while response and not response['done']:
-                    response, session = api_request(self, "GET", "/".join([self.api, response['id']]), session=session)
+                    response = get_request("/".join([self.api, response['id']]), auth=self.auth)
                     time.sleep(polling)
                     polling += 1
                 if response:
-                    response, session = api_request(self, "GET", "/".join([self.api, response['id']]), session=session)
+                    response = get_request("/".join([self.api, response['id']]), auth=self.auth)
                     self.result_queue.put((response, file_name))
                     if self.progress_bar:
                         self.progress_bar.update(n=1)

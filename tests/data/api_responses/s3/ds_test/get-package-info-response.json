@@ -1,0 +1,23 @@
+ {
+    "links": [
+      {
+        "rel": "self",
+        "href": "https://nda.nih.gov/api/package/113460"
+      },
+      {
+        "rel": "associate",
+        "href": "https://nda.nih.gov/api/package/113460/associate"
+      }
+    ],
+    "package_id": 1189934,
+    "status": "Ready to Download",
+    "description": "OAI12MonthImages",
+    "total_package_size": 874258539219,
+    "has_associated_files": true,
+    "created_date": "2018-07-12T07:42:41.243-04:00",
+    "package_type": "Shared Package",
+    "source_package_id": null,
+    "source_package_description": null,
+    "permission_group": "Osteoarthritis Initiative",
+    "file_count": 5
+  }

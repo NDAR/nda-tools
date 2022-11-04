@@ -1,0 +1,17 @@
+{
+	"results": [],
+	"_links": {
+		"next": {
+			"href": "https://nda.nih.gov/api/package/1189934/files?page=1&size=7"
+		},
+		"previous": {
+			"href": "https://nda.nih.gov/api/package/1189934/files?page=1&size=7"
+		},
+		"first": {
+			"href": "https://nda.nih.gov/api/package/1189934/files?page=1&size=7"
+		},
+		"last": {
+			"href": "https://nda.nih.gov/api/package/1189934/files?page=1&size=7"
+		}
+	}
+}

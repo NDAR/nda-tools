@@ -5,5 +5,8 @@
   "errors": { },
   "warnings": { },
   "associated_file_paths": { },
-  "expiration_date": "07/14/2021"
+  "expiration_date": "07/14/2021",
+  "short_name": "fakestructure01",
+  "rows": 4,
+  "manifests": []
 }

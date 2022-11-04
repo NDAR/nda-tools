@@ -1,224 +1,414 @@
+import datetime
+import itertools
 import json
+import math
 import os
-from unittest.mock import patch, Mock, MagicMock
+import shutil
+import sys
+from unittest.mock import ANY, MagicMock
 
 import pytest
 from requests import HTTPError
 
 import NDATools.clientscripts.downloadcmd
+from NDATools.Download import Download
 import NDATools.Utils
 
 FAKE_FILE_BYTES = [0x10, 0x10]
-MISSING_FILE = 's3://NDAR_Central_1/submission_43568/4.png'
+MISSING_FILE = 's3://NDAR_Central_1/submission_43568/not-found.png'
 
 
 class TestDownload:
 
-    def mock_post_api_response(self, *args, **kwargs):
-        kwargs['verb'] = 'POST'
-        return self.mock_api_response(*args, **kwargs)
-
-    def mock_get_api_response(self, *args, **kwargs):
-        kwargs['verb'] = 'GET'
-        return self.mock_api_response(*args, **kwargs)
-
-    def _get_fake_s3_response_file_not_found(self):
-        for i in ['api_responses/s3/ds_test/fmriresults01_with_file_not_found.txt',
-                  'api_responses/s3/ds_test/1.png',
-                  'api_responses/s3/ds_test/2.png',
-                  'api_responses/s3/ds_test/3.png']:
-            yield self._load_from_file(i)
-
-    def _get_fake_s3_response(self):
-        for i in ['api_responses/s3/ds_test/fmriresults01.txt',
-                  'api_responses/s3/ds_test/1.png',
-                  'api_responses/s3/ds_test/2.png',
-                  'api_responses/s3/ds_test/3.png']:
-            yield self._load_from_file(i)
-
-    def mock_api_response(self, *args, **kwargs):
-        endpoint = args[0] if 'endpoint' not in kwargs else kwargs['kwargs']
-        verb = kwargs['verb']
-        payload = None
-        if verb == 'POST':
-            payload = kwargs['json']
-        response_text = None
-        response = MagicMock()
-
-        if '/api/datadictionary' in endpoint:
-            response_text = self._load_from_file('api_responses/datadictionary/ds_test/get_datastructure_response.json')
-            response.json.return_value = json.loads(response_text)
-        elif '/api/package' in endpoint:
-            if 'files/batchGeneratePresignedUrls' in endpoint:
-                if not self.should_return_done_resource:
-                    self.should_return_done_resource = True
-                    response_text = self._load_from_file('api_responses/package/ds_test/get_ds_presigned_url.json')
-                else:
-                    response_text = self._load_from_file('api_responses/package/ds_test/get_afiles_presigned_urls.json')
-            elif verb == 'GET' and '/files?page=1&size=all' in endpoint:
-                response_text = self._load_from_file('api_responses/package/ds_test/all_files.json')
-            elif verb == 'POST' and '/files' in endpoint:
-                if self.request.node.name == 'test_ds_argument_file_not_found' and verb == 'POST' and MISSING_FILE in payload:
-                    response_text = '''The following files are invalid\r\n{}'''.format(MISSING_FILE)
-                    response.text = response_text
-                    response.status_code = 404
-                    raise HTTPError(response=response)
-                else:
-                    response_text = self._load_from_file('api_responses/package/ds_test/get_files_by_s3.json')
-                    response.json.return_value = json.loads(response_text)
-        else:
-            if self.request.node.name == 'test_ds_argument_file_not_found':
-                response_text = self._get_fake_s3_response_file_not_found()
-            else:
-                response_text = self._get_fake_s3_response()
-            response.__enter__.return_value.iter_content.return_value.__iter__.return_value = FAKE_FILE_BYTES
-            self.s3_file_download_count += 1
-
-        response.text = response_text
-        return response
-
     @pytest.fixture(autouse=True)
-    def class_setup(self, load_from_file, request):
-        self.should_return_done_resource = False
-        self._load_from_file = load_from_file
-        self.s3_file_download_count = 0
-        self.request = request
+    def class_setup(self, load_from_file):
+        self.load_from_file = load_from_file
 
-    @patch('NDATools.Download.open')
-    @patch('NDATools.Download.os')
-    @patch('NDATools.clientscripts.downloadcmd.configure')
-    @patch('NDATools.clientscripts.downloadcmd.parse_args')
-    @patch('NDATools.Download.requests')
-    def test_ds_argument_file_not_found(self,
-                                        requests_mock,
-                                        parse_args_mock,
-                                        configure_mock,
-                                        os_mock,
-                                        mock_file_open,
+        
+
+    def test_s3links_argument_file_not_found(self,
                                         download_config_factory,
                                         shared_datadir,
-                                        capsys):
+                                        capsys,
+                                        monkeypatch,
+                                        tmp_path,
+                                        tmpdir):
         test_package_id = '1189934'
-        test_data_structure_file = 'fmriresults01'
-        test_args = ['-dp', test_package_id, '-ds', test_data_structure_file]
+        test_text_structure_file = 'api_responses/s3/ds_test/test-not-found.csv'
+        test_args = ['-dp', test_package_id, '-t', os.path.join(shared_datadir, test_text_structure_file)]
 
-        download_config_data_structure = download_config_factory(test_args)
+        config, args = download_config_factory(test_args)
 
-        requests_mock.post.side_effect = self.mock_post_api_response
-        requests_mock.get.side_effect = self.mock_get_api_response
+        def mock_initialize_verification_files(*args, **kwargs):
+            self = args[0]
+            meta = tmpdir / "meta"
+            meta.mkdir()
+            self.downloadcmd_package_metadata_directory = str(meta)
+            logs = tmpdir / "logs"
+            logs.mkdir()
+            NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER = str(logs)
+            return str(tmpdir/ "test_dd.csv")
+        def mock_get_package_info(*args, **kwargs):
+            return json.loads(self.load_from_file('api_responses/s3/ds_test/get-package-info-response.json'))
 
-        session_mock = MagicMock()
-        requests_mock.session.return_value = session_mock
-        session_mock.get = self.mock_get_api_response
+        def mock_generate_download_batch_file_ids(*args, **kwargs):
+            return []
 
-        os_mock.path.isfile.return_value = False
-        os_mock.path.sep = os.path.sep
+        def mock_get_completed_files_in_download(*args, **kwargs):
+            return []
 
-        parse_args_mock.return_value = download_config_data_structure[0]
-        configure_mock.return_value = download_config_data_structure[1]
+        download_mock = MagicMock(return_value = {'actual_file_size':10, 'download_complete_time': datetime.datetime.now()})
 
-        mock_ds_file = MagicMock()
-        mock_a_file1 = MagicMock()
-        mock_a_file2 = MagicMock()
-        mock_a_file3 = MagicMock()
-        # we plan on opening a file 2 times -
-        # the first time for writing the ds file, and the second time for reading the ds file
-        mock_file_open.side_effect = [mock_ds_file,
-                                      open(os.path.join(shared_datadir, 'api_responses/s3/ds_test/fmriresults01_with_file_not_found.txt')),
-                                      mock_a_file1,
-                                      mock_a_file2,
-                                      mock_a_file3]
+        def get_presigned_urls_mock(*args, **kwargs):
+            return {f:'s3://fake-presigned-url' for f in args[1]}
 
-        NDATools.clientscripts.downloadcmd.main()
 
-        captured = capsys.readouterr()
-        assert 'WARNING: The following associated files were not found' in captured.out
-        assert 'Beginning download of 3 files' in captured.out
+        def mock_post_request (*args, **kwargs):
+            response = MagicMock()
+            payload = args[1]
+            if  MISSING_FILE in payload:
+                response_text = '''The following files are invalid\r\n{}'''.format(MISSING_FILE)
+                response.text = response_text
+                response.status_code = 404
+                e = HTTPError(response=response)
 
-    @patch('NDATools.clientscripts.downloadcmd.configure')
-    @patch('NDATools.clientscripts.downloadcmd.parse_args')
-    @patch('NDATools.Download.requests')
-    def test_ds_argument_structure_not_found(self, requests_mock,
-                                             parse_args_mock,
-                                             configure_mock,
+                def rethrow(*args, **kwargs):
+                    raise e
+
+                response.ok.return_value = False
+                response.raise_for_status.side_effect = rethrow
+                return response
+            else:
+                response_text = self.load_from_file('api_responses/package/ds_test/get_files_by_s3.json')
+                response.json.return_value = json.loads(response_text)
+                response.text = response_text
+                return response
+
+        with monkeypatch.context() as m:
+            m.setattr(Download, 'initialize_verification_files', mock_initialize_verification_files)
+            m.setattr(Download, 'get_package_info', mock_get_package_info)
+            m.setattr(Download, 'get_completed_files_in_download', mock_get_completed_files_in_download)
+            m.setattr(NDATools.Download, 'post_request', mock_post_request)
+            m.setattr(Download, 'download_from_s3link', download_mock)
+            m.setattr(Download, 'get_presigned_urls', get_presigned_urls_mock)
+
+            Download(args, config).start()
+
+            captured = capsys.readouterr()
+            assert 'WARNING: The following associated files were not found' in captured.out
+            assert 'Beginning download of 3 files' in captured.out
+            assert download_mock.call_count == 3  # number of files in the DS file
+
+
+    def test_ds_argument_structure_not_found(self,
                                              download_config_factory,
-                                             capsys):
+                                             capsys, monkeypatch, shared_datadir, tmp_path, tmpdir):
 
         test_package_id = '1189934'
         test_data_structure_file = 'image03'
         test_args = ['-dp', test_package_id, '-ds', test_data_structure_file]
 
-        download_config_data_structure = download_config_factory(test_args)
-        parse_args_mock.return_value = download_config_data_structure[0]
-        configure_mock.return_value = download_config_data_structure[1]
+        config, args = download_config_factory(test_args)
 
-        requests_mock.post.side_effect = self.mock_post_api_response
-        requests_mock.get.side_effect = self.mock_get_api_response
+        def mock_initialize_verification_files(*args, **kwargs):
+            self = args[0]
+            meta = tmpdir / "meta"
+            meta.mkdir()
+            self.downloadcmd_package_metadata_directory = str(meta)
+            logs = tmpdir / "logs"
+            logs.mkdir()
+            NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER = str(logs)
+            return str(tmpdir/ "test_dd.csv")
+        def mock_get_package_info(*args, **kwargs):
+            return json.loads(self.load_from_file('api_responses/s3/ds_test/get-package-info-response.json'))
+        def mock_generate_download_batch_file_ids(*args, **kwargs):
+            return []
 
-        session_mock = MagicMock()
-        requests_mock.session.return_value = session_mock
-        session_mock.get = self.mock_get_api_response
+        def mock_get_completed_files_in_download(*args, **kwargs):
+            return []
 
-        with pytest.raises(SystemExit):
-            NDATools.clientscripts.downloadcmd.main()
+        def mock_os_exit(*args, **kwargs):
+            sys.exit()
+        def mock_get_files_from_datastructure(*args, **kwargs):
+            return json.loads(self.load_from_file('api_responses/package/ds_test/no-files.json'))['results']
 
-        captured = capsys.readouterr()
-        # Program must print out that the structure was not found
-        assert "{} data structure is not included in the package".format(test_data_structure_file) in captured.out
+        with monkeypatch.context() as m:
+            m.setattr(Download, 'initialize_verification_files', mock_initialize_verification_files)
+            m.setattr(Download, 'get_package_info', mock_get_package_info)
+            m.setattr(Download, 'get_completed_files_in_download', mock_get_completed_files_in_download)
+            m.setattr(Download, 'get_files_from_datastructure', mock_get_files_from_datastructure)
 
-        # Program must print out list of structures in the package
-        valid_ds_file = 'fmriresults01'
-        assert "{}".format(valid_ds_file) in captured.out
+            m.setattr(Download, 'generate_download_batch_file_ids', mock_generate_download_batch_file_ids)
+            m.setattr(os, '_exit', mock_os_exit)
 
-    @patch('NDATools.Download.open')
-    @patch('NDATools.Download.os')
-    @patch('NDATools.clientscripts.downloadcmd.configure')
-    @patch('NDATools.clientscripts.downloadcmd.parse_args')
-    @patch('NDATools.Download.requests')
+
+            with pytest.raises(SystemExit):
+                Download(args, config).start()
+
+            captured = capsys.readouterr()
+            # Program must print out that the structure was not found
+            assert "{} data structure is not included in the package".format(test_data_structure_file) in captured.out
+
+
     def test_ds_argument_success(self,
-                                 requests_mock,
-                                 parse_args_mock,
-                                 configure_mock,
-                                 os_mock,
-                                 mock_file_open,
                                  download_config_factory,
-                                 shared_datadir):
+                                 shared_datadir, tmp_path, tmpdir, monkeypatch):
 
         test_package_id = '1189934'
         test_data_structure_file = 'fmriresults01'
-        test_args = ['-dp', test_package_id, '-ds', test_data_structure_file]
+        test_args = ['-dp', test_package_id, '-ds', test_data_structure_file, '-d', str(tmpdir)]
 
-        download_config_data_structure = download_config_factory(test_args)
+        config, args = download_config_factory(test_args)
+        def get_presigned_urls_mock(*args, **kwargs):
+            return {f:'s3://fake-presigned-url' for f in args[1]}
 
-        requests_mock.post.side_effect = self.mock_post_api_response
-        requests_mock.get.side_effect = self.mock_get_api_response
+        def mock_initialize_verification_files(*args, **kwargs):
+            self = args[0]
+            meta = tmpdir / "meta"
+            meta.mkdir()
+            self.downloadcmd_package_metadata_directory = str(meta)
+            logs = tmpdir / "logs"
+            logs.mkdir()
+            NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER = str(logs)
+            return str(tmpdir / "test_dd.csv")
 
-        session_mock = MagicMock()
-        requests_mock.session.return_value = session_mock
-        session_mock.get = self.mock_get_api_response
+        def mock_get_package_info(*args, **kwargs):
+            return json.loads(self.load_from_file('api_responses/s3/ds_test/get-package-info-response.json'))
 
-        os_mock.path.isfile.return_value = False
-        os_mock.path.sep = os.path.sep
+        def mock_get_files_from_datastructure(*args, **kwargs):
+            return json.loads(self.load_from_file('api_responses/package/ds_test/all_mri_files.json'))['results']
 
-        parse_args_mock.return_value = download_config_data_structure[0]
-        configure_mock.return_value = download_config_data_structure[1]
+        def mock_get_completed_files_in_download(*args, **kwargs):
+            return []
 
-        mock_ds_file = MagicMock()
-        mock_a_file1 = MagicMock()
-        mock_a_file2 = MagicMock()
-        mock_a_file3 = MagicMock()
-        # we plan on opening a file 2 times -
-        # the first time for writing the ds file, and the second time for reading the ds file
-        mock_file_open.side_effect = [mock_ds_file,
-                                      open(os.path.join(shared_datadir, 'api_responses/s3/ds_test/fmriresults01.txt')),
-                                      mock_a_file1,
-                                      mock_a_file2,
-                                      mock_a_file3]
+        download_mock = MagicMock(return_value = {'actual_file_size':10, 'download_complete_time': datetime.datetime.now()})
+        with monkeypatch.context() as m:
+            m.setattr(Download, 'initialize_verification_files', mock_initialize_verification_files)
+            m.setattr(Download, 'get_package_info', mock_get_package_info)
+            m.setattr(Download, 'get_completed_files_in_download', mock_get_completed_files_in_download)
+            m.setattr(Download, 'use_data_structure', mock_get_files_from_datastructure)
+            m.setattr(Download, 'download_from_s3link', download_mock)
+            m.setattr(Download, 'get_presigned_urls', get_presigned_urls_mock)
 
-        NDATools.clientscripts.downloadcmd.main()
-        # write should be called for each fake byte in the file (see above mock_api_response call)
-        assert mock_ds_file.write.call_count == len(FAKE_FILE_BYTES)
-        assert mock_a_file1.write.call_count == len(FAKE_FILE_BYTES)
-        assert mock_a_file2.write.call_count == len(FAKE_FILE_BYTES)
-        assert mock_a_file3.write.call_count == len(FAKE_FILE_BYTES)
-        assert self.s3_file_download_count == 3 + 1  # number of files in the DS file + 1 for the DS file itself
+            Download(args, config).start()
+            # write should be called for each fake byte in the file (see above mock_api_response call)
+
+            assert download_mock.call_count == 3  # number of files in the DS file
+
+
+    def test_resume_download_using_download_history_report(self,
+                                 download_config_factory,
+                                 shared_datadir, tmp_path, tmpdir, monkeypatch):
+
+        test_package_id = '1189934'
+        test_data_structure_file = 'fmriresults01'
+        test_args = ['-dp', test_package_id, '-ds', test_data_structure_file, '-d', str(tmpdir)]
+
+        config, args = download_config_factory(test_args)
+        def get_presigned_urls_mock(*args, **kwargs):
+            return {f:'s3://fake-presigned-url' for f in args[1]}
+
+        def mock_initialize_verification_files(*args, **kwargs):
+            self = args[0]
+            meta = tmpdir / "meta"
+            meta.mkdir()
+            self.downloadcmd_package_metadata_directory = str(meta)
+            logs = tmpdir / "logs"
+            logs.mkdir()
+            NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER = str(logs)
+            self.download_job_uuid = '9479421578f74b8997f62cd962a1cb08'
+
+            tmp1 = meta / '.download-progress'
+            tmp1.mkdir()
+
+            tmp2 = tmp1 / self.download_job_uuid
+            tmp2.mkdir()
+
+            shutil.copy(os.path.join(shared_datadir, 'api_responses/package/ds_test/download-progress-report.csv'), str(tmp2))
+
+            return str(tmpdir / "test_dd.csv")
+
+        def mock_get_package_info(*args, **kwargs):
+            return json.loads(self.load_from_file('api_responses/s3/ds_test/get-package-info-response.json'))
+
+        def mock_get_files_from_datastructure(*args, **kwargs):
+            return json.loads(self.load_from_file('api_responses/package/ds_test/all_mri_files.json'))['results']
+
+        download_mock = MagicMock(return_value = {'actual_file_size':10, 'download_complete_time': datetime.datetime.now()})
+        with monkeypatch.context() as m:
+            m.setattr(Download, 'initialize_verification_files', mock_initialize_verification_files)
+            m.setattr(Download, 'get_package_info', mock_get_package_info)
+
+            m.setattr(Download, 'use_data_structure', mock_get_files_from_datastructure)
+            m.setattr(Download, 'download_from_s3link', download_mock)
+            m.setattr(Download, 'get_presigned_urls', get_presigned_urls_mock)
+
+            Download(args, config).start()
+
+            assert download_mock.call_count == 1  # number of files in the DS file
+            download_mock.assert_called_with(3132764123, 's3://fake-presigned-url', failed_s3_links_file=ANY)
+
+
+    def test_s3links_argument_success(self,
+                                      download_config_factory,
+                                      shared_datadir,
+                                      capsys,
+                                      monkeypatch,
+                                      tmp_path,
+                                      tmpdir):
+        test_package_id = '1189934'
+        test_text_structure_file = 'api_responses/s3/ds_test/test-found.csv'
+        test_args = ['-dp', test_package_id, '-t', os.path.join(shared_datadir, test_text_structure_file)]
+
+        config,args = download_config_factory(test_args)
+
+        def mock_initialize_verification_files(*args, **kwargs):
+            self = args[0]
+            meta = tmpdir / "meta"
+            meta.mkdir()
+            self.downloadcmd_package_metadata_directory = str(meta)
+            logs = tmpdir / "logs"
+            logs.mkdir()
+            NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER = str(logs)
+            return str(tmpdir / "test_dd.csv")
+
+        def mock_get_package_info(*args, **kwargs):
+            return json.loads(self.load_from_file('api_responses/s3/ds_test/get-package-info-response.json'))
+
+        def mock_generate_download_batch_file_ids(*args, **kwargs):
+            return []
+
+        def mock_get_completed_files_in_download(*args, **kwargs):
+            return []
+        def mock_use_s3_link_file(*args, **kwargs):
+            return json.loads(self.load_from_file('api_responses/package/ds_test/get_files_by_s3.json'))
+
+        with monkeypatch.context() as m:
+            m.setattr(Download, 'initialize_verification_files', mock_initialize_verification_files)
+            m.setattr(Download, 'get_package_info', mock_get_package_info)
+            m.setattr(Download, 'get_completed_files_in_download', mock_get_completed_files_in_download)
+
+
+            m.setattr(Download, 'use_s3_links_file', mock_use_s3_link_file)
+            m.setattr(Download, 'generate_download_batch_file_ids', mock_generate_download_batch_file_ids)
+
+            # m.setattr(os, 'path.sep', self.mock_post_api_response)
+            Download(args, config).start()
+
+            captured = capsys.readouterr()
+            assert 'WARNING: The following associated files were not found' not in captured.out
+            assert 'Beginning download of 3 files' in captured.out
+
+    def test_generate_s3_files_batch(self,
+                                      download_config_factory,
+                                      shared_datadir,
+                                      capsys,
+                                      monkeypatch,
+                                      tmp_path,
+                                      tmpdir):
+
+
+        def mock_initialize_verification_files(*args, **kwargs):
+            self = args[0]
+            self.default_download_batch_size=TEST_BATCH_SIZE
+            meta = tmpdir / "meta"
+            if not os.path.exists(meta):
+                meta.mkdir()
+            self.downloadcmd_package_metadata_directory = str(meta)
+            self.download_job_uuid = '123e4567-e89b-12d3-a456-426614174000'
+            logs = tmpdir / "logs"
+            if not os.path.exists(logs):
+                logs.mkdir()
+            NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER = str(logs)
+            return str(tmpdir / "test_dd.csv")
+
+        def get_presigned_urls_mock(*args, **kwargs):
+            return {f:'s3://fake-presigned-url' for f in args[0]}
+
+        def mock_get_package_info(*args, **kwargs):
+            return json.loads(self.load_from_file('api_responses/s3/ds_test/get-package-info-response.json'))
+
+        def mock_get_completed_files_in_download(*args, **kwargs):
+            def _mock_fn(*args2, **kwargs2):
+                return [{'package_file_id':int(r), 'actual_file_size': 10, 'download_complete_time': datetime.datetime.now()} for r in kwargs['completed_files']]
+            return _mock_fn
+
+        def get_package_files_by_page_method_mock(*args, **kwargs):
+            page=args[0]
+            batch_size = args[1]
+            res = json.loads(self.load_from_file('api_responses/s3/ds_test/get-files-from-datastructure-response.json'))[
+                'results']
+            from_i = ((page-1) * batch_size)
+            to_i = from_i + batch_size
+            return res[from_i: to_i]
+
+        def mock_use_datastructure(*args, **kwargs):
+            return json.loads(self.load_from_file('api_responses/s3/ds_test/get-files-from-datastructure-response.json'))[
+                'results']
+
+        all_files = json.loads(self.load_from_file('api_responses/s3/ds_test/get-files-from-datastructure-response.json'))['results']
+        all_file_ids = set(map(lambda x: int(x['package_file_id']), all_files))
+
+        def test(config,args, batch_size, completed_files, get_package_files_by_page_args_list):
+            completed_file_ids = set(map(lambda x: int(x['package_file_id']), completed_files))
+            with monkeypatch.context() as m:
+                m.setattr(Download, 'initialize_verification_files', mock_initialize_verification_files)
+                m.setattr(Download, 'get_package_info', mock_get_package_info)
+                m.setattr(Download, 'get_completed_files_in_download', mock_get_completed_files_in_download(completed_files=completed_file_ids))
+
+                #mock_presigned_url_method = MagicMock()
+                mock_download_method = MagicMock(return_value={'actual_file_size':10, 'download_complete_time': datetime.datetime.now()})
+                m.setattr(Download, 'download_from_s3link', mock_download_method)
+
+                d = Download(args, config)
+                wrap_download_batch_file_ids = MagicMock(wraps=d.generate_download_batch_file_ids)
+                m.setattr(Download, 'generate_download_batch_file_ids', wrap_download_batch_file_ids)
+                m.setattr(d, 'default_download_batch_size', batch_size)
+                get_presigned_wrap = MagicMock(wraps=get_presigned_urls_mock)
+                m.setattr(Download, 'get_presigned_urls', get_presigned_wrap)
+                m.setattr(Download, 'use_data_structure', mock_use_datastructure)
+
+                mock_get_package_files_by_page_method = MagicMock(wraps=get_package_files_by_page_method_mock)
+                m.setattr(Download, 'get_package_files_by_page', mock_get_package_files_by_page_method)
+
+                d.start()
+
+                assert wrap_download_batch_file_ids.call_count == 1 # its a generator method so it will always be called once, although it may yield many values
+                assert list(map(lambda x: x[0], mock_get_package_files_by_page_method.call_args_list)) == get_package_files_by_page_args_list
+                assert mock_download_method.call_count == len(all_file_ids) - len(completed_file_ids) # call download method for each file that hasnt been downloaded
+                assert set(map(lambda x: x[0][0], mock_download_method.call_args_list)) == {f for f in all_file_ids if f not in completed_file_ids}
+                # we started batching calls to this endpoint, so it would be the
+                if d.download_mode=='package':
+                    assert get_presigned_wrap.call_count == len(get_package_files_by_page_args_list) - 1 == math.ceil((len(all_file_ids) - len(completed_file_ids)) / TEST_BATCH_SIZE)
+                    assert set(d.local_file_names.keys()) == all_file_ids - completed_file_ids
+                else:
+                    assert get_presigned_wrap.call_count == math.ceil((len(all_file_ids) - len(completed_file_ids)) / TEST_BATCH_SIZE)
+                    assert set(d.local_file_names.keys()) == all_file_ids #
+                assert set(itertools.chain(*map(lambda x: x[0][0], get_presigned_wrap.call_args_list))) == {f for f in all_file_ids if f not in completed_file_ids}
+
+
+        test_package_id = '1189934'
+        test_args = ['-dp', test_package_id, '-u', 'ndar_administrator']
+        config,args = download_config_factory(test_args)
+        TEST_BATCH_SIZE = 3
+
+        # test package download
+        test(config,args, batch_size=TEST_BATCH_SIZE, completed_files=[], get_package_files_by_page_args_list=[(1, TEST_BATCH_SIZE), (2, TEST_BATCH_SIZE), (3, TEST_BATCH_SIZE)])
+        test(config,args, batch_size=TEST_BATCH_SIZE, completed_files=all_files[:1], get_package_files_by_page_args_list=[(1, TEST_BATCH_SIZE), (2, TEST_BATCH_SIZE), (3, TEST_BATCH_SIZE)])
+        test(config,args, batch_size=TEST_BATCH_SIZE, completed_files=all_files[:2], get_package_files_by_page_args_list=[(1, TEST_BATCH_SIZE), (2, TEST_BATCH_SIZE), (3, TEST_BATCH_SIZE)])
+        test(config,args, batch_size=TEST_BATCH_SIZE, completed_files=all_files[:3], get_package_files_by_page_args_list=[(2, TEST_BATCH_SIZE), (3, TEST_BATCH_SIZE)])
+        test(config,args, batch_size=TEST_BATCH_SIZE, completed_files=all_files[:4], get_package_files_by_page_args_list=[(2, TEST_BATCH_SIZE), (3, TEST_BATCH_SIZE)])
+        test(config,args, batch_size=TEST_BATCH_SIZE, completed_files=all_files[:5], get_package_files_by_page_args_list=[(2, TEST_BATCH_SIZE), (3, TEST_BATCH_SIZE)])
+        test(config,args, batch_size=TEST_BATCH_SIZE, completed_files=all_files[:], get_package_files_by_page_args_list=[(3, TEST_BATCH_SIZE)])
+
+        # test download ds
+        test_package_id = '1189934'
+        test_args = ['-dp', test_package_id, '-ds', 'fmriresults01', '-u', 'ndar_administrator']
+        config,args = download_config_factory(test_args)
+        test(config,args, batch_size=TEST_BATCH_SIZE, completed_files=[], get_package_files_by_page_args_list=[])
+        test(config,args, batch_size=TEST_BATCH_SIZE, completed_files=all_files[:1], get_package_files_by_page_args_list=[])
+        test(config,args, batch_size=TEST_BATCH_SIZE, completed_files=all_files[:2], get_package_files_by_page_args_list=[])
+        test(config,args, batch_size=TEST_BATCH_SIZE, completed_files=all_files[:3], get_package_files_by_page_args_list=[])
+        test(config,args, batch_size=TEST_BATCH_SIZE, completed_files=all_files[:4], get_package_files_by_page_args_list=[])
+        test(config,args, batch_size=TEST_BATCH_SIZE, completed_files=all_files[:5], get_package_files_by_page_args_list=[])
+        test(config,args, batch_size=TEST_BATCH_SIZE, completed_files=all_files[:], get_package_files_by_page_args_list=[])

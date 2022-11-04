@@ -1,10 +1,9 @@
-import pytest
 import json
+from unittest.mock import MagicMock
 
-from unittest.mock import patch, MagicMock
+import pytest
 
-import NDATools.clientscripts.vtcmd
-from NDATools.clientscripts.vtcmd import main as validation_main
+from NDATools import Validation
 
 
 class TestValidation:
@@ -25,28 +24,23 @@ class TestValidation:
         endpoint = args[2]
         text = None
 
-        if verb == 'POST':
-            text = self._load_from_file('validation/api_response/initiate_validation.json')
-
         if verb == 'GET':
             text = next(self._get_responses)
 
         json_object = json.loads(text)
 
-        return json_object, session
+        return json_object
+
 
     @pytest.fixture(autouse=True)
     def setup(self, load_from_file):
         self._get_responses = self._provide_get_responses()
         self._load_from_file = load_from_file
 
-
-    @patch('NDATools.Validation.open')
-    @patch('NDATools.clientscripts.vtcmd.configure')
-    @patch('NDATools.clientscripts.vtcmd.parse_args')
-    @patch('NDATools.Validation.api_request')
-    def test_validation_with_scope(self, requests_mock, parse_args_mock, config_mock,
-                                   mock_file_open, validation_config_factory, shared_datadir, tmp_path):
+    def test_validation_with_scope(self, monkeypatch,
+                                   validation_config_factory,
+                                   shared_datadir,
+                                   tmp_path):
 
         file_path = (shared_datadir / 'validation/file.csv')
 
@@ -55,26 +49,22 @@ class TestValidation:
         args, config = validation_config_factory(test_args)
         config.JSON = True
 
-        parse_args_mock.return_value = args
-        config_mock.return_value = config
+        def mocked_post_request(*args, **kwargs):
+            return json.loads(self._load_from_file('validation/api_response/initiate_validation.json'))
 
-        requests_mock.side_effect = self.mocked_api_request_successful
+        def mocked_get_request(*args, **kwargs):
+            return json.loads(next(self._get_responses))
 
-        # we plan on opening a file 2 times -
-        # the first time for writing the ds file, and the second time for reading the ds file
-        mock_file = MagicMock()
-        val_results_path = tmp_path / "test_val_results.txt"
-        val_results_file = open( val_results_path,'w')
-        mock_file_open.side_effect = [mock_file, val_results_file]
+        with monkeypatch.context() as m:
+            m.setattr(Validation, 'post_request', mocked_post_request)
+            m.setattr(Validation, 'get_request', mocked_get_request)
+            validation = Validation.Validation(args.files, config=config, hide_progress=config.hideProgress, thread_num=1,
+                                    allow_exit=True)
+            validation.validate()
+            result = validation.responses[0][0]
 
-
-        validation_main()
-        json_data = json.loads(val_results_path.read_text())
-        results = json_data['Results']
-        result = results[0]
-
-        assert result['File'] == str(file_path)
-        assert result['ID'] == 'test'
-        assert result['Status'] == 'Complete'
-        assert result['Expiration Date'] == '07/14/2021'
-        assert result['Errors'] == {}
+            assert validation.responses[0][1] == str(file_path)
+            assert result['id'] == 'test'
+            assert result['status'] == 'Complete'
+            assert result['expiration_date'] == '07/14/2021'
+            assert result['errors'] == {}

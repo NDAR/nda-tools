@@ -93,8 +93,6 @@ class Download(Protocol):
         # Instance Variables from 'args'
         if args.directory:
             download_directory = args.directory[0]
-        elif args.resume:
-            download_directory = args.resume[0]
         else:
             download_directory = os.path.join(NDATools.NDA_TOOLS_DOWNLOADS_FOLDER, str(args.package))
         self.downloadcmd_package_metadata_directory = os.path.join(NDATools.NDA_TOOLS_DOWNLOADS_FOLDER,
@@ -154,14 +152,7 @@ class Download(Protocol):
             'download_complete_time': None
         }
         self.download_progress_report_file_path = self.initialize_verification_files()
-
-    @staticmethod
-    def get_protocol(cls):
-        return cls.XML
-
-    @staticmethod
-    def request_header():
-        return {'content-type': 'application/json'}
+        self.default_download_batch_size = 50
 
     # exlcude arg list is the long-parameter name
     def build_rerun_download_cmd(self, exclude_arg_list):
@@ -202,24 +193,20 @@ class Download(Protocol):
 
         files = []
         if self.download_mode == 'datastructure':
-            if not self.verify_flg:
-                logger.info('Downloading S3 links from data structure: {}'.format(self.data_structure))
+            logger.info('Downloading S3 links from data structure: {}'.format(self.data_structure))
             if not package_resource['has_associated_files']:
                 logger.info(''''No Associated files detected in this package. In order to download associated files, you must create a new package
         on the NDA website and make sure that you check the option to "Include associated files"''')
                 exit_client()
             files = self.use_data_structure()
         elif self.download_mode == 'text':
-            if not self.verify_flg:
-                logger.info('Downloading S3 links from text file: {}'.format(self.s3_links_file))
+            logger.info('Downloading S3 links from text file: {}'.format(self.s3_links_file))
             files = self.use_s3_links_file()
         elif self.download_mode == 'package':
-            if not self.verify_flg:
-                if self.regex_file_filter:
-                    logger.info('Downloading files from package {} matching regex {}'.format(self.package_id,
-                                                                                             self.regex_file_filter))
-                else:
-                    logger.info('Downloading all files from package with id: {}'.format(self.package_id))
+            if self.regex_file_filter:
+                logger.info('Downloading files from package {} matching regex {}'.format(self.package_id, self.regex_file_filter))
+            else:
+                logger.info('Downloading all files from package with id: {}'.format(self.package_id))
         else:
             files = self.query_files_by_s3_path(self.inline_s3_links)
 
@@ -249,10 +236,18 @@ class Download(Protocol):
 
         if self.download_mode == 'package':
             file_ct = package_resource['file_count']
-            file_sz = Utils.human_size(int(package_resource['total_package_size']))
+            file_sz = int(package_resource['total_package_size'])
         else:
             file_ct = len(self.local_file_names.keys())
-            file_sz = Utils.human_size(sum(map(lambda x: x['file_size'], self.local_file_names.values())))
+            file_sz = sum(map(lambda x: x['file_size'], self.local_file_names.values()))
+
+        #remove files that have already been completed
+        completed_files = self.get_completed_files_in_download()
+        tmp = {int(f['package_file_id']):int(f['actual_file_size']) for f in completed_files}
+        completed_file_sz = sum(tmp.values())
+        completed_file_ids = set(tmp.keys())
+        completed_file_ct = len(completed_file_ids)
+        completed_files = tmp = None #remove large structures from memory
 
         if self.download_mode == 'package' and self.regex_file_filter:
             # cant display file number because its not known
@@ -260,9 +255,20 @@ class Download(Protocol):
                 self.regex_file_filter,
                 self.thread_num)
         else:
-            message = 'Beginning download of {} files ({}) to {} using {} threads'.format(
+            skipping_message = ''
+            if completed_file_ct>0:
+                download_progress_report_path = os.path.join(self.downloadcmd_package_metadata_directory,
+                                                             '.download-progress', self.download_job_uuid,
+                                                             'download-progress-report.csv')
+
+                skipping_message = 'Skipping {} files ({}) which have already been downloaded according to log file {}.\n'.format(completed_file_ct, Utils.human_size(completed_file_sz), download_progress_report_path)
+                file_ct -= completed_file_ct
+                file_sz -= completed_file_sz
+            message = '{}Beginning download of {}{} files ({}) to {} using {} threads'.format(
+                skipping_message,
+                'the remaining ' if skipping_message else '',
                 file_ct,
-                file_sz,
+                Utils.human_size(file_sz),
                 self.custom_user_s3_endpoint or self.package_download_directory,
                 self.thread_num)
 
@@ -274,10 +280,17 @@ class Download(Protocol):
         trailing_50_file_bytes = []
         trailing_50_timestamp = [datetime.datetime.now()]
 
+
+        download_progress_flush_date=[datetime.datetime.now()]
         def write_to_download_progress_report_file(download_record):
             # if file-size =0, there could have been an error. Dont add to file
             if download_record['actual_file_size'] > 0:
                 download_progress_report_writer.writerow(download_record)
+                if (datetime.datetime.now()-download_progress_flush_date[0]).seconds>10:
+                    download_progress_report.flush()
+                    download_progress_flush_date[0]=datetime.datetime.now()
+                else:
+                    pass
 
         def print_download_progress_report(num_downloaded):
 
@@ -316,7 +329,9 @@ class Download(Protocol):
             # check if  these exist, and if not, get and set:
             download_record = self.download_from_s3link(package_file_id, cred,
                                                         failed_s3_links_file=failed_s3_links_file)
-            trailing_50_file_bytes.append(download_record['actual_file_size'])
+            # dont add bytes if file-existed and didnt need to be downloaded
+            if download_record['download_complete_time']:
+                trailing_50_file_bytes.append(download_record['actual_file_size'])
             success_files.add(package_file_id)
             num_downloaded = len(success_files)
 
@@ -328,14 +343,14 @@ class Download(Protocol):
         download_pool = ThreadPool(self.thread_num)
         download_progress_file_writer_pool = ThreadPool(1, 1000)
 
-        for package_file_id_list in self.generate_download_batch_file_ids():
-            # Call REST API from get_presigned_urls(), returns batch of PresignedUrls to avoid overhead
-            file_id_to_cred_list = self.get_presigned_urls(list(package_file_id_list))
-            additional_file_ct = len(package_file_id_list)
-            download_request_count += additional_file_ct
-            logger.info('Adding {} files to download queue. Queue contains {} files\n'.format(additional_file_ct,
-                                                                                              download_request_count))
-            download_pool.map(download, file_id_to_cred_list.items())
+        for package_file_id_list in self.generate_download_batch_file_ids(completed_file_ids):
+            if len(package_file_id_list) > 0:
+                additional_file_ct = len(package_file_id_list)
+                download_request_count += additional_file_ct
+                logger.info('Adding {} files to download queue. Queue contains {} files\n'.format(additional_file_ct,
+                                                                                                       download_request_count))
+                file_id_to_cred_list = self.get_presigned_urls(list(package_file_id_list))
+                download_pool.map(download, file_id_to_cred_list.items())
 
         download_pool.wait_completion()
         failed_s3_links_file.close()
@@ -389,6 +404,10 @@ class Download(Protocol):
         """
         # TODO - add paging in case the number of files is large
         path_list = self.get_files_from_datastructure(self.data_structure)
+        if not path_list:
+            logger.info(
+                '{} data structure is not included in the package {}'.format(self.data_structure, self.package_id))
+            exit_client()
         if self.regex_file_filter:
             path_list = list(filter(lambda x: re.search(self.regex_file_filter, x['download_alias']), path_list))
 
@@ -446,6 +465,9 @@ class Download(Protocol):
                         sys.exit(1)
 
                     logger.info('Skipping download (already exists): {}'.format(completed_download))
+                    actual_size = os.path.getsize(completed_download)
+                    return_value['actual_file_size'] = actual_size
+                    return_value['exists'] = True
                     return return_value
 
                 if os.path.isfile(partial_download):
@@ -589,17 +611,18 @@ class Download(Protocol):
                 failed_s3_links_file.write(s3_address + "\n")
                 failed_s3_links_file.flush()
 
-    def generate_download_batch_file_ids(
-            self):
-        batch_size = 50  # arbitrary number of files to add to job queue at once.
-
+    def generate_download_batch_file_ids(self, completed_file_ids):
         if self.download_mode == 'package':
+            already_downloaded = len(completed_file_ids)
+
             #  write generator function that goes through each page in file listing
             #  and yields file-ids for files in package. Before returning, self.local_file_path must be set
-            page = 1
+            page = (already_downloaded // self.default_download_batch_size) + 1
             while True:
-                files = self.get_package_files_by_page(page, batch_size)
-                tmp = {r['package_file_id']: r for r in files}
+                logger.debug(f'getting package files for package {self.package_id} and page {page} at time {datetime.datetime.now()}')
+                files = self.get_package_files_by_page(page, self.default_download_batch_size)
+                logger.debug(f'finished getting package files for package {self.package_id} and page {page} at time {datetime.datetime.now()}')
+                tmp = {r['package_file_id']: r for r in files if int(r['package_file_id']) not in completed_file_ids}
                 self.local_file_names.update(tmp)
                 package_file_ids = tmp.keys()
                 page += 1
@@ -608,8 +631,9 @@ class Download(Protocol):
                 yield package_file_ids
 
         else:
-            package_file_list = list(self.local_file_names)
-            batches = [package_file_list[i:i + batch_size] for i in range(0, len(package_file_list), batch_size)]
+
+            package_file_list = [f for f in {k:v for k,v in self.local_file_names.items() if int(k) not in completed_file_ids}]
+            batches = [package_file_list[i:i + self.default_download_batch_size] for i in range(0, len(package_file_list), self.default_download_batch_size)]
             for batch in batches:
                 yield batch
 
@@ -747,6 +771,11 @@ class Download(Protocol):
 
         def get_complete_file_list():
             if self.download_mode in ['text', 'datastructure']:
+                if self.download_mode == 'datastructure':
+                    files = self.use_data_structure()
+                elif self.download_mode == 'text':
+                    files = self.use_s3_links_file()
+                self.local_file_names = {int(f['package_file_id']): f for f in files}
                 return set(self.local_file_names)
             elif self.download_mode == 'package':
                 logger.info('Getting list of all files in package. If your package is large, this may take some time')
@@ -897,7 +926,8 @@ class Download(Protocol):
         url = self.package_url + '/{}/files'.format(self.package_id)
         try:
             response = post_request(url, list(path_list), auth=self.auth,
-                                    error_handler=HttpErrorHandlingStrategy.reraise_status)
+                                    error_handler=HttpErrorHandlingStrategy.reraise_status,
+                                    deserialize_handler=DeserializeHandler.none)
             response.raise_for_status()
             return response.json()
         except HTTPError as e:
@@ -931,15 +961,16 @@ class Download(Protocol):
             url += '?s3SourceBucket={}'.format(s3_dest_bucket)
             if s3_dest_prefix:
                 url += '&s3SourcePrefix={}'.format(s3_dest_prefix)
-        tmp = get_request(url, headers=self.request_header(), auth=self.auth,
-                          error_handler=HttpErrorHandlingStrategy.reraise_status)
+        tmp = get_request(url, auth=self.auth,
+                          error_handler=HttpErrorHandlingStrategy.reraise_status,
+                          deserialize_handler=DeserializeHandler.none)
         return json.loads(tmp.text)
 
     def get_files_from_datastructure(self, data_structure):
         data_structure_regex = quote_plus('{}/.*'.format(data_structure))
         url = self.package_url + \
               '/{}/files?page=1&size=all&regex={}'.format(self.package_id, data_structure_regex)
-        tmp = get_request(url, headers=self.request_header(), auth=self.auth)
+        tmp = get_request(url, auth=self.auth, deserialize_handler=DeserializeHandler.none)
         results = json.loads(tmp.text)['results']
         return results
 
@@ -947,7 +978,7 @@ class Download(Protocol):
         url = self.package_url + \
               '/{}/files?page=1&size=all&types=Package%20Metadata&regex={}'.format(self.package_id,
                                                                                    'datastructure_manifest.txt')
-        tmp = get_request(url, headers=self.request_header(), auth=self.auth)
+        tmp = get_request(url, auth=self.auth, deserialize_handler=DeserializeHandler.none)
         results = json.loads(tmp.text)['results']
         # return None instead of empty list, since this method is always supposed to return 1 thing
         return results[0] if results else None
@@ -955,7 +986,7 @@ class Download(Protocol):
     def get_data_structure_files(self):
         url = self.package_url + \
               '/{}/files?page=1&size=all&types=Data'.format(self.package_id)
-        tmp = get_request(url, headers=self.request_header(), auth=self.auth)
+        tmp = get_request(url, auth=self.auth, deserialize_handler=DeserializeHandler.none)
         tmp.raise_for_status()
         results = json.loads(tmp.text)['results']
         return [r for r in results if r['nda_file_type'] == 'Data']
@@ -964,7 +995,7 @@ class Download(Protocol):
         url = self.package_url + \
               '/{}/files?page=1&size=all&types=Package%20Metadata&types=Data&regex={}'.format(self.package_id,
                                                                                               short_name)
-        tmp = get_request(url, headers=self.request_header(), auth=self.auth)
+        tmp = get_request(url, auth=self.auth, deserialize_handler=DeserializeHandler.none)
         tmp.raise_for_status()
         results = json.loads(tmp.text)['results']
         # return None instead of empty list, since this method is always supposed to return 1 thing
@@ -972,12 +1003,12 @@ class Download(Protocol):
 
     def get_package_file_info(self, file_id):
         url = self.package_url + '/{}/files/{}'.format(self.package_id, file_id)
-        tmp = get_request(url, headers=self.request_header(), auth=self.auth)
+        tmp = get_request(url, auth=self.auth, deserialize_handler=DeserializeHandler.none)
         return json.loads(tmp.text)
 
     def get_package_info(self):
         url = self.package_url + '/{}'.format(self.package_id)
-        tmp = get_request(url, headers=self.request_header(), auth=self.auth)
+        tmp = get_request(url, auth=self.auth, deserialize_handler=DeserializeHandler.none)
         return json.loads(tmp.text)
 
     def get_package_files_by_page(self, page, batch_size):
@@ -985,8 +1016,8 @@ class Download(Protocol):
         if self.regex_file_filter:
             url += '&regex={}'.format(self.regex_file_filter)
         try:
-            tmp = get_request(url, headers=self.request_header(), auth=self.auth,
-                              error_handler=HttpErrorHandlingStrategy.reraise_status)
+            tmp = get_request(url, auth=self.auth,
+                              error_handler=HttpErrorHandlingStrategy.reraise_status, deserialize_handler=DeserializeHandler.none)
             tmp.raise_for_status()
             response = json.loads(tmp.text)
             return response['results']
@@ -1009,10 +1040,22 @@ class Download(Protocol):
         if not self.verify_flg:
             logger.debug('Retrieving credentials for {} files'.format(len(id_list)))
         url = self.package_url + '/{}/files/batchGeneratePresignedUrls'.format(self.package_id)
-        tmp = post_request(url, headers=self.request_header(), _json=id_list, auth=self.auth,
-                           error_handler=HttpErrorHandlingStrategy.reraise_status)
+        tmp = post_request(url,  payload=id_list, auth=self.auth,
+                           error_handler=HttpErrorHandlingStrategy.reraise_status, deserialize_handler=DeserializeHandler.none)
         response = json.loads(tmp.text)
         creds = {e['package_file_id']: e['downloadURL'] for e in response['presignedUrls']}
         if not self.verify_flg:
             logger.debug('Finished retrieving credentials')
         return creds
+
+    def get_completed_files_in_download(self):
+        download_progress_report_path = os.path.join(self.downloadcmd_package_metadata_directory,
+                                                     '.download-progress', self.download_job_uuid,
+                                                     'download-progress-report.csv')
+
+        files = []
+        if os.path.exists(download_progress_report_path):
+            with open(download_progress_report_path, newline='') as csvfile:
+                file_reader = csv.DictReader(csvfile)
+                files = [f for f in file_reader if bool(f['exists'])]
+        return files

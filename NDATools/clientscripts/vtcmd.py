@@ -5,7 +5,7 @@ import NDATools
 from NDATools.BuildPackage import SubmissionPackage
 from NDATools.Configuration import *
 from NDATools.Submission import Submission
-from NDATools.Utils import api_request, evaluate_yes_no_input, exit_client
+from NDATools.Utils import evaluate_yes_no_input, exit_client, get_request
 from NDATools.Validation import Validation
 
 logger = logging.getLogger(__name__)
@@ -334,7 +334,7 @@ def retrieve_replacement_submission_params(config, submission_id):
 
     # check if the qa token provided is actually the latest or not
     try:
-        response, session = api_request(api, 'GET', '/'.join([config.submission_api, submission_id, 'change-history']));
+        response = get_request('/'.join([config.submission_api, submission_id, 'change-history']))
     except Exception as e:
 
         if e.response.status_code == 403:
@@ -359,7 +359,7 @@ If you need to make further edits to this submission, please reach out the the N
                         message='submission_id {} is not authorized to be replaced. Please contact the NDA help desk for approval to replace this submission'.format(
                             submission_id))
 
-    response, session = api_request(api, 'GET', '/'.join([config.submission_api, submission_id]))
+    response = get_request('/'.join([config.submission_api, submission_id]))
     if response is None:
         exit_client(signal=signal.SIGTERM,
                     message='There was a General Error communicating with the NDA server. Please try again later')
@@ -370,7 +370,7 @@ If you need to make further edits to this submission, please reach out the the N
     config.collection_id = response['collection']['id']
 
     # get pending-changes for submission-id
-    response, session = api_request(api, 'GET', '/'.join([config.submission_api, submission_id, 'pending-changes']));
+    response = get_request('/'.join([config.submission_api, submission_id, 'pending-changes']));
     if response is None:
         exit_client(signal=signal.SIGTERM,
                     message='There was a General Error communicating with the NDA server. Please try again later')
@@ -384,7 +384,7 @@ If you need to make further edits to this submission, please reach out the the N
         associated_files = []
         manifest_files = []
         for uuid in validation_uuids:
-            response, session = api_request(api, 'GET', '/'.join([config.validation_api, uuid]))
+            response = get_request('/'.join([config.validation_api, uuid]))
             associated_files.extend(response['associated_file_paths'])
             manifest_files.extend(manifest['localFileName'] for manifest in response['manifests'])
         change['associatedFiles'] = associated_files

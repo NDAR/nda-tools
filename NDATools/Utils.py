@@ -1,5 +1,6 @@
 from __future__ import absolute_import, with_statement
 
+import functools
 import json
 import logging
 import os
@@ -29,9 +30,8 @@ logger = logging.getLogger(__name__)
 
 if sys.version_info[0] < 3:
     input = raw_input
-    import thread
 else:
-    import _thread as thread
+    pass
 
 
 class Protocol(object):
@@ -43,6 +43,15 @@ class Protocol(object):
     def get_protocol(cls):
         return cls.JSON
 
+class DeserializeHandler():
+
+    @staticmethod
+    def none(r):
+        return r
+
+    @staticmethod
+    def convert_json(r):
+        return json.loads(r.text)
 
 class HttpErrorHandlingStrategy():
     # error handling implementation methods. Each method takes a response object
@@ -56,7 +65,7 @@ class HttpErrorHandlingStrategy():
         # handle json and plain-text errors
         message = None
         try:
-            if 'json' in r.headers['Content-Type']:
+            if 'content-type' in r.headers and 'json' in r.headers['Content-Type']:
                 message = r.json()['message']
         except (ValueError, json.JSONDecodeError):
             message = r.text
@@ -72,71 +81,6 @@ class HttpErrorHandlingStrategy():
     @staticmethod
     def reraise_status(response):
         response.raise_for_status()
-
-
-def api_request(api, verb, endpoint, data=None, session=None, error_handler=HttpErrorHandlingStrategy.print_and_exit):
-    retry = requests.packages.urllib3.util.retry.Retry(
-        total=20,
-        read=20,
-        connect=20,
-        backoff_factor=3,
-        status_forcelist=(502, 503, 504)
-    )
-
-    headers = {'accept': 'application/json'}
-    auth = None
-    if isinstance(api, Protocol):
-        if api.get_protocol(api) == Protocol.CSV:
-            headers.update({'content-type': 'text/csv'})
-        elif api.get_protocol(api) == Protocol.XML:
-            headers.update({'content-type': 'text/xml'})
-    else:
-        if api.config.username and api.config.password:
-            auth = requests.auth.HTTPBasicAuth(api.config.username, api.config.password)
-
-        headers.update({'content-type': 'application/json'})
-
-    if not session:
-        session = requests.session()
-        session.mount(endpoint, HTTPAdapter(max_retries=retry))
-    r = None
-    response = None
-    try:
-        if data is not None:
-            data = data.encode('utf-8')
-        r = session.send(requests.Request(verb, endpoint, headers, auth=auth, data=data).prepare(),
-                         timeout=600, stream=False)
-
-    except requests.exceptions.RequestException as e:
-        logger.info('\nAn error occurred while making {} request, check your endpoint configuration:\n'.
-              format(e.request.method))
-        logger.error(e)
-        if api.__class__.__name__.endswith('Task'):
-            api.shutdown_flag.set()
-            thread.interrupt_main()
-        exit_client(signal.SIGTERM)
-
-    if r and r.ok:
-        try:
-            response = json.loads(r.text)
-        except ValueError:
-            logger.error(ValueError)
-            logger.info('Your request returned an unexpected response, please check your endpoints.\n'
-                  'Action: {}\n'
-                  'Endpoint:{}\n'
-                  'Status:{}\n'
-                  'Reason:{}'.format(verb, endpoint, r.status_code, r.reason))
-            if api.__class__.__name__.endswith('Task'):
-                api.shutdown_flag.set()
-                thread.interrupt_main()
-            else:
-                raise Exception(ValueError)
-
-    if not r.ok:
-        error_handler(r)
-
-    return response, session
-
 
 def exit_client(signal=signal.SIGTERM, frame=None, message=None):
     for t in threading.enumerate():
@@ -285,38 +229,65 @@ def human_size(bytes, units=[' bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']):
     """ Returns a human readable string representation of bytes """
     return str(round(bytes, 2)) + units[0] if bytes < 1024 else human_size(bytes / 1024, units[1:])
 
+def retry_connection_errors(func):
+    @functools.wraps(func)
+    def _retry(*args, **kwargs):
+        tmp = None
+        for i in range(10):
+            try:
+                tmp = func(*args, **kwargs)
+                return tmp
+            except requests.exceptions.ConnectionError as e:
+                if i == 9:
+                    raise e
+                time.sleep(random.randint(10, 30))
+    return _retry
 
-def get_request(url, headers=None, auth=None, _json=None, error_handler=HttpErrorHandlingStrategy.print_and_exit):
-    tmp = None
-    for i in range(10):
-        try:
-            with requests.Session() as session:
-                session.mount(url, HTTPAdapter(max_retries=10))
-                tmp = session.get(url, headers=headers, auth=auth, json=_json)
-                if not tmp.ok:
-                    error_handler(tmp)
-            return tmp
-        except requests.exceptions.ConnectionError as e:
-            if i == 9:
-                raise e
-            time.sleep(random.randint(10, 30))
+def is_json(test):
+    try:
+        json.dumps(test)
+        return True
+    except:
+        return False
+
+@retry_connection_errors
+def _send_prepared_request(prepped, timeout=150, deserialize_handler=DeserializeHandler.convert_json, error_handler=HttpErrorHandlingStrategy.print_and_exit):
+    with requests.Session() as session:
+        session.mount(prepped.url, HTTPAdapter(max_retries=10))
+        tmp = session.send(prepped, timeout=timeout)
+        if not tmp.ok:
+            error_handler(tmp)
+    return deserialize_handler(tmp)
 
 
-def post_request(url, _json, headers=None, auth=None, error_handler=HttpErrorHandlingStrategy.print_and_exit):
-    tmp = None
-    for i in range(10):
-        try:
-            with requests.Session() as session:
-                session.mount(url, HTTPAdapter(max_retries=10))
-                tmp = session.post(url, json=_json, headers=headers, auth=auth)
-                if not tmp.ok:
-                    error_handler(tmp)
-            return tmp
-        except requests.exceptions.ConnectionError as e:
-            if i == 9:
-                raise e
-            time.sleep(random.randint(10, 30))
+def get_request(url, headers={}, auth=None, timeout=150, deserialize_handler=DeserializeHandler.convert_json, error_handler=HttpErrorHandlingStrategy.print_and_exit):
+    req = requests.Request('GET', url, auth=auth, headers=headers)
+    return _send_prepared_request(req.prepare(), timeout=timeout, deserialize_handler=deserialize_handler, error_handler=error_handler)
 
+def post_request(url, payload=None, headers={}, auth=None, timeout=150, deserialize_handler=DeserializeHandler.convert_json, error_handler=HttpErrorHandlingStrategy.print_and_exit):
+    data_param, headers = get_data_and_header_params(payload, headers)
+    req = requests.Request('POST',  url, auth=auth,  headers=headers, **data_param)
+    return _send_prepared_request(req.prepare(), timeout=timeout, deserialize_handler=deserialize_handler, error_handler=error_handler)
+
+def put_request(url, payload=None, headers={}, auth=None, timeout=150, deserialize_handler=DeserializeHandler.convert_json, error_handler=HttpErrorHandlingStrategy.print_and_exit):
+    data_param, headers = get_data_and_header_params(payload, headers)
+    req = requests.Request('PUT',  url, auth=auth, headers=headers, **data_param)
+    return _send_prepared_request(req.prepare(), timeout=timeout, deserialize_handler=deserialize_handler, error_handler=error_handler)
+
+def get_data_and_header_params(payload, headers):
+    data_param = {}
+    if 'content-type' not in headers:
+        if isinstance(payload, dict) or isinstance(payload, list):
+            # setting the json arg will automatically add the content-header
+            # https://requests.readthedocs.io/en/latest/user/quickstart/#more-complicated-post-requests
+            data_param ={'json': payload}
+        else:
+            data_param = {'data': payload}
+            if isinstance(payload, str) and is_json(payload) and 'content-type' not in headers:
+                headers['content-type'] = 'application/json'
+    else:
+        data_param = {'data': payload}
+    return data_param, headers
 
 def get_s3_client_with_config(aws_access_key, aws_secret_key, aws_session_token):
     return boto3.session.Session(aws_access_key_id=aws_access_key,

@@ -46,10 +46,6 @@ and always ends in a 2 digit number. (For example, see the data-structure page f
                                                  'used by this tool. Password storage is not recommended for security'
                                                  ' considerations')
 
-    parser.add_argument('-r', '--resume', action='store_true',
-                        help='Flags to restart a download process. If you already have some files downloaded, you must '
-                             'enter the directory where they are saved.')
-
     parser.add_argument('-d', '--directory', metavar='<download_directory>', type=str, nargs=1, action='store',
                         help='Enter an alternate full directory path where you would like your files to be saved. The default is ~/NDA/nda-tools/<package-id>')
 

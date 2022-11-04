@@ -1,5 +1,11 @@
 
 # CHANGELOG
+## 0.2.20 - 2022-11-04
+* [`downloadcmd`] removed obsolete -r flag
+* [`downloadcmd`] updated logic to request pre-signed urls in batches of 50 at a time
+* [`downloadcmd`] updated logic to allow the program to pick up where it left off after an unexpected termination by parsing download-logs
+* [`vtcmd`] added --validation-timeout parameter to allow timeouts >5min for validation (useful for large csv's)
+
 ## 0.2.19 - 2022-09-16
 * [`vtcmd`] added -rs feature to allow users to fix QA errors. 
 
