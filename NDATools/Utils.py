@@ -1,5 +1,6 @@
 from __future__ import absolute_import, with_statement
 
+import datetime
 import functools
 import json
 import logging
@@ -253,8 +254,10 @@ def is_json(test):
 @retry_connection_errors
 def _send_prepared_request(prepped, timeout=150, deserialize_handler=DeserializeHandler.convert_json, error_handler=HttpErrorHandlingStrategy.print_and_exit):
     with requests.Session() as session:
+        logger.debug('{} {} @ {}'.format(prepped.method , prepped.url, datetime.datetime.now()))
         session.mount(prepped.url, HTTPAdapter(max_retries=10))
         tmp = session.send(prepped, timeout=timeout)
+        logger.debug('{} {} (elapsed = {})- STATUS {}'.format(prepped.method, prepped.url, tmp.elapsed, tmp.status_code))
         if not tmp.ok:
             error_handler(tmp)
     return deserialize_handler(tmp)

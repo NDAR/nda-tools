@@ -1,5 +1,9 @@
 
 # CHANGELOG
+## 0.2.21 - 2022-11-04
+* [`vtcmd`] fixed regression affecting the -rs functionality
+* [`nda-tools`] Added additional logging for network requests
+
 ## 0.2.20 - 2022-11-04
 * [`downloadcmd`] removed obsolete -r flag
 * [`downloadcmd`] updated logic to request pre-signed urls in batches of 50 at a time

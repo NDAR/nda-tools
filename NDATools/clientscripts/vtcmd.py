@@ -115,7 +115,7 @@ def parse_args():
 def configure(args):
     # create a new config file in user's home directory if one does not exist
 
-    auth_req = True if args.buildPackage or args.resume else False
+    auth_req = True if args.buildPackage or args.resume or args.replace_submission else False
 
     if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
         config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'), args.username,
@@ -331,10 +331,10 @@ def retrieve_replacement_submission_params(config, submission_id):
     # get submission-id
     api = type('', (), {})()
     api.config = config
-
+    auth = requests.auth.HTTPBasicAuth(config.username, config.password)
     # check if the qa token provided is actually the latest or not
     try:
-        response = get_request('/'.join([config.submission_api, submission_id, 'change-history']))
+        response = get_request('/'.join([config.submission_api, submission_id, 'change-history']), auth=auth)
     except Exception as e:
 
         if e.response.status_code == 403:
@@ -359,7 +359,7 @@ If you need to make further edits to this submission, please reach out the the N
                         message='submission_id {} is not authorized to be replaced. Please contact the NDA help desk for approval to replace this submission'.format(
                             submission_id))
 
-    response = get_request('/'.join([config.submission_api, submission_id]))
+    response = get_request('/'.join([config.submission_api, submission_id]), auth=auth)
     if response is None:
         exit_client(signal=signal.SIGTERM,
                     message='There was a General Error communicating with the NDA server. Please try again later')
@@ -370,7 +370,7 @@ If you need to make further edits to this submission, please reach out the the N
     config.collection_id = response['collection']['id']
 
     # get pending-changes for submission-id
-    response = get_request('/'.join([config.submission_api, submission_id, 'pending-changes']));
+    response = get_request('/'.join([config.submission_api, submission_id, 'pending-changes']), auth=auth);
     if response is None:
         exit_client(signal=signal.SIGTERM,
                     message='There was a General Error communicating with the NDA server. Please try again later')
