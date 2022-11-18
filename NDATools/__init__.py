@@ -8,7 +8,7 @@ import requests
 
 import NDATools
 
-__version__ = '0.2.21.dev2'
+__version__ = '0.2.21'
 pypi_version = None
 version_checked = False
 
