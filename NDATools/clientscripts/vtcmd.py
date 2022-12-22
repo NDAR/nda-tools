@@ -115,7 +115,8 @@ def parse_args():
 def configure(args):
     # create a new config file in user's home directory if one does not exist
 
-    auth_req = True if args.buildPackage or args.resume or args.replace_submission else False
+    # always set password if --username flag is supplied, or if user is submitting data
+    auth_req = True if args.buildPackage or args.resume or args.replace_submission or args.username else False
 
     if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
         config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'), args.username,

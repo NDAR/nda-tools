@@ -11,8 +11,8 @@ import time
 
 import keyring
 import requests
-from requests import HTTPError
 import yaml
+from requests import HTTPError
 
 from NDATools import NDA_TOOLS_LOGGING_YML_FILE, Utils
 from NDATools.Utils import exit_client, HttpErrorHandlingStrategy
@@ -150,7 +150,6 @@ class ClientConfiguration:
     def read_user_credentials(self, auth_req=True):
 
         self.password = None
-
         if auth_req:
             while True:
                 try:

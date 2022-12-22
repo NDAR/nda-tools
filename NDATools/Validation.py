@@ -58,7 +58,10 @@ class Validation:
         self.exit = allow_exit
         self.original_uuids = original_uuids
         self.data_structures_with_missing_rows = None
-        self.auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
+        if self.config.password:
+            self.auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
+        else:
+            self.auth = None
 
     """
     Validates a list of csv files and saves a new csv file with the results in the Home directory.
