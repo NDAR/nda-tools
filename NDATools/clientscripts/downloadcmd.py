@@ -13,20 +13,30 @@ from NDATools.Configuration import *
 logger = logging.getLogger(__name__)
 def parse_args():
     parser = argparse.ArgumentParser(
-        description='This application allows you to enter a list of aws S3 paths and will download the files to your '
-                    'drive in your home folder. Alternatively, you may enter a packageID, an NDA data structure file or'
-                    ' a text file with s3 links, and the client will download all files from the S3 links listed. '
-                    'Please note, the maximum transfer limit of data is 5TB at one time.',
-        usage='%(prog)s <S3_path_list>',
+        description='This application allows you to download files from an NDA package. Tutorials for creating packages'
+                    ' can be found on the website (links provided below). Information for packages, including package-ids,'
+                    ' are displayed on the packages dashboard page (https://nda.nih.gov/user/dashboard/packages.html). Users can'
+                    ' only download data from "personal" type packages. To download files from a'
+                    ' "shared" package you need to convert it to a "personal" package first, which can be done by clicking the "Add to my data'
+                    ' packages" button in the actions dropdown. '
+                    ''
+                    '\nLinks:'
+                    '\n\tvideo tutorial - https://nda.nih.gov/tutorials/nda/accessing_files_in_the_cloud.html?chapter=creating-a-package '
+                    '\n\tpdf - https://ndar.nih.gov/ndarpublicweb/Documents/Accessing+Shared+Data+Sept_2021-1.pdf',
         formatter_class=argparse.RawTextHelpFormatter)
 
-    # parser.add_argument('paths', metavar='<S3_path_list>', type=str, nargs='+', action='store',
-    parser.add_argument('paths', metavar='<S3_path_list>', type=str, nargs='*', action='store',
-                        help='Will download all S3 files to your local drive')
+    optional = parser._action_groups.pop()
+    required = parser.add_argument_group('required arguments')
+    parser._action_groups.append(optional)
 
-    # parser.add_argument('-dp', '--package', action='store_true', required=True,
-    parser.add_argument('-dp', '--package', required=True, metavar='<package-id>', type=str, action='store',
-                        help='Flags to download all S3 files in package. Required.')
+    required.add_argument('-dp', '--package', required=True, metavar='<package-id>', type=int, action='store',
+                        help='The package-id containing the files you wish to download. If no other command-line '
+                             'options are provided, the program will download all files from the specified package.')
+
+    parser.add_argument('paths', metavar='<S3_path_list>', type=str, nargs='*', action='store',
+                        help='Opional. When provided, the program will download only the specified files from the package.'
+                             ' The specified files must exist in the package indicated by the -dp argument and the paths must be valid'
+                             ' s3 urls.')
 
     parser.add_argument('-t', '--txt', metavar='<s3-links-file>', type=str, action='store',
                         help='Flags that a text file has been entered from where to download S3 files.')
@@ -41,10 +51,8 @@ and always ends in a 2 digit number. (For example, see the data-structure page f
     parser.add_argument('-u', '--username', metavar='<username>', type=str, action='store',
                         help='NDA username')
 
-    parser.add_argument('-p', '--password', help='Warning: Detected non-empty value for the -p/--password argument. '
-                                                 'Support for this setting has been deprecated and will no longer be '
-                                                 'used by this tool. Password storage is not recommended for security'
-                                                 ' considerations')
+    parser.add_argument('-p', '--password', help='Warning: Support for this setting has been deprecated and will no longer be '
+                                                 'used by this tool. This option will be removed in future releases')
 
     parser.add_argument('-d', '--directory', metavar='<download_directory>', type=str, nargs=1, action='store',
                         help='Enter an alternate full directory path where you would like your files to be saved. The default is ~/NDA/nda-tools/<package-id>')

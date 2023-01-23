@@ -9,6 +9,7 @@ from botocore.client import Config
 
 if sys.version_info[0] < 3:
     import Queue as queue
+
     input = raw_input
 else:
     import queue
@@ -17,6 +18,8 @@ from NDATools.Configuration import *
 from NDATools.MultiPartUploads import *
 
 logger = logging.getLogger(__name__)
+
+
 class Status:
     UPLOADING = 'Uploading'
     SYSERROR = 'SystemError'
@@ -27,8 +30,9 @@ class Status:
 
 
 class Submission:
-    def __init__(self, id, full_file_path, config, resume=False, allow_exit=False, username=None, password=None,
-                 thread_num=None, batch_size=None, original_submission_id=None):
+    def __init__(self, full_file_path, config, submission_id =None, package_id=None, allow_exit=False, username=None, password=None,
+                 thread_num=None, batch_size=None):
+        assert submission_id or package_id, "Either submission-id or package-id must be specified"
         self.config = config
         self.api = self.config.submission_api
         if username:
@@ -37,7 +41,11 @@ class Submission:
             self.config.password = password
         self.username = self.config.username
         self.password = self.config.password
-        self.full_file_path = full_file_path
+        # self.full_file_path is a dict where key is file_user_path, value is tuple of abs path and file-size
+        # TODO - refactor to replace full-file-path with self.files ...
+        self.full_file_path = full_file_path or {}
+        self.__files = []
+
         self.total_upload_size = 0
         self.upload_queue = queue.Queue()
         self.progress_queue = queue.Queue()
@@ -47,70 +55,39 @@ class Submission:
         self.batch_size = 10000
         if batch_size:
             self.batch_size = batch_size
-        self.batch_status_update = []
         self.directory_list = self.config.directory_list
         self.credentials_list = []
-        self.associated_files = []
         self.status = None
         self.total_files = None
         self.total_progress = None
+        self.source_bucket = None
         self.upload_tries = 0
         self.max_submit_time = 120
-        self.resume = resume
-        if self.resume:
-            self.submission_id = id
-            self.no_match = []
-            self.no_read_access = set()
-        else:
-            self.package_id = id
+        self.auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
+        self.submission_id = submission_id
+        self.package_id = package_id
+        self.no_read_access = set()
+        if self.submission_id is not None:
+            self.get_files()
         self.exit = allow_exit
         self.all_mpus = []
-        self.original_submission_id = original_submission_id
-        self.auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
 
     def replace_submission(self):
-        response = put_request("/".join([self.api, self.original_submission_id]) + "?submissionPackageUuid={}".format(self.package_id), auth=self.auth)
-        if response:
-            self.status = response['submission_status']
-            self.submission_id = response['submission_id']
-        else:
-            message = 'There was an error creating your submission'
-            if self.exit:
-                exit_client(signal=signal.SIGTERM,
-                        message=message)
-            else:
-                raise Exception("{}\n{}".format('SubmissionError', message))
+        response = put_request("/".join([self.api, self.submission_id]) + "?submissionPackageUuid={}".format(self.package_id), auth=self.auth)
+        self.status = response['submission_status']
+        self.submission_id = response['submission_id']
+        # extra files might be in the replacement submission, so refresh file-list
+        self.get_files(refresh=True)
 
     def submit(self):
         response = post_request("/".join([self.api, self.package_id]), auth=self.auth)
-        if response:
-            self.status = response['submission_status']
-            self.submission_id = response['submission_id']
-        else:
-            message = 'There was an error creating your submission'
-            if self.exit:
-                exit_client(signal=signal.SIGTERM,
-                        message=message)
-            else:
-                raise Exception("{}\n{}".format('SubmissionError', message))
+        self.status = response['submission_status']
+        self.submission_id = response['submission_id']
+        self.get_files(refresh=True)
 
     def check_status(self):
         response = get_request("/".join([self.api, self.submission_id]), auth=self.auth)
-
-        if response:
-            self.status = response['submission_status']
-        else:
-            message='An error occurred while checking submission {} status.'.format(self.submission_id)
-            if self.exit:
-                exit_client(signal=signal.SIGTERM,
-                            message=message)
-            else:
-                raise Exception("{}\n{}".format('StatusError', message))
-
-    def create_file_info_list(self, response):
-
-        return [{'submissionFileId': file['id'], 'destination_uri': file['file_remote_path']} for file in response if
-                file['status'] != Status.COMPLETE]
+        self.status = response['submission_status']
 
     def get_multipart_credentials(self, file_ids):
         all_credentials = []
@@ -129,87 +106,25 @@ class Submission:
 
         return all_credentials
 
-    def generate_data_for_request(self, status, id_list=[]):
-        batch_status_update = []
-
-        if self.credentials_list:
-            id_list = self.credentials_list
-
-        for cred in id_list:
-            file = cred['destination_uri'].split('/')
-            file = '/'.join(file[4:])
-            size = self.full_file_path[file][1]
-            update = {
-                "id": str(cred['submissionFileId']),
-                "md5sum": "None",
-                "size": size,
-                "status": status
-            }
-            batch_status_update.append(update)
-
-        self.batch_status_update = batch_status_update
-        return batch_status_update
-
     @property
     def incomplete_files(self):
+        return [f for f in self.get_files() if f['status'] != Status.COMPLETE]
 
-        response = get_request("/".join([self.api, self.submission_id, 'files']), auth=self.auth)
-        self.full_file_path = {}
-        self.associated_files = []
-        if response:
-            for file in response:
-                if file['status'] != Status.COMPLETE:
-                    self.associated_files.append(file['file_user_path'])
-            return len(self.associated_files) > 0
+    def get_files(self, refresh=False):
+        if not refresh and self.__files:
+            return self.__files
         else:
-            message='There was an error requesting files for submission {}.'.format(self.submission_id)
-            if self.exit:
-                exit_client(signal=signal.SIGTERM,
-                            message=message)
-            else:
-                raise Exception("{}\n{}".format('SubmissionError', message))
+            self.__files = get_request("/".join([self.api, self.submission_id, 'files']), auth=self.auth)
+            return self.__files
 
-    def check_submitted_files(self):
-        response = get_request("/".join([self.api, self.submission_id, 'files']), auth=self.auth)
-
-        file_info = self.create_file_info_list(response)
-
-        data = self.generate_data_for_request(Status.COMPLETE, file_info)
-        url = "/".join([self.api, self.submission_id, 'files/batchUpdate'])
-        auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
-        headers = {'content-type': 'application/json'}
-
-        batched_data = [data[i:i + self.batch_size] for i in
-                        range(0, len(data),
-                              self.batch_size)]
-        unsubmitted_ids = []
-
-        for batch in batched_data:
-            session = requests.session()
-            r = session.send(requests.Request('PUT', url, headers, auth=auth, data=json.dumps(batch)).prepare(),
-                             timeout=300, stream=False)
-            response = json.loads(r.text)
-            errors = response['errors']
-            for e in errors:
-                unsubmitted_ids.append(e['submissionFileId'])
-
-        file_ids = [int(ids['submissionFileId']) for ids in file_info]
-        new_ids = set(file_ids) & set(unsubmitted_ids)
+    def find_unsubmitted_files(self):
+        unsubmitted_file_ids = [e['submissionFileId'] for e in self.batch_update_status()]
+        file_ids = [int(file['id']) for file in self.get_files()]
+        new_ids = set(file_ids) & set(unsubmitted_file_ids)
 
         self.credentials_list = self.get_multipart_credentials(list(new_ids))
-
-        self.update_full_file_paths()
-
-    def update_full_file_paths(self):
-        full_file_path = {}
-
-        for credentials in self.credentials_list:
-            full_path = (credentials['destination_uri'].split(self.submission_id)[1][1:])
-            for key,value in self.full_file_path.items():
-                if full_path == key:
-                    full_file_path[key] = value
-                    break
-        self.full_file_path = full_file_path
+        if len(self.credentials_list)<len(self.full_file_path):
+            logger.warning('could not find credentials for some files. {} credentials. {} incomplete-files'.format(len(self.credentials_list), len(self.full_file_path)))
 
     def recollect_file_search_info(self):
         retry = input('Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
@@ -222,30 +137,16 @@ class Submission:
             if self.source_prefix == "":
                 self.source_prefix = None
 
-
-    def found_all_files(self, directories=None, source_bucket=None, source_prefix=None, retry_allowed=False):
-        def raise_error(error, l = []):
-            m = '\n'.join([error] + list(set(l)))
-            raise Exception(m)
-
-        self.directory_list = directories
-        self.source_bucket = source_bucket
-        self.source_prefix = source_prefix
+    def check_files_exist(self, no_match=None):
 
         if not self.directory_list and not self.source_bucket:
-            if retry_allowed:
-                self.recollect_file_search_info()
-            else:
-                error = 'Missing directory and/or an S3 bucket.'
-                raise_error(error)
-
-        if not self.no_match:
-            for file in self.associated_files:
-                self.no_match.append(file)
+            self.recollect_file_search_info()
 
         # local files
+        if no_match is None:
+            no_match = [f['file_user_path'] for f in self.incomplete_files]
         if self.directory_list:
-            parse_local_files(self.directory_list, self.no_match, self.full_file_path, self.no_read_access,
+            parse_local_files(self.directory_list, no_match, self.full_file_path, self.no_read_access,
                               self.config.skip_local_file_check)
 
         # files in s3
@@ -255,7 +156,7 @@ class Submission:
                 self.config.read_aws_credentials()
 
             s3_client = get_s3_client_with_config(self.config.aws_access_key, self.config.aws_secret_key, self.config.aws_session_token)
-            for file in self.no_match[:]:
+            for file in no_match[:]:
                 key = file
                 if self.source_prefix:
                     key = '/'.join([self.source_prefix, file])
@@ -263,7 +164,7 @@ class Submission:
                 try:
                     response = s3_client.head_object(Bucket=self.source_bucket, Key=key)
                     self.full_file_path[file] = (file_name, int(response['ContentLength']))
-                    self.no_match.remove(file)
+                    no_match.remove(file)
                 except botocore.exceptions.ClientError as e:
                     # If a client error is thrown, then check that it was a 404 error.
                     # If it was a 404 error, then the bucket does not exist.
@@ -274,46 +175,28 @@ class Submission:
                         no_access_buckets.append(self.source_bucket)
                         pass
 
-        if self.no_match:
+        if no_match:
             if no_access_buckets:
                 message = 'Your user does NOT have access to the following buckets. Please review the bucket ' \
                           'and/or your AWS credentials and try again.'
-                if retry_allowed:
-                    logger.info('\n', message)
-                    for b in no_access_buckets:
-                        logger.info(b)
-                else:
-                    error = "".join(['Bucket Access:', message])
-                    raise_error(error, no_access_buckets)
-            message = 'You must make sure all associated files listed in your validation file' \
-                      ' are located in the specified directory or AWS bucket. Associated file not found in specified directory:\n'
-            if retry_allowed:
-                logger.info('\n', message)
-                for file in self.no_match:
-                    logger.info(file)
-                self.recollect_file_search_info()
-                self.found_all_files(self.directory_list, self.source_bucket, self.source_prefix, retry_allowed=True)
-            else:
-                error = "".join(['Missing Files:', message])
-                raise_error(error, self.no_match)
+                logger.info(message)
+                for b in no_access_buckets:
+                    logger.info(b)
+            for file in no_match:
+                logger.info(file)
+            self.recollect_file_search_info()
+
+            self.check_files_exist(no_match)
 
         while self.no_read_access:
             message = 'You must make sure you have read-access to all the of the associated files listed in your validation file. ' \
                       'Please update your permissions for the following associated files:\n'
-            if retry_allowed:
-                logger.info(message)
-                for file in self.no_read_access:
-                    logger.info(file)
-                self.recollect_file_search_info()
-                [self.no_read_access.remove(i) for i in
-                    [file for file in self.no_read_access if check_read_permissions(file)]]
-            else:
-                error = "".join(['Read Permission Error:', message])
-                raise_error(error, self.no_match)
-
-        self.config.directory_list = self.directory_list
-        self.config.source_bucket = self.source_bucket
-        self.config.source_prefix = self.source_prefix
+            logger.info(message)
+            for file in self.no_read_access:
+                logger.info(file)
+            self.recollect_file_search_info()
+            [self.no_read_access.remove(i) for i in
+             [file for file in self.no_read_access if check_read_permissions(file)]]
 
         try:
             return len(self.directory_list) > 0
@@ -321,14 +204,35 @@ class Submission:
             return len(self.source_bucket) > 0
 
     def batch_update_status(self, status=Status.COMPLETE):
-        list_data = self.generate_data_for_request(status)
+        errors=[]
+        files_by_id = {f['id']:f for f in self.get_files()}
+        def to_payload(file):
+            payload = {
+                "id": file['id'],
+                "md5sum": "None",
+                "status": status
+            }
+            file_key = sanitize_file_path(file['file_user_path'])
+            if file['id'] in files_by_id and int(files_by_id[file['id']]['size']) > 0:
+                payload['size'] = files_by_id[file['id']]['size']
+            elif file_key in self.full_file_path:
+                payload['size'] = self.full_file_path[file_key][1]
+            return payload
+
+        list_data = list(map(to_payload, self.incomplete_files))
         url = "/".join([self.api, self.submission_id, 'files/batchUpdate'])
         data_to_dump = [list_data[i:i + self.batch_size] for i in range(0, len(list_data), self.batch_size)]
         for d in data_to_dump:
             data = json.dumps(d)
-            put_request(url, payload=data, auth=self.auth)
+            response = put_request(url, payload=data, auth=self.auth)
+            errors.extend(response['errors'])
 
-    def complete_partial_uploads(self):
+        # refresh the file list since the status on the files have changed
+        self.get_files(refresh=True)
+        return errors
+
+
+    def abort_previous_upload_attempts(self):
 
         bucket = (self.credentials_list[0]['destination_uri']).split('/')[2]
         prefix = 'submission_{}'.format(self.submission_id)
@@ -345,7 +249,7 @@ class Submission:
         for upload in multipart_uploads.incomplete_mpu:
             self.all_mpus.append(upload)
 
-    def submission_upload(self, hide_progress):
+    def upload_associated_files(self, hide_progress):
         with self.upload_queue.mutex:
             self.upload_queue.queue.clear()
         with self.progress_queue.mutex:
@@ -354,58 +258,44 @@ class Submission:
         for associated_file in self.full_file_path:
             path, file_size = self.full_file_path[associated_file]
             self.total_upload_size += file_size
+        ready_status_files = [int(file['id']) for file in self.incomplete_files if file['status']==Status.READY]
+        if ready_status_files:
+            self.credentials_list = self.get_multipart_credentials(ready_status_files)
+            self.batch_update_status(status=Status.PROCESSING)
 
-        response = get_request("/".join([self.api, self.submission_id, 'files']), auth=self.auth)
-        if response:
-            if not self.resume:
-                file_id_info = self.create_file_info_list(response)
-                file_ids = [int(ids['submissionFileId']) for ids in file_id_info]
-                self.credentials_list = self.get_multipart_credentials(file_ids)
-                self.batch_update_status(status=Status.PROCESSING)
+        if not hide_progress:
+            self.total_progress = tqdm(total=self.total_upload_size,
+                                       position=0,
+                                       unit_scale=True,
+                                       unit="bytes",
+                                       desc="Total Upload Progress",
+                                       ascii=os.name == 'nt',
+                                       dynamic_ncols=True)
 
+        workers = []
+        for x in range(self.thread_num):
+            worker = Submission.S3Upload(x, self.config, self.upload_queue, self.full_file_path, self.submission_id,
+                                         self.progress_queue, self.credentials_list, self.all_mpus)
+
+            workers.append(worker)
+            worker.daemon = True
+            worker.start()
+
+        for file in self.incomplete_files:
+            self.upload_queue.put([file, False, True])
+        self.upload_queue.put(["STOP", False, True])
+        self.upload_tries += 1
+        while any(map(lambda w: w.is_alive(), workers)):
             if not hide_progress:
-                self.total_progress = tqdm(total=self.total_upload_size,
-                                           position=0,
-                                           unit_scale=True,
-                                           unit="bytes",
-                                           desc="Total Upload Progress",
-                                           ascii=os.name == 'nt',
-                                           dynamic_ncols=True)
-
-            workers = []
-            for x in range(self.thread_num):
-                worker = Submission.S3Upload(x, self.config, self.upload_queue, self.full_file_path, self.submission_id,
-                                             self.progress_queue, self.credentials_list, self.all_mpus)
-
-                workers.append(worker)
-                worker.daemon = True
-                worker.start()
-
-            for file in response:
-                if file['status'] != Status.COMPLETE:
-                    self.upload_queue.put([file, False, True])
-            self.upload_queue.put(["STOP", False, True])
-            self.upload_tries += 1
-            while any(map(lambda w: w.is_alive(), workers)):
-                if not hide_progress:
-                    for progress in iter(self.progress_queue.get, None):
-                        if (self.total_progress.n < self.total_progress.total
-                                and progress <= (self.total_progress.total - self.total_progress.n)):
-                            self.total_progress.update(progress)
-                time.sleep(2)
-            if not hide_progress:
-                if self.total_progress.n < self.total_progress.total:
-                    self.total_progress.update(self.total_progress.total - self.total_progress.n)
-                self.total_progress.close()
-            session = None
-
-        else:
-            message='There was an error requesting submission {}.'.format(self.submission_id)
-            if self.exit:
-                exit_client(signal=signal.SIGTERM,
-                            message=message)
-            else:
-                raise Exception("{}\n{}".format('SubmissionError', message))
+                for progress in iter(self.progress_queue.get, None):
+                    if (self.total_progress.n < self.total_progress.total
+                            and progress <= (self.total_progress.total - self.total_progress.n)):
+                        self.total_progress.update(progress)
+            time.sleep(2)
+        if not hide_progress:
+            if self.total_progress.n < self.total_progress.total:
+                self.total_progress.update(self.total_progress.total - self.total_progress.n)
+            self.total_progress.close()
 
         self.batch_update_status()
 
@@ -430,8 +320,9 @@ class Submission:
 
             else:
                 logger.info('There was an error transferring some files, trying again')
-                if self.found_all_files and self.upload_tries < 5:
-                    self.submission_upload(hide_progress)
+                if self.check_files_exist and self.upload_tries < 5:
+                    self.get_files(refresh=True)
+                    self.upload_associated_files(hide_progress)
         if self.status != Status.UPLOADING and hide_progress:
             return
 
@@ -465,7 +356,7 @@ class Submission:
             for cred in self.credentials_list:
                 if str(cred['submissionFileId']) == file_id:
                     credentials = {'access_key': cred['access_key'], 'secret_key': cred['secret_key'],
-                                   'session_token': cred['session_token'], 'source_uri': cred['source_uri'] }
+                                   'session_token': cred['session_token'], 'source_uri': cred['source_uri']}
                     break
             paths = remote_path.split('/')
             bucket = paths[2]
@@ -539,7 +430,6 @@ class Submission:
                 file_id, credentials, bucket, key, full_path, file_size = self.upload_config()
                 prefix = 'submission_{}'.format(self.submission_id)
 
-
                 """
                 Methods for  file transfer: 
 
@@ -601,13 +491,13 @@ class Submission:
                     # try the original file credentials to perform a cp from source to dest
                     # Note - this is faster than downloading and uploading but may not work if NDA doenst have access
                     # to source bucket
-                    if self.try_nda_credentials :
+                    if self.try_nda_credentials:
                         s3_client = self.credentials.get_s3_client_with_config(credentials['access_key'],
-                                                                                    credentials['secret_key'],
-                                                                                    credentials['session_token'])
+                                                                               credentials['secret_key'],
+                                                                               credentials['session_token'])
                         try:
                             s3_client.copy({'Bucket': self.source_bucket, 'Key': self.source_key},
-                                                            bucket, prefix + '/' + source_key)
+                                           bucket, prefix + '/' + source_key)
                         except botocore.exceptions.ClientError as error:
                             self.add_back_to_queue(bucket, prefix, False)
                     elif mpu_exist:
@@ -652,8 +542,8 @@ class Submission:
                                                          multipart_chunksize=multipart_chunk_size)
 
                         self.dest = get_s3_client_with_config(credentials['access_key'],
-                                                                               credentials['secret_key'],
-                                                                               credentials['session_token'])
+                                                              credentials['secret_key'],
+                                                              credentials['session_token'])
                         self.dest_bucket = bucket
                         self.dest_key = key
                         self.temp_key = self.dest_key + '.temp'
@@ -717,8 +607,8 @@ class Submission:
                     else:
                         if credentials:
                             s3 = get_s3_client_with_config(credentials['access_key'],
-                                                                            credentials['secret_key'],
-                                                                            credentials['session_token'])
+                                                           credentials['secret_key'],
+                                                           credentials['session_token'])
                             config = TransferConfig(
                                 multipart_threshold=100 * 1024 * 1024,
                                 max_concurrency=2,
@@ -740,9 +630,19 @@ class Submission:
 
                         else:
                             logger.info('There was an error uploading {} after {} retry attempts'.format(full_path,
-                                                                                                   self.upload_tries))
+                                                                                                         self.upload_tries))
                             continue
 
                 self.upload_tries = 0
                 self.upload = None
                 self.upload_queue.task_done()
+
+    def resume_submission(self):
+        self.check_status()
+
+        if self.status == Status.UPLOADING:
+            self.find_unsubmitted_files()
+            self.abort_previous_upload_attempts()
+            self.check_files_exist()
+            self.upload_associated_files(hide_progress=self.config.hideProgress)
+            self.check_status()

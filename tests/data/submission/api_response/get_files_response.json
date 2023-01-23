@@ -1,0 +1,90 @@
+[
+  {
+    "_links": {
+      "self": {
+        "href": "https://nda.nih.gov/api/submission/56066/files/1099504889"
+      },
+      "download": {
+        "href": "https://nda.nih.gov/api/submission/56066/files/1099504889/download"
+      },
+      "multipartUploadCredentials": {
+        "href": "https://nda.nih.gov/api/submission/56066/files/1099504889/multipartUploadCredentials"
+      }
+    },
+    "id": "1099504889",
+    "file_type": "Submission Data File",
+    "file_user_path": "s3://nimhda-submission-package/1a0483a3-b85a-4a48-b8e3-3147799866dc/NDASubmission_ndar_administrator_1674052036976/delimited-file-65456336-771f-4bbd-9845-80011eff422d282242572893078351.csv",
+    "file_remote_path": "s3://gpop/ndar_data/DataSubmissions/ndar_administrator_1674052036976/delimited-file-65456336-771f-4bbd-9845-80011eff422d282242572893078351.csv",
+    "status": "Complete",
+    "size": 398,
+    "md5sum": null,
+    "created_date": "2023-01-18T09:27:19.706-05:00",
+    "modified_date": "2023-01-18T09:27:20.000-05:00"
+  },
+  {
+    "_links": {
+      "self": {
+        "href": "https://nda.nih.gov/api/submission/56066/files/1099504890"
+      },
+      "download": {
+        "href": "https://nda.nih.gov/api/submission/56066/files/1099504890/download"
+      },
+      "multipartUploadCredentials": {
+        "href": "https://nda.nih.gov/api/submission/56066/files/1099504890/multipartUploadCredentials"
+      }
+    },
+    "id": "1099504890",
+    "file_type": "Submission Data Package",
+    "file_user_path": "s3://nimhda-submission-package/1a0483a3-b85a-4a48-b8e3-3147799866dc/NDASubmission_ndar_administrator_1674052036976/NDARSubmissionPackage-1674052036976.zip",
+    "file_remote_path": "s3://gpop/ndar_data/DataSubmissions/ndar_administrator_1674052036976/NDARSubmissionPackage-1674052036976.zip",
+    "status": "Complete",
+    "size": 1145,
+    "md5sum": null,
+    "created_date": "2023-01-18T09:27:19.706-05:00",
+    "modified_date": "2023-01-18T09:27:20.000-05:00"
+  },
+  {
+    "_links": {
+      "self": {
+        "href": "https://nda.nih.gov/api/submission/56066/files/1099504891"
+      },
+      "download": {
+        "href": "https://nda.nih.gov/api/submission/56066/files/1099504891/download"
+      },
+      "multipartUploadCredentials": {
+        "href": "https://nda.nih.gov/api/submission/56066/files/1099504891/multipartUploadCredentials"
+      }
+    },
+    "id": "1099504891",
+    "file_type": "Submission Ticket",
+    "file_user_path": "s3://nimhda-submission-package/1a0483a3-b85a-4a48-b8e3-3147799866dc/NDASubmission_ndar_administrator_1674052036976/NDARSubmissionPackage-1674052036976.xml",
+    "file_remote_path": "s3://gpop/ndar_data/DataSubmissions/ndar_administrator_1674052036976/NDARSubmissionPackage-1674052036976.xml",
+    "status": "Complete",
+    "size": 455,
+    "md5sum": null,
+    "created_date": "2023-01-18T09:27:19.706-05:00",
+    "modified_date": "2023-01-18T09:27:20.000-05:00"
+  },
+  {
+    "_links": {
+      "self": {
+        "href": "https://nda.nih.gov/api/submission/56066/files/1099847555"
+      },
+      "download": {
+        "href": "https://nda.nih.gov/api/submission/56066/files/1099847555/download"
+      },
+      "multipartUploadCredentials": {
+        "href": "https://nda.nih.gov/api/submission/56066/files/1099847555/multipartUploadCredentials"
+      }
+    },
+    "id": "1099847555",
+    "file_type": "Submission Associated File",
+    "file_user_path": "derivatives/abcd-hcp-pipeline/sub-NDARNC731WVC/ses-Age188MonthsStudyYear09/func/sub-NDARNC731WVC_ses-Age188MonthsStudyYear09_task-rest_acq-PrismaMultiBand_run-01_desc-filtered_motion.tsv",
+    "file_remote_path": "s3://NDAR_Central_1/submission_56032/derivatives/abcd-hcp-pipeline/sub-NDARNC731WVC/ses-Age188MonthsStudyYear09/func/sub-NDARNC731WVC_ses-Age188MonthsStudyYear09_task-rest_acq-PrismaMultiBand_run-01_desc-filtered_motion.tsv",
+    "status": "Ready",
+    "size": 43838,
+    "md5sum": "None",
+    "created_date": "2023-01-17T14:21:00.895-05:00",
+    "modified_date": "2023-01-17T14:21:10.000-05:00"
+  }
+]

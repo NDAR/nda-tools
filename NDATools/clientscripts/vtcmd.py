@@ -170,28 +170,12 @@ class Status:
 
 
 def resume_submission(submission_id, batch, config=None):
-    submission = Submission(id=submission_id, full_file_path=None, config=config, resume=True, batch_size=batch, thread_num=config.workerThreads)
-    submission.check_status()
-    if submission.status == Status.UPLOADING:
-        directories = config.directory_list
-        source_bucket = config.source_bucket
-        source_prefix = config.source_prefix
+    submission = Submission( None, config, submission_id=submission_id, batch_size=batch, thread_num=config.workerThreads)
+    submission.resume_submission()
+    if submission.status != Status.UPLOADING:
+        print_submission_complete_message(submission, False)
 
-        if submission.incomplete_files and submission.found_all_files(directories, source_bucket, source_prefix,
-                                                                      retry_allowed=True):
-            # if not config.skip_local_file_check:
-            submission.check_submitted_files()
-            submission.complete_partial_uploads()
-            submission.submission_upload(hide_progress=config.hideProgress)
-        else:
-            submission.submission_upload(hide_progress=config.hideProgress)
 
-        submission.check_status()
-        if submission.status != Status.UPLOADING:
-            print_submission_complete_message(submission, False)
-    else:
-        logger.info('Submission Completed with status {}'.format(submission.status))
-        return
 def validate_files(file_list, warnings, build_package, threads, config=None, pending_changes=None, original_uuids=None):
     validation = Validation(file_list, config=config, hide_progress=config.hideProgress, thread_num=threads,
                             allow_exit=True, pending_changes=pending_changes, original_uuids=original_uuids)
@@ -303,26 +287,26 @@ def print_submission_complete_message(submission, replacement):
 
 def submit_package(package_id, full_file_path, associated_files_to_upload, threads, batch,
                    config=None, original_submission_id=None):
-    submission = Submission(id=package_id,
+    submission = Submission(package_id=package_id,
+                            submission_id=original_submission_id,
                             full_file_path=full_file_path,
                             thread_num=threads,
                             batch_size=batch,
                             allow_exit=True,
-                            config=config,
-                            original_submission_id=original_submission_id)
+                            config=config)
     logger.info('Requesting submission for package: {}'.format(submission.package_id))
     if original_submission_id:
         submission.replace_submission()
     else:
         submission.submit()
-        # see commit comment for commit #d2f4dad
-        # we need to trigger the GET /id endpoint to move the submission status to complete if necessary
-        submission.check_status()
+    # see commit comment for commit #d2f4dad
+    # we need to trigger the GET /id endpoint to move the submission status to complete if necessary
+    submission.check_status()
     if submission.submission_id:
         logger.info('Submission ID: {}'.format(str(submission.submission_id)))
     if associated_files_to_upload:
         logger.info('Preparing to upload associated files.')
-        submission.submission_upload(hide_progress=config.hideProgress)
+        submission.upload_associated_files(hide_progress=config.hideProgress)
     if submission.status != Status.UPLOADING:
         print_submission_complete_message(submission, replacement=True if original_submission_id else False)
 

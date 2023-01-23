@@ -1,5 +1,9 @@
 
 # CHANGELOG
+## 0.2.23 - 2023-1-23
+* [`vtcmd`] updated logic to allow alt-endpoints to contain sub-folders
+* [`downloadcmd`] Added validation for -dp arg
+
 ## 0.2.21 - 2022-11-04
 * [`vtcmd`] fixed regression affecting the -rs functionality
 * [`nda-tools`] Added additional logging for network requests
