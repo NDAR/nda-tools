@@ -47,9 +47,11 @@ class TestSubmission():
             mock_status = MagicMock()
             mock_get_creds = MagicMock(return_value =creds_resource['credentials'])
             mock_batch_update = MagicMock(return_value =batch_update_status)
+            mock_abort_previous_uploads = MagicMock()
             mock_upload_files = MagicMock()
             m.setattr(Submission.Submission, 'check_status', mock_status)
             m.setattr(Submission.Submission, 'get_multipart_credentials', mock_get_creds)
+            m.setattr(Submission.Submission, 'abort_previous_upload_attempts', mock_abort_previous_uploads)
             m.setattr(Submission.Submission, 'batch_update_status', mock_batch_update['errors'])
             m.setattr(Submission.Submission, 'upload_associated_files', mock_upload_files)
             m.setattr(Submission, 'post_request', api_endpoint(submission_resource))
@@ -74,6 +76,7 @@ class TestSubmission():
             assert mock_status.call_count == 2
             assert mock_upload_files.call_count == 1
             assert mock_get_creds.call_count == 1
+            assert mock_abort_previous_uploads.call_count ==1 
             assert submission.get_files()==files_resource
 
     def test_create_submission_success(self, monkeypatch, config, submission_with_files, api_endpoint):
