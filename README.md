@@ -267,6 +267,48 @@ you can do so by passing the -ds flag.
 
 `downloadcmd -dp <packageID> -t path/to/all/s3/txt/file/alls3.txt`
 
+#### Downloading Files to S3 Bucket
+The downloadcmd command can download your NDA package into your S3 bucket directly.
+
+`downloadcmd -dp  <packageID> -s3 <s3 bucket>`
+
+This is the preferred way to download data from NDA for two reasons:
+
+1) Downloading to another S3 bucket is considerably faster because the data doesn't leave AWS.
+
+2) It allows us to download an unlimited amount of data from NDA to your bucket directly.
+
+For S3-to-S3 copy operations to be successful, the S3 bucket supplied as the program argument must be configured to allow PUT object 
+operations for `arn:aws:sts::618523879050:federated-user/<username>`, where `<username>` is your NDA username. 
+
+For non-public buckets, this will require an update to the bucket policy. The following statement should be added to allow the necessary permissions after replacing `<your-s3-bucket>` with the bucket name: 
+```
+{
+    "Sid": "AllowNDAUpload",
+    "Effect": "Allow",
+    "Principal": {
+        "AWS": "arn:aws:iam::618523879050:federated-user/<username>"        
+    },
+    "Action": "s3:PutObject*",
+    "Resource": "arn:aws:s3:::<your-s3-bucket>/*"
+}
+```
+You may need to email your company/institution IT department to have this added for you.
+
+**Note:** If your S3 bucket is encrypted with a customer-managed KMS key, then you will also need to update the policy of the key that is used to encrypt the bucket. 
+
+The following statement should be added to your key's policy:
+```
+{
+    "Sid": "EnableUseForFederatedNDA",
+    "Effect": "Allow",
+    "Principal": {
+        "AWS":  "arn:aws:iam::618523879050:user/DownloadManager"
+    },
+    "Action": ["kms:GenerateDataKey","kms:Decrypt"],
+    "Resource": "*"
+}
+```
 ## Further Assistance
 If you have any problems with this Validation Tool Python client or would like to provide feedback/comments, please email us at  [NDAHelp@mail.nih.gov ](mailto:NDAHelp@mail.nih.gov).
 # nda-tools

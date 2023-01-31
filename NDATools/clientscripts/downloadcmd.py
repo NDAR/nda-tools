@@ -139,16 +139,10 @@ future.''')
                         help='''Specify s3 location which you would like to download your files to. When this option is specified, an attempt will be made
 to copy the files from your package, which are stored in NDA's own S3 repository, to the S3 bucket provided. 
 
-
-This is the preferred way to download data from NDA for two reasons:
-
-1)  FASTER !!! - Downloads to another s3 bucket are orders of magnitude faster because data doesn't leave AWS
-2)  CHEAPER (for us) - We do not limit the amount of data transferred to another bucket, but we do when its downloaded out of AWS. 
-
-For s3-to-s3 copy operations to be successfull, the s3 bucket supplied as the program arugment must be configured to allow PUT object 
-operations  for 'arn:aws:sts::618523879050:federated-user/<username>' where <username> is your nda username. For non-public buckets, this 
-will require an update to your bucket's policy. The following statement should be sufficient to grant the uploading privileges necessary 
-to run this program using the s3 argument (after replacing <your-s3-bucket> with the appropriate value):
+For s3-to-s3 copy operations to be successful, the s3 bucket supplied as the program argument must be configured to allow PUT object 
+operations  for 'arn:aws:sts::618523879050:federated-user/<username>' where <username> is your nda username. 
+For non-public buckets, this will require an update to your bucket's policy. The following statement should be sufficient to grant the uploading privileges necessary 
+to run this program using the s3 argument after replacing <your-s3-bucket> with the bucket name:
          {
             "Sid": "AllowNDAUpload",
             "Effect": "Allow",
@@ -159,7 +153,10 @@ to run this program using the s3 argument (after replacing <your-s3-bucket> with
             "Resource": "arn:aws:s3:::<your-s3-bucket>/*"
         }
         
-You may need to email your company/institution IT department to have this added for you.''')
+You may need to email your company/institution IT department to have this added for you.
+Note: If your bucket is encrypted with a customer-managed KMS key, then additional configuration is needed. 
+For more details, check the information on the README page.
+''')
 
     args = parser.parse_args()
 
