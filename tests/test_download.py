@@ -10,9 +10,9 @@ from unittest.mock import ANY, MagicMock
 import pytest
 from requests import HTTPError
 
+import NDATools.Utils
 import NDATools.clientscripts.downloadcmd
 from NDATools.Download import Download
-import NDATools.Utils
 
 FAKE_FILE_BYTES = [0x10, 0x10]
 MISSING_FILE = 's3://NDAR_Central_1/submission_43568/not-found.png'
@@ -24,7 +24,6 @@ class TestDownload:
     def class_setup(self, load_from_file):
         self.load_from_file = load_from_file
 
-        
 
     def test_s3links_argument_file_not_found(self,
                                         download_config_factory,

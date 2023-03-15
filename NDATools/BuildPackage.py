@@ -295,6 +295,7 @@ class SubmissionPackage:
 
             polling = 0
             while response['package_info']['status'] == Status.PROCESSING:
+                time.sleep(1.1)
                 response = get_request("/".join([self.api, self.package_id]), auth=self.auth)
                 polling += 1
                 self.package_id = response['submission_package_uuid']

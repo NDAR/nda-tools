@@ -182,7 +182,7 @@ class Validation:
             new_uuids, unrecognized_ds = self.generate_uuids_for_qa_workflow(unrecognized_ds)
 
             if unrecognized_ds:
-                message = 'ERROR - The following datastructures cannot be used with the qa token provided: '
+                message = 'ERROR - The following datastructures were not included in the original submission and therefore cannot be included in the replacement submission: '
                 message += "\r\n" + "\r\n".join(unrecognized_ds)
                 exit_client(signal=signal.SIGTERM, message=message)
             else:
@@ -197,11 +197,13 @@ class Validation:
         return {manifest for manifests in list(map(lambda change: change['manifests'], self.pending_changes)) for manifest
              in manifests}
 
-
     def output(self):
+        encountered_system_error=False
         if self.config.JSON:
             json_data = dict(Results=[])
             for (response, file) in self.responses:
+                if response['status'] == Status.SYSERROR:
+                    encountered_system_error=True
                 file_name = self.uuid_dict[response['id']]['file']
                 json_data['Results'].append({
                     'File': file_name,
@@ -212,6 +214,7 @@ class Validation:
                 })
             with open(self.log_file, 'w') as outfile:
                 json.dump(json_data, outfile)
+
         else:
             if sys.version_info[0] < 3:
                 csvfile = open(self.log_file, 'wb')
@@ -220,7 +223,11 @@ class Validation:
             writer = csv.DictWriter(csvfile, fieldnames=self.field_names)
             writer.writeheader()
             for (response, file) in self.responses:
+                if response['status'] == Status.SYSERROR:
+                    encountered_system_error=True
+
                 file_name = self.uuid_dict[response['id']]['file']
+
                 if response['errors'] == {}:
                     writer.writerow(
                         {'FILE': file_name, 'ID': response['id'], 'STATUS': response['status'],
@@ -228,18 +235,27 @@ class Validation:
                          'MESSAGE': 'None', 'RECORD': 'None'})
                 else:
                     for error, value in response['errors'].items():
+                        if error == 'system':
+                            encountered_system_error = True
                         for v in value:
-                            column = v['columnName']
-                            message = v['message']
                             try:
-                                record = v['recordNumber']
+                                column = v['columnName'] if 'columnName' in v else None
+                                message = v['message']
+                                record = v['recordNumber'] if 'recordNumber' in v else None
+                                writer.writerow(
+                                    {'FILE': file_name, 'ID': response['id'], 'STATUS': response['status'],
+                                     'EXPIRATION_DATE': response['expiration_date'], 'ERRORS': error, 'COLUMN': column,
+                                     'MESSAGE': message, 'RECORD': record})
                             except KeyError:
-                                record = ' '
-                            writer.writerow(
-                                {'FILE': file_name, 'ID': response['id'], 'STATUS': response['status'],
-                                 'EXPIRATION_DATE': response['expiration_date'], 'ERRORS': error, 'COLUMN': column,
-                                 'MESSAGE': message, 'RECORD': record})
-            csvfile.close()
+                                logger.error('Unrecognized result from validation service - {}. '.format(json.dumps(response)))
+                                logger.error('\nPlease contact NDAHelp@mail.nih.gov for help in resolving this error')
+                                exit_client()
+        csvfile.close()
+        logger.info('Validation report output to: {}'.format(self.log_file))
+        if encountered_system_error:
+            logger.error('Unexpected error occurred while validating one or more of the csv files')
+            logger.error('\nPlease email NDAHelp@mail.nih.gov for help in resolving this error and include {} as an attachment to help us resolve the issue'.format(self.log_file))
+            exit_client()
 
     def get_warnings(self):
         if self.config.JSON:
@@ -389,6 +405,7 @@ class Validation:
         else:
             logger.info('\r\nFinished uploading all manifest files')
         while not self.validation_result.status.startswith(Status.COMPLETE):
+            time.sleep(1.1)
             response = get_request("/".join([self.api, r['id']]), auth=self.auth)
             self.validation_result = Validation.ValidationManifestResult(response, self)
             for m in self.validation_result.manifests:

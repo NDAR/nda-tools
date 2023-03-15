@@ -181,15 +181,7 @@ def validate_files(file_list, warnings, build_package, threads, config=None, pen
                             allow_exit=True, pending_changes=pending_changes, original_uuids=original_uuids)
     logger.info('\nValidating files...')
     validation.validate()
-
-    for (response, file) in validation.responses:
-        if response['status'] == Status.SYSERROR:
-            logger.error('\nSystemError while validating: {}'.format(file))
-            logger.error('Please contact NDAHelp@mail.nih.gov')
-        elif response['errors'] != {}:
-            logger.info('\nError! Check file: {}'.format(file))
     validation.output()
-    logger.info('Validation report output to: {}'.format(validation.log_file))
 
     if warnings:
         validation.get_warnings()
