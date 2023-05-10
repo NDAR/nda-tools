@@ -358,8 +358,9 @@ class Download(Protocol):
 
         # dont generate a file if there were no failures
         if not self.package_file_download_errors:
-            logger.info('No failures detected. Removing file {}'.format(failed_s3_links_file.name))
-            os.remove(failed_s3_links_file.name)
+            if os.path.exists(failed_s3_links_file.name):
+                logger.info('No failures detected. Removing file {}'.format(failed_s3_links_file.name))
+                os.remove(failed_s3_links_file.name)
 
         logger.info('')
 
