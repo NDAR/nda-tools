@@ -289,7 +289,10 @@ For non-public buckets, this will require an update to the bucket policy. The fo
     "Principal": {
         "AWS": "arn:aws:iam::618523879050:federated-user/<username>"        
     },
-    "Action": "s3:PutObject*",
+    "Action": [
+        "s3:AbortMultipartUpload",
+        "s3:PutObject*"
+    ],
     "Resource": "arn:aws:s3:::<your-s3-bucket>/*"
 }
 ```
@@ -306,7 +309,16 @@ The following statement should be added to your key's policy:
         "AWS":  "arn:aws:iam::618523879050:user/DownloadManager"
     },
     "Action": ["kms:GenerateDataKey","kms:Decrypt"],
-    "Resource": "*"
+    "Resource": "*",
+    "Condition": {
+        "StringEquals": {
+            "kms:CallerAccount": "618523879050",
+            "kms:ViaService": "s3.us-east-1.amazonaws.com"
+        },
+        "StringLike": {
+            "kms:EncryptionContext:aws:s3:arn": "arn:aws:s3:::<bucket_name>"
+        }
+    }
 }
 ```
 ## Further Assistance
