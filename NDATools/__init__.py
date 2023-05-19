@@ -8,7 +8,7 @@ import requests
 
 import NDATools
 
-__version__ = '0.2.24'
+__version__ = '0.2.25'
 pypi_version = None
 version_checked = False
 
@@ -88,6 +88,8 @@ if not os.path.exists(NDA_TOOLS_VAL_FOLDER):
 NDA_TOOLS_SUB_PACKAGE_FOLDER = os.path.join(NDA_TOOLS_VTCMD_FOLDER, 'submission_package')
 if not os.path.exists(NDA_TOOLS_SUB_PACKAGE_FOLDER):
     os.mkdir(NDA_TOOLS_SUB_PACKAGE_FOLDER)
+
+NDA_TOOLS_PACKAGE_FILE_METADATA = 'package_file_metadata.txt'
 
 NDA_TOOLS_DEFAULT_LOG_FORMAT='%(asctime)s:%(levelname)s:%(message)s'
 

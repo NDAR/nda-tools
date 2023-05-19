@@ -15,8 +15,8 @@ import traceback
 
 import boto3
 import requests
-from requests.adapters import HTTPAdapter
 import requests.packages.urllib3.util
+from requests.adapters import HTTPAdapter, Retry
 
 IS_PY2 = sys.version_info < (3, 0)
 
@@ -67,7 +67,7 @@ class HttpErrorHandlingStrategy():
         message = None
         try:
             if 'content-type' in r.headers and 'json' in r.headers['Content-Type']:
-                message = r.json()['message']
+                message = r.json()
         except (ValueError, json.JSONDecodeError):
             message = r.text
 
@@ -254,8 +254,11 @@ def is_json(test):
 @retry_connection_errors
 def _send_prepared_request(prepped, timeout=150, deserialize_handler=DeserializeHandler.convert_json, error_handler=HttpErrorHandlingStrategy.print_and_exit):
     with requests.Session() as session:
+        retries = Retry(total=10,
+                        backoff_factor=0.1,
+                        status_forcelist=[ 502, 503, 504 ])
         logger.debug('{} {} @ {}'.format(prepped.method , prepped.url, datetime.datetime.now()))
-        session.mount(prepped.url, HTTPAdapter(max_retries=10))
+        session.mount(prepped.url, HTTPAdapter(max_retries=retries))
         tmp = session.send(prepped, timeout=timeout)
         logger.debug('{} {} (elapsed = {})- STATUS {}'.format(prepped.method, prepped.url, tmp.elapsed, tmp.status_code))
         if not tmp.ok:

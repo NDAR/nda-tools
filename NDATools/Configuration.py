@@ -71,6 +71,7 @@ class ClientConfiguration:
         self.submission_package_api = self.config.get("Endpoints", "submission_package")
         self.submission_api = self.config.get("Endpoints", "submission")
         self.validationtool_api = self.config.get("Endpoints", "validationtool")
+        self.package_creation_api = self.config.get("Endpoints", "package_creation")
         self.package_api = self.config.get("Endpoints", "package")
         self.datadictionary_api = self.config.get("Endpoints", "datadictionary")
         self.user_api = self.config.get("Endpoints", "user")
@@ -137,6 +138,7 @@ class ClientConfiguration:
         copy_config.set("Endpoints", "submission", self.submission_api)
         copy_config.set("Endpoints", "validationtool", self.validationtool_api)
         copy_config.set("Endpoints", "datadictionary", self.datadictionary_api)
+        copy_config.set("Endpoints", "package_creation", self.package_creation_api)
 
         copy_config.add_section("User")
         copy_config.set("User", "username", self.username)
