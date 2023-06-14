@@ -222,6 +222,7 @@ who created the submission along with a UUID called a QA Token which can be used
 
 To fix the data in NDA for your submission, you need to replace all of the csv files which contained errors in your original submission.
 To do this you must:
+
 <ol>
 <li>Retrieve the csv files with that were used to create the original submission and which contain data that needs to be corrected.
 This includes all csv files where data needs to be added, removed or updated.</li>
@@ -345,4 +346,4 @@ If you have any problems with this Validation Tool Python client or would like t
 
 - export AWS_PROFILE=<AWS_PROFILE>
 - export CODEARTIFACT_AUTH_TOKEN=`aws codeartifact get-authorization-token --domain nda --domain-owner 846214067917 --region us-east-1 --query authorizationToken --output text`
-- docker build --build-arg CODEARTIFACT_AUTH_TOKEN=$CODEARTIFACT_AUTH_TOKEN --build-arg FORM_FILLER_VERSION=<VERSION_NUMBER> . -t <TAG_NAME>:<BRANCH_NAME> --no-cache
+- docker build --build-arg CODEARTIFACT_AUTH_TOKEN=$CODEARTIFACT_AUTH_TOKEN . -t <TAG_NAME>:<BRANCH_NAME> --no-cache
