@@ -21,7 +21,7 @@ COPY . .
 
 # Build and push the Python project to CodeArtifact
 ENV TWINE_NON_INTERACTIVE=true
-RUN pip install requests twine && python setup.py sdist \
+RUN pip install -qqq requests twine && python setup.py sdist \
     && if [ "$PROD" = "false" ] ; then \
       curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" ;\
       unzip awscliv2.zip; \
