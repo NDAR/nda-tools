@@ -16,13 +16,11 @@ WORKDIR /app
 
 # Copy the entire project to the container
 COPY . .
-
+RUN apt  update -y
+RUN apt install awscli -y
 # Build and push the Python project to CodeArtifact
 RUN pip install -qqq requests twine && python setup.py sdist
 RUN if [ "$PROD" = "false" ] ; then \
-      curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" ;\
-      unzip awscliv2.zip; \
-      ./aws/install; \
       pass=`aws codeartifact get-authorization-token --domain nda --domain-owner 846214067917 --region us-east-1 --query authorizationToken --output text`; \
       devurl=`aws codeartifact get-repository-endpoint --domain nda --domain-owner 846214067917 --repository pypi-store --region us-east-1 --format pypi --query repositoryEndpoint --output text` ;\
       echo "uploading to $devurl with pass $pass"; \
