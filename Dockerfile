@@ -18,7 +18,7 @@ ENV TWINE_REPOSITORY_URL=$TWINE_REPOSITORY_URL
 COPY . .
 
 # Install dependencies and build the package
-RUN pip3 install wheel requests
+RUN pip install wheel requests
 RUN python setup.py sdist
 
 # Install Twine
