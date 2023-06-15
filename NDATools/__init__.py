@@ -8,7 +8,7 @@ import requests
 
 import NDATools
 
-__version__ = '0.2.25'
+__version__ = '0.2.26.dev2'
 pypi_version = None
 version_checked = False
 
@@ -48,6 +48,7 @@ def check_version():
 
     NDATools.version_checked = True
 
+
 if not NDATools.version_checked:
     check_version()
 
@@ -64,16 +65,19 @@ NDA_TOOLS_VTCMD_FOLDER = os.path.join(NDA_TOOLS_ROOT_FOLDER, 'vtcmd')
 if not os.path.exists(NDA_TOOLS_VTCMD_FOLDER):
     os.mkdir(NDA_TOOLS_VTCMD_FOLDER)
 
-NDA_TOOLS_DOWNLOADCMD_FOLDER = os.path.join(NDA_TOOLS_ROOT_FOLDER, 'downloadcmd')
+NDA_TOOLS_DOWNLOADCMD_FOLDER = os.path.join(
+    NDA_TOOLS_ROOT_FOLDER, 'downloadcmd')
 if not os.path.exists(NDA_TOOLS_DOWNLOADCMD_FOLDER):
     os.mkdir(NDA_TOOLS_DOWNLOADCMD_FOLDER)
 
 
-NDA_TOOLS_DOWNLOADS_FOLDER = os.path.join(NDA_TOOLS_DOWNLOADCMD_FOLDER, 'packages')
+NDA_TOOLS_DOWNLOADS_FOLDER = os.path.join(
+    NDA_TOOLS_DOWNLOADCMD_FOLDER, 'packages')
 if not os.path.exists(NDA_TOOLS_DOWNLOADS_FOLDER):
     os.mkdir(NDA_TOOLS_DOWNLOADS_FOLDER)
 
-NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER = os.path.join(NDA_TOOLS_DOWNLOADCMD_FOLDER, 'logs')
+NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER = os.path.join(
+    NDA_TOOLS_DOWNLOADCMD_FOLDER, 'logs')
 if not os.path.exists(NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER):
     os.mkdir(NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER)
 
@@ -81,18 +85,22 @@ NDA_TOOLS_VTCMD_LOGS_FOLDER = os.path.join(NDA_TOOLS_VTCMD_FOLDER, 'logs')
 if not os.path.exists(NDA_TOOLS_VTCMD_LOGS_FOLDER):
     os.mkdir(NDA_TOOLS_VTCMD_LOGS_FOLDER)
 
-NDA_TOOLS_VAL_FOLDER = os.path.join(NDA_TOOLS_VTCMD_FOLDER, 'validation_results')
+NDA_TOOLS_VAL_FOLDER = os.path.join(
+    NDA_TOOLS_VTCMD_FOLDER, 'validation_results')
 if not os.path.exists(NDA_TOOLS_VAL_FOLDER):
     os.mkdir(NDA_TOOLS_VAL_FOLDER)
 
-NDA_TOOLS_SUB_PACKAGE_FOLDER = os.path.join(NDA_TOOLS_VTCMD_FOLDER, 'submission_package')
+NDA_TOOLS_SUB_PACKAGE_FOLDER = os.path.join(
+    NDA_TOOLS_VTCMD_FOLDER, 'submission_package')
 if not os.path.exists(NDA_TOOLS_SUB_PACKAGE_FOLDER):
     os.mkdir(NDA_TOOLS_SUB_PACKAGE_FOLDER)
 
 NDA_TOOLS_PACKAGE_FILE_METADATA = 'package_file_metadata.txt'
 
-NDA_TOOLS_DEFAULT_LOG_FORMAT='%(asctime)s:%(levelname)s:%(message)s'
+NDA_TOOLS_DEFAULT_LOG_FORMAT = '%(asctime)s:%(levelname)s:%(message)s'
 
-NDA_TOOLS_LOGGING_YML_FILE = os.path.join(os.path.expanduser('~'), '.NDATools/logging.yml')
+NDA_TOOLS_LOGGING_YML_FILE = os.path.join(
+    os.path.expanduser('~'), '.NDATools/logging.yml')
 
-os.environ['PYTHONWARNINGS']='ignore' # MAC users sometimes see output from python warnings module. Suppress these msgs
+# MAC users sometimes see output from python warnings module. Suppress these msgs
+os.environ['PYTHONWARNINGS'] = 'ignore'
