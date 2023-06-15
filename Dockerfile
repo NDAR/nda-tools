@@ -1,4 +1,5 @@
 FROM public.ecr.aws/docker/library/python:3.9
+RUN pip install --upgrade pip
 
 ARG CODEARTIFACT_AUTH_TOKEN
 ARG TWINE_USERNAME
