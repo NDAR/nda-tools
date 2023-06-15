@@ -18,8 +18,8 @@ WORKDIR /app
 COPY . .
 
 # Build and push the Python project to CodeArtifact
-RUN pip install -qqq requests twine && python setup.py sdist \
-    && if [ "$PROD" = "false" ] ; then \
+RUN pip install -qqq requests twine && python setup.py sdist
+RUN if [ "$PROD" = "false" ] ; then \
       curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" ;\
       unzip awscliv2.zip; \
       ./aws/install; \
