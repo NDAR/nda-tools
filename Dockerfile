@@ -1,10 +1,8 @@
 # Use a Python base image
 FROM public.ecr.aws/docker/library/python:3.9
-ARG CODEARTIFACT_AUTH_TOKEN
 ARG TWINE_PROD_USERNAME
 ARG TWINE_PROD_PASSWORD
 ARG PROD="false"
-ENV CODEARTIFACT_AUTH_TOKEN="$CODEARTIFACT_AUTH_TOKEN"
 ENV TWINE_PROD_USERNAME="$TWINE_PROD_USERNAME"
 ENV TWINE_PROD_PASSWORD="$TWINE_PROD_PASSWORD"
 # Set the working directory in the container
@@ -20,7 +18,6 @@ WORKDIR /app
 COPY . .
 
 # Build and push the Python project to CodeArtifact
-ENV TWINE_NON_INTERACTIVE=true
 RUN pip install -qqq requests twine && python setup.py sdist \
     && if [ "$PROD" = "false" ] ; then \
       curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" ;\
