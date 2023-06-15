@@ -1,5 +1,6 @@
 FROM public.ecr.aws/docker/library/python:3.9
 
+
 ARG CODEARTIFACT_AUTH_TOKEN
 ARG TWINE_USERNAME
 ARG TWINE_PASSWORD
@@ -18,11 +19,11 @@ ENV TWINE_REPOSITORY_URL=$TWINE_REPOSITORY_URL
 COPY . .
 
 # Install dependencies and build the package
-RUN python3 install wheel requests 
+RUN pip3 install wheel requests 
 RUN python setup.py sdist
 
 # Install Twine
-RUN python3 install twine
+RUN pip3 install twine
 
 # Publish the package using Twine
 RUN twine upload --repository-url $TWINE_REPOSITORY_URL --username $TWINE_USERNAME --password $TWINE_PASSWORD dist/*
