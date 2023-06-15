@@ -346,4 +346,7 @@ If you have any problems with this Validation Tool Python client or would like t
 
 - export AWS_PROFILE=<AWS_PROFILE>
 - export CODEARTIFACT_AUTH_TOKEN=`aws codeartifact get-authorization-token --domain nda --domain-owner 846214067917 --region us-east-1 --query authorizationToken --output text`
-- docker build --build-arg CODEARTIFACT_AUTH_TOKEN=$CODEARTIFACT_AUTH_TOKEN . -t <TAG_NAME>:<BRANCH_NAME> --no-cache
+- export TWINE_USERNAME=aws
+- export TWINE_PASSWORD=`aws codeartifact get-authorization-token --domain nda --domain-owner 846214067917 --region us-east-1 --query authorizationToken --output text`
+- export TWINE_REPOSITORY_URL=`aws codeartifact get-repository-endpoint --domain nda --domain-owner 846214067917 --repository pypi-store --region us-east-1 --format pypi --query repositoryEndpoint --output text`
+- `docker build --build-arg CODEARTIFACT_AUTH_TOKEN=$CODEARTIFACT_AUTH_TOKEN --build-arg TWINE_USERNAME=$TWINE_USERNAME --build-arg TWINE_PASSWORD=$TWINE_PASSWORD --build-arg TWINE_REPOSITORY_URL=$TWINE_REPOSITORY_URL .`

@@ -1,30 +1,34 @@
-# Use a Python base image
-FROM public.ecr.aws/amazonlinux/amazonlinux:latest
-ARG TWINE_PROD_USERNAME
-ARG TWINE_PROD_PASSWORD
-ARG PROD="false"
-ENV TWINE_PROD_USERNAME="$TWINE_PROD_USERNAME"
-ENV TWINE_PROD_PASSWORD="$TWINE_PROD_PASSWORD"
-# Set the working directory in the container
+FROM public.ecr.aws/docker/library/python:3.9
+
+ARG CODEARTIFACT_AUTH_TOKEN
+ARG TWINE_USERNAME
+ARG TWINE_PASSWORD
+ARG TWINE_REPOSITORY_URL
+
+RUN echo $CODEARTIFACT_AUTH_TOKEN
+
 WORKDIR /app
 
-# Copy the requirements.txt file to the container
-# COPY requirements.txt .
+# Set environment variables
+ENV TWINE_USERNAME=$TWINE_USERNAME
+ENV TWINE_PASSWORD=$TWINE_PASSWORD
+ENV TWINE_REPOSITORY_URL=$TWINE_REPOSITORY_URL
 
-# Install project dependencies
-# RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy the entire project to the container
+# Copy the project files to the working directory
 COPY . .
-# Build and push the Python project to CodeArtifact
-RUN yum update -y && yum install python3 -y
-RUN python3 -m ensurepip --upgrade && python3 -m pip install requests twine awscli && python3 setup.py sdist
-RUN if [ "$PROD" = "false" ] ; then \
-      pass=`aws codeartifact get-authorization-token --domain nda --domain-owner 846214067917 --region us-east-1 --query authorizationToken --output text`; \
-      devurl=`aws codeartifact get-repository-endpoint --domain nda --domain-owner 846214067917 --repository pypi-store --region us-east-1 --format pypi --query repositoryEndpoint --output text` ;\
-      echo "uploading to $devurl with pass $pass"; \
-      twine upload --repository-url "$devurl" --username aws --password "$pass" dist/* ; \
-    else \
-      echo "deploying to prod pypi..." ;  \
-      twine upload --username "$TWINE_PROD_USERNAME" --password "$TWINE_PROD_PASSWORD" dist/* ;  \
-    fi
+
+# Install dependencies and build the package
+RUN pip install wheel requests \
+    && python setup.py sdist
+
+# Install Twine
+RUN pip install twine
+
+# Publish the package using Twine
+RUN twine upload --repository-url $TWINE_REPOSITORY_URL --username $TWINE_USERNAME --password $TWINE_PASSWORD dist/*
+
+# Cleanup
+RUN rm -rf dist
+
+# Set the default command
+CMD ["/bin/bash"]
