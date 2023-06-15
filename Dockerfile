@@ -1,5 +1,5 @@
 # Use a Python base image
-FROM public.ecr.aws/docker/library/python:3.9
+FROM public.ecr.aws/amazonlinux/amazonlinux:latest
 ARG TWINE_PROD_USERNAME
 ARG TWINE_PROD_PASSWORD
 ARG PROD="false"
@@ -16,10 +16,9 @@ WORKDIR /app
 
 # Copy the entire project to the container
 COPY . .
-RUN apt  update -y
-RUN apt install awscli -y
 # Build and push the Python project to CodeArtifact
-RUN pip install -qqq requests twine && python setup.py sdist
+RUN yum update -y && yum install python3 -y
+RUN python3 -m ensurepip --upgrade && python3 -m pip install requests twine awscli && python3 setup.py sdist
 RUN if [ "$PROD" = "false" ] ; then \
       pass=`aws codeartifact get-authorization-token --domain nda --domain-owner 846214067917 --region us-east-1 --query authorizationToken --output text`; \
       devurl=`aws codeartifact get-repository-endpoint --domain nda --domain-owner 846214067917 --repository pypi-store --region us-east-1 --format pypi --query repositoryEndpoint --output text` ;\
