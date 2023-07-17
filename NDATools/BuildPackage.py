@@ -135,8 +135,13 @@ class SubmissionPackage:
                 raise Exception(message)
 
     def recollect_file_search_info(self):
-        retry = input('Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
-                      '<bucket name> to locate your associated files:')
+        if self.config.force:
+            logger.info('--force flag specified, so looking for associated files in the current directory')
+            # this is the value of retry when "Enter" is pressed manually
+            retry = ''
+        else:
+            retry = input('Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
+                          '<bucket name> to locate your associated files:')
         response = retry.split(' ')
         self.directory_list = response
         if response[0] == '-s3':
