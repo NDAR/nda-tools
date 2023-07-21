@@ -86,10 +86,10 @@ def parse_args():
                         help='Flag whether to additionally download validation results in JSON format.')
 
     parser.add_argument('-wt', '--workerThreads', metavar='<arg>', type=int, action='store',
-                        help='Number of worker threads')
+                        help='Number of worker threads, default is multiprocessing.cpu_count()-1')
 
     parser.add_argument('-bc', '--batch', metavar='<arg>', type=int, action='store',
-                        help='Batch size')
+                        help='Batch size, default is 10000')
 
     parser.add_argument('--hideProgress', action='store_true', help='Hides upload/processing progress')
 
