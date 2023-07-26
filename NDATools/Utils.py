@@ -72,7 +72,7 @@ class HttpErrorHandlingStrategy():
             message = r.text
 
         if r.status_code == 401:
-            # provide default message if one doesnt already exist
+            # provide default message if one doesn't already exist
             message = message or 'The NDA username or password is not recognized.'
         else:
             message = '\nAn unexpected error was encountered and the program could not continue. Error message from service was: \n%s' % message

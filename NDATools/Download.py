@@ -669,7 +669,7 @@ class Download(Protocol):
                 for the given target directory and download mode
             2. Make a copy of the download-progress-report and save into verification folder. Name it 'download-verification-report.csv'
             3. Consider everything currently in the download-verification-report.csv where expected file-size=actual file-size as being downloaded
-                     a. there really shouldn't be any entries where the expected filesize doesnt match actual size , but run the code anyway
+                     a. there really shouldn't be any entries where the expected filesize doesn't match actual size , but run the code anyway
             4. Read file-names of download-verification-report.csv into set() in memory
             *5. Get the complete file-listing for the download (using the provided arguments -d, -ds, -t and -dp)
             6. Add anything that is not in the set in step 4 into the download-verification-report.csv
