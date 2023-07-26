@@ -156,7 +156,7 @@ class Download(Protocol):
         self.default_download_batch_size = 50
         self.metadata_file_path = os.path.join(self.package_download_directory, NDATools.NDA_TOOLS_PACKAGE_FILE_METADATA)
 
-    # exlcude arg list is the long-parameter name
+    # exclude arg list is the long-parameter name
     def build_rerun_download_cmd(self, exclude_arg_list):
         download_cmd = 'downloadcmd -dp {}'.format(self.package_id)
 
@@ -323,7 +323,7 @@ class Download(Protocol):
             # check if  these exist, and if not, get and set:
             download_record = self.download_from_s3link(package_file, cred,
                                                         failed_s3_links_file=failed_s3_links_file)
-            # dont add bytes if file-existed and didnt need to be downloaded
+            # dont add bytes if file-existed and didn't need to be downloaded
             if download_record['download_complete_time']:
                 trailing_50_file_bytes.append(download_record['actual_file_size'])
             success_files.add(package_file['package_file_id'])
@@ -512,7 +512,7 @@ class Download(Protocol):
 
         except Exception as e:
             if not s3_link and not source_uri:
-                # we couldnt get credentials, which means the service has become un-responsive.
+                # we couldn't get credentials, which means the service has become un-responsive.
                 # Instruct the user to retry at another time
                 logger.info('')
                 logger.info(
@@ -669,7 +669,7 @@ class Download(Protocol):
                 for the given target directory and download mode
             2. Make a copy of the download-progress-report and save into verification folder. Name it 'download-verification-report.csv'
             3. Consider everything currently in the download-verification-report.csv where expected file-size=actual file-size as being downloaded
-                     a. there really shouldnt be any entries where the expected filesize doesnt match actual size , but run the code anyway
+                     a. there really shouldn't be any entries where the expected filesize doesnt match actual size , but run the code anyway
             4. Read file-names of download-verification-report.csv into set() in memory
             *5. Get the complete file-listing for the download (using the provided arguments -d, -ds, -t and -dp)
             6. Add anything that is not in the set in step 4 into the download-verification-report.csv

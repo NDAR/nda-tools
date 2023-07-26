@@ -439,7 +439,7 @@ class Submission:
                 If the source file is from S3:
                 a) check settings.cfg for permanent user credentials (aws_access_key, aws_secret_key)
                 b) if permanent credentials are provided, use them to retrieve the source file,
-                c) if not provided use a FederationUser token from DataManager API to retreive the source file,
+                c) if not provided use a FederationUser token from DataManager API to retrieve the source file,
                 d) use credentials supplied by the submission API to upload to remote S3 location.
                 
                 If the file was uploaded using multi-part, it will first complete the multi part uploads.
@@ -460,7 +460,7 @@ class Submission:
                     values, which specify where the object should be copied from (i.e., 100206 subject directory can be
                     located in s3://hcp-openaccess-temp, with a prefix of HCP_1200).
 
-                    Creates source and destination clients for S3 tranfer. If supplied in settings.cfg uses permanent 
+                    Creates source and destination clients for S3 transfer. If supplied in settings.cfg uses permanent 
                     credentials for accessing source buckets. If permanent credentials are not supplied in
                     settings.cfg, uses a tempoary FederationUser Token from DataManager API to access source bucket. 
 

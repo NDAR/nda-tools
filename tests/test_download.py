@@ -374,7 +374,7 @@ class TestDownload:
 
                 assert wrap_download_batch_file_ids.call_count == 1 # its a generator method so it will always be called once, although it may yield many values
                 assert list(map(lambda x: x[0], mock_get_package_files_by_page_method.call_args_list)) == get_package_files_by_page_args_list
-                assert mock_download_method.call_count == len(all_file_ids) - len(completed_file_ids) # call download method for each file that hasnt been downloaded
+                assert mock_download_method.call_count == len(all_file_ids) - len(completed_file_ids) # call download method for each file that hasn't been downloaded
                 assert set(map(lambda x: x[0][0], mock_download_method.call_args_list)) == {f for f in all_file_ids if f not in completed_file_ids}
                 # we started batching calls to this endpoint, so it would be the
                 if d.download_mode=='package':

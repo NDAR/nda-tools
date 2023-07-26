@@ -113,24 +113,24 @@ When the --verify option is provided, the rest of the arguments provided to the 
 For example, if the user runs:  
    downloadcmd -dp 12345 --verify
 The download-verification-report.csv file will contain a record for each file in the package 12345. Since no -d/--directory argument is provided, the program 
-will check for the existance of the files in the default download location. 
+will check for the existence of the files in the default download location. 
 
 If the user runs:
    downloadcmd -dp 12345 -d /home/myuser/customdirectory --verify
-The download-verification-report.csv file will contain a record for each file in the package 12345 and will check for the existance of files in the /foo/bar
+The download-verification-report.csv file will contain a record for each file in the package 12345 and will check for the existence of files in the /foo/bar
 
 If the user runs:
    downloadcmd -dp 12345 -d /home/myuser/customdirectory -t file-with-s3-links.csv --verify
-The download-verification-report.csv file will contain a record for each file listed in the file-with-s3-links.csv and will check for the existance of files in /foo/bar
+The download-verification-report.csv file will contain a record for each file listed in the file-with-s3-links.csv and will check for the existence of files in /foo/bar
 
 If the user runs:
    downloadcmd -dp 12345 -d /home/myuser/customdirectory -ds image03 --verify
-The download-verification-report.csv file will contain a record for each file in the package's image03 data-structure and will check for the existance of files in /foo/bar
+The download-verification-report.csv file will contain a record for each file in the package's image03 data-structure and will check for the existence of files in /foo/bar
 
 If the user runs:
    downloadcmd -dp 12345 -d /home/myuser/customdirectory -ds image03 --file-regex --verify
 The download-verification-report.csv file will contain a record for each file in the package's image03 data-structure which also matches the file-regex and will check 
-for the existance of files in /foo/bar
+for the existence of files in /foo/bar
 
 NOTE - at the moment, this option cannot be used to verify downloads to s3 locations (see -s3 option below). That will be implemented in the near
 future.''')

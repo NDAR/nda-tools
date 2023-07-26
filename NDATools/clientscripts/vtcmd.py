@@ -73,7 +73,7 @@ def parse_args():
                         help='Flag whether to validate using a custom scope. Must enter a custom scope')
 
     parser.add_argument('-rs', '--replace-submission', metavar='<arg>', type=str, action='store', default=0,
-                        help='Use this arugment to replace a submission that has QA errors or that NDA staff has authorized manually to replace.')
+                        help='Use this argument to replace a submission that has QA errors or that NDA staff has authorized manually to replace.')
 
     parser.add_argument('-r', '--resume', action='store_true',
                         help='Restart an in-progress submission, resuming from the last successful part in a multi-part'
@@ -352,7 +352,7 @@ If you need to make further edits to this submission, please reach out the the N
         exit_client(signal=signal.SIGTERM,
                     message='There was a General Error communicating with the NDA server. Please try again later')
 
-    # get list of associated-files that have already been uplaoded for pending changes
+    # get list of associated-files that have already been uploaded for pending changes
     pending_changes = []
     original_submission_id = submission_id
     original_uuids = {uuid for uuid in response['validation_uuids']}

@@ -123,7 +123,7 @@ class Validation:
             }
 
         if self.pending_changes:
-            # remove the associated_files that have already been uplaoded
+            # remove the associated_files that have already been uploaded
             structure_to_new_associated_files = {}
             unrecognized_ds = set()
             for uuid in self.uuid_dict:
