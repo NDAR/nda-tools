@@ -303,13 +303,12 @@ def submit_package(package_id, full_file_path, associated_files_to_upload, threa
         print_submission_complete_message(submission, replacement=True if original_submission_id else False)
 
 
-# sets self.pendingChanges and
 def retrieve_replacement_submission_params(config, submission_id):
-    # get submission-id
+
     api = type('', (), {})()
     api.config = config
     auth = requests.auth.HTTPBasicAuth(config.username, config.password)
-    # check if the qa token provided is actually the latest or not
+
     try:
         response = get_request('/'.join([config.submission_api, submission_id, 'change-history']), auth=auth)
     except Exception as e:
@@ -375,7 +374,7 @@ def check_args(args):
     if args.replace_submission:
         if args.title or args.description or args.collectionID:
             message = 'Neither title, description nor collection_id arguments can be specified if' \
-                      ' qa token is provided. Exiting...'
+                      ' replacing data for a submission (using the -rs flag). Exiting...'
             logger.error(message)
             exit(1)
 

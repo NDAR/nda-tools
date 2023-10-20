@@ -218,7 +218,7 @@ and can be found on the collection submission tab on the NDA site.
 
 A QA check is performed on all data after it has been submitted to NDA for inconsistencies in data-points including sex,
 subjeckey, interview age and interview date. If any problems are found with the data, an email will be sent to the users
-who created the submission along with a UUID called a QA Token which can be used to fix the errors in the submission.
+who created the submission along with a report of the errors that were found by NDA.
 
 To fix the data in NDA for your submission, you need to replace all of the csv files which contained errors in your original submission.
 To do this you must:
@@ -227,16 +227,15 @@ To do this you must:
 <li>Retrieve the csv files with that were used to create the original submission and which contain data that needs to be corrected.
 This includes all csv files where data needs to be added, removed or updated.</li>
 <li>Correct the files by adding, removing or updating information as needed.</li>
-<li>Run the vtcmd with the -qa command line argument. Specify the value of the QA token which you should have
-received via email with the -qa argument. Then list all of the csv files that you made corrections to. If there was a csv
+<li>Run the vtcmd with the -rs command line argument. Specify the value of the submission which you need to correct data for. Then list all of the csv files that you made corrections to. If there was a csv
 file from the original submission that did not contain any changes, it is not necessary to supply the file as an argument at this time.  
  </li>
 </ol>
 
-For example, if the original submission consisted of file1.csv, file2.csv and file3.csv, and corrections needed to be made to
+For example, if the original submission with id 123456 consisted of file1.csv, file2.csv and file3.csv, and corrections needed to be made to
 file1.csv and file2.csv, the command to fix qa errors will look like:  
 <code>
-vtcmd -b -qa f0d8ff08-cc38-4cb3-b6a4-39aff6f07f0e corrected-file1.csv corrected-file2.csv
+vtcmd -b -rs 123456 corrected-file1.csv corrected-file2.csv
 </code>
 
 Notice that file3.csv is excluded from the command because no changes needed to be made to that particular file.
