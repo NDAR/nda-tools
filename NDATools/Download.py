@@ -348,7 +348,7 @@ class Download(Protocol):
 
             download_progress_file_writer_pool.add_task(write_to_download_progress_report_file, download_record)
 
-        download_pool = ThreadPool(self.thread_num)
+        download_pool = ThreadPool(self.thread_num, self.thread_num*6)
         download_progress_file_writer_pool = ThreadPool(1, 1000)
 
         for package_files in self.generate_download_batch_file_ids(completed_file_ids, df):
@@ -507,8 +507,8 @@ class Download(Protocol):
                             dest_path,
                             **args)
 
-    def handle_download_exception(self, download_request, e, download_local, failed_s3_links_file=None):
-        if not download_request.presigned_url and not download_local:
+    def handle_download_exception(self, download_request, e, download_local, err_if_exists, package_file, failed_s3_links_file=None):
+        if not download_request.presigned_url and download_local:
             # we couldnt get credentials, which means the service has become un-responsive.
             # Instruct the user to retry at another time
             logger.info('')
@@ -527,8 +527,19 @@ class Download(Protocol):
             message = 'This path is incorrect: {}. Please try again.'.format(download_request.presigned_url)
             logger.error(message)
         elif error_code == 403:
-            message = '\nThis is a private bucket. Please contact NDAR for help: {}'.format(download_request.presigned_url)
-            logger.error(message)
+            #if we are using expired credentials, regenerate and resume the download
+            credentials_are_expired = False
+            if download_local:
+                if isinstance(e, requests.exceptions.HTTPError)and 'Request has expired' in e.response.text:
+                    credentials_are_expired = True
+                    
+            if credentials_are_expired:
+                logger.warning(f'Temporary credentials have expired for file {download_request.package_file_id}. Regenerating credentials and restarting download')
+                presigned_url = self.get_temp_creds_for_file(download_request.package_file_id)
+                return self.download_from_s3link(package_file, presigned_url, download_local, err_if_exists, failed_s3_links_file )
+            else:
+                message = '\nThis is a private bucket. Please contact NDAR for help: {}'.format(download_request.presigned_url)
+                logger.error(message)
         else:
             logger.error(str(e))
             logger.error(get_traceback())
@@ -561,7 +572,7 @@ class Download(Protocol):
             download_request.download_complete_time = time.strftime("%Y%m%dT%H%M%S")
             return download_request
         except Exception as e:
-            self.handle_download_exception(download_request, e, download_local, failed_s3_links_file)
+            self.handle_download_exception(download_request, e, download_local, err_if_exists,package_file, failed_s3_links_file)
             return download_request
 
     def write_to_failed_download_link_file(self, failed_s3_links_file, s3_link, source_uri):
