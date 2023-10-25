@@ -101,6 +101,8 @@ def parse_args():
     parser.add_argument('--validation-timeout', default=300, type=int, action='store', help='Timeout in seconds until the program errors out with an error. '
                                                                                'In most cases the default value of ''300'' seconds should be sufficient to validate submissions however it may'
                                                                                'be necessary to increase this value to a specific duration.')
+    parser.add_argument('-debug', '--debugLogging', action='store_true',
+                        help='Enables debug logging.')
 
     args = parser.parse_args()
 
@@ -160,7 +162,6 @@ def configure(args):
         config.replace_submission = args.replace_submission
     config.force = True if args.force else False
     LoggingConfiguration.load_config(NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER)
-
     return config
 
 
@@ -383,7 +384,8 @@ def main():
     # confirm most up to date version of nda-tools is installed
     args = parse_args()
     config = configure(args)
-
+    if args.debugLogging:
+        logging.getLogger().setLevel(logging.DEBUG)
     pending_changes, original_uuids, original_submission_id = None, None, None
     check_args(args)
     if args.replace_submission:

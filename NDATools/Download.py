@@ -79,7 +79,7 @@ class ThreadPool:
 
 class DownloadRequest():
 
-    def __init__(self,  package_file, presigned_url):
+    def __init__(self,  package_file, presigned_url, package_id):
         self.presigned_url = presigned_url
         self.package_file_id = str(package_file['package_file_id'])
         self.package_file_expected_location = package_file['download_alias']
@@ -89,6 +89,7 @@ class DownloadRequest():
         self.actual_file_size = 0,
         self.e_tag = None,
         self.download_complete_time = None
+        self.package_download_directory = Utils.convert_to_abs_path(os.path.join(NDATools.NDA_TOOLS_DOWNLOADS_FOLDER, str(package_id)))
         self.partial_download = os.path.normpath(
             os.path.join(self.package_download_directory, self.package_file_expected_location + '.partial'))
 
@@ -238,7 +239,7 @@ class Download(Protocol):
 
         download_progress_report = open(self.download_progress_report_file_path, 'a', newline='')
         download_progress_report_writer = csv.DictWriter(download_progress_report,
-                                                         fieldnames=self.download_job_progress_report_column_defs)
+                                                         fieldnames=self.download_job_progress_report_column_defs, extrasaction='ignore')
 
         failed_s3_links_file = open(os.path.join(NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER,
                                                  'failed_s3_links_file_{}.txt'.format(time.strftime("%Y%m%dT%H%M%S"))),
@@ -293,8 +294,9 @@ class Download(Protocol):
 
         def write_to_download_progress_report_file(download_record):
             # if file-size =0, there could have been an error. Dont add to file
-            if download_record['actual_file_size'] > 0:
-                download_progress_report_writer.writerow(download_record)
+            newRecord = vars(download_record)
+            if newRecord['actual_file_size'] > 0:
+                download_progress_report_writer.writerow(newRecord)
                 if (datetime.datetime.now()-download_progress_flush_date[0]).seconds>10:
                     download_progress_report.flush()
                     download_progress_flush_date[0]=datetime.datetime.now()
@@ -338,8 +340,8 @@ class Download(Protocol):
             # check if  these exist, and if not, get and set:
             download_record = self.download_from_s3link(package_file, cred, failed_s3_links_file=failed_s3_links_file)
             # dont add bytes if file-existed and didnt need to be downloaded
-            if download_record['download_complete_time']:
-                trailing_50_file_bytes.append(download_record['actual_file_size'])
+            if download_record.download_complete_time:
+                trailing_50_file_bytes.append(download_record.actual_file_size)
             success_files.add(package_file['package_file_id'])
             num_downloaded = len(success_files)
 
@@ -562,7 +564,7 @@ class Download(Protocol):
     def download_from_s3link(self, package_file, presigned_url, download_local=None, err_if_exists=False, failed_s3_links_file=None):
         if download_local is None:
             download_local = False if self.custom_user_s3_endpoint else True
-        download_request = DownloadRequest(package_file, presigned_url)
+        download_request = DownloadRequest(package_file, presigned_url, self.package_id)
         try:
             if download_local:
                 self.download_local(download_request, err_if_exists)
@@ -907,7 +909,7 @@ class Download(Protocol):
         file_resource = self.get_package_file(creds['package_file_id'])
         result = self.download_from_s3link(file_resource, creds['downloadURL'], download_local=True)
         download_location = os.path.normpath(
-            os.path.join(self.package_download_directory, result['package_file_expected_location']))
+            os.path.join(self.package_download_directory, result.package_file_expected_location))
         outfile = download_location.rstrip('.gz')
         logger.debug(f'unzipping metadata file at {time.strftime("%H:%M:%S")}...')
         with gzip.open(download_location, 'rb') as f_in:
