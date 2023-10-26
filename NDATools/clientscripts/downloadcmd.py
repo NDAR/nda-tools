@@ -39,7 +39,8 @@ def parse_args():
                              ' s3 urls.')
 
     parser.add_argument('-t', '--txt', metavar='<s3-links-file>', type=str, action='store',
-                        help='Flags that a text file has been entered from where to download S3 files.')
+                        help='Flags that a text file has been entered from where to download S3 files. '
+                             'For more details, check the information on the README page.')
 
     parser.add_argument('-ds', '--datastructure', metavar='<structure short-name>', type=str, action='store',
                         help='''Downloads all the files in a package from the specified data-structure. 

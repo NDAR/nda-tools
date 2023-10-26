@@ -86,7 +86,7 @@ class ClientConfiguration:
             self.username = username
         elif self.username:
             logger.warning("-u/--username argument not provided. Using default value of '%s' which was saved in %s",
-                           self.username, os.path.join(os.path.expanduser('~'), '.NDATools' + os.sep + 'settings.cfg'))
+                           self.username, self.config_location)
 
         if access_key:
             self.aws_access_key = access_key

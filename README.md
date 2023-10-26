@@ -281,10 +281,8 @@ can indicate so by passing the -ds flag.
 
 `downloadcmd -dp <packageID> -ds path/to/data/structure/file/image03.txt`
 
-The downloadcmd command has two options for downloading data inside .txt files.
-If you downloaded your NDA package, you will find meta-data .txt files, many of which represent data measures. Genomics, imaging,
-and other associated data will be listed in these .txt files as s3 links. If you would like to download all the s3 links in your .txt file,
-you can do so by passing the -ds flag.
+If you want to download your NDA package and all genomics, imaging, and other associated data as a list of s3 links stored in a custom .txt file,
+you can do so by using the -t flag. 
 
 `downloadcmd -dp <packageID> -t path/to/all/s3/txt/file/alls3.txt`
 
