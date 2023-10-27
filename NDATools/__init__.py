@@ -95,7 +95,7 @@ NDA_TOOLS_SUB_PACKAGE_FOLDER = os.path.join(
 if not os.path.exists(NDA_TOOLS_SUB_PACKAGE_FOLDER):
     os.mkdir(NDA_TOOLS_SUB_PACKAGE_FOLDER)
 
-NDA_TOOLS_PACKAGE_FILE_METADATA = 'package_file_metadata.txt'
+NDA_TOOLS_PACKAGE_FILE_METADATA_TEMPLATE = 'package_file_metadata_%s.txt'
 
 NDA_TOOLS_DEFAULT_LOG_FORMAT = '%(asctime)s:%(levelname)s:%(message)s'
 

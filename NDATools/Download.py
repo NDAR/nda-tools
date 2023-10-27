@@ -170,7 +170,7 @@ class Download(Protocol):
         }
         self.download_progress_report_file_path = self.initialize_verification_files()
         self.default_download_batch_size = 50
-        self.metadata_file_path = os.path.join(self.package_download_directory, NDATools.NDA_TOOLS_PACKAGE_FILE_METADATA)
+        self.metadata_file_path = os.path.join(self.package_download_directory, NDATools.NDA_TOOLS_PACKAGE_FILE_METADATA_TEMPLATE.format(str(self.package_id)))
 
     # exlcude arg list is the long-parameter name
     def build_rerun_download_cmd(self, exclude_arg_list):
