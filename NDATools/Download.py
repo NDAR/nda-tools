@@ -295,7 +295,11 @@ class Download(Protocol):
         def write_to_download_progress_report_file(download_record):
             # if file-size =0, there could have been an error. Dont add to file
             newRecord = vars(download_record)
-            if newRecord['actual_file_size'] > 0:
+            if type(newRecord['actual_file_size']) is tuple:
+                check = newRecord['actual_file_size'][0] > 0
+            else:
+                check = newRecord['actual_file_size'] > 0
+            if check:
                 download_progress_report_writer.writerow(newRecord)
                 if (datetime.datetime.now()-download_progress_flush_date[0]).seconds>10:
                     download_progress_report.flush()
