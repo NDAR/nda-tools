@@ -381,6 +381,7 @@ def check_args(args):
 
 
 def main():
+    assert 1==0
     # confirm most up to date version of nda-tools is installed
     args = parse_args()
     config = configure(args)
