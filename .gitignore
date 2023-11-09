@@ -26,3 +26,5 @@ venv
 failed_s3_links_file_*
 .project
 .pydevproject
+
+.venv
