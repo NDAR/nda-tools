@@ -311,6 +311,7 @@ class Validation:
                                  'MESSAGE': x,
                                  'COUNT': m[x]})
             csvfile.close()
+            return os.path.abspath(new_path)
 
     def verify_uuid(self):
         uuid_list = []

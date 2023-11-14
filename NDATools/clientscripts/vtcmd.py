@@ -185,8 +185,8 @@ def validate_files(file_list, warnings, build_package, threads, config=None, pen
     validation.output()
 
     if warnings:
-        validation.get_warnings()
-        logger.info('Warnings output to: {}'.format(validation.log_file))
+        warning_path = validation.get_warnings()
+        logger.info('Warnings output to: {}'.format(warning_path))
     else:
         if validation.w:
             logger.info('\nNote: Your data has warnings. To save warnings, run again with -w argument.')
