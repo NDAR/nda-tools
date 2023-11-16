@@ -7,13 +7,12 @@ import sys
 import uuid
 from shutil import copyfile
 
-import pandas as pd
-from boto3.s3.transfer import TransferConfig
-from requests import HTTPError
-
 import NDATools
+import pandas as pd
 from NDATools import Utils
 from NDATools.AltEndpointSSLAdapter import AltEndpointSSLAdapter
+from boto3.s3.transfer import TransferConfig
+from requests import HTTPError
 
 IS_PY2 = sys.version_info < (3, 0)
 
@@ -251,7 +250,7 @@ class Download(Protocol):
             .format(self.build_rerun_download_cmd(['--text', '--datastructure']), failed_s3_links_file.name)
         logger.info(message)
         logger.info('')
-        time.sleep(1.5)
+        #time.sleep(1.5)
 
         file_ct =  df['download_alias'].unique().size
         file_sz = df['file_size'].sum()
@@ -284,7 +283,7 @@ class Download(Protocol):
 
         logger.info('')
         logger.info(message)
-        time.sleep(5)
+        #time.sleep(5)
 
         # These are all arrays just so that the print_download_progress_report method can update the variables inside them
         trailing_50_file_bytes = []

@@ -4,11 +4,10 @@ import json
 import os
 import sys
 
+import NDATools
 import requests
 
-import NDATools
-
-__version__ = '0.2.26.dev3'
+__version__ = '0.2.26.dev8'
 pypi_version = None
 version_checked = False
 
