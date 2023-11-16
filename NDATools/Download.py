@@ -7,12 +7,13 @@ import sys
 import uuid
 from shutil import copyfile
 
-import NDATools
 import pandas as pd
-from NDATools import Utils
-from NDATools.AltEndpointSSLAdapter import AltEndpointSSLAdapter
 from boto3.s3.transfer import TransferConfig
 from requests import HTTPError
+
+import NDATools
+from NDATools import Utils
+from NDATools.AltEndpointSSLAdapter import AltEndpointSSLAdapter
 
 IS_PY2 = sys.version_info < (3, 0)
 
@@ -78,19 +79,19 @@ class ThreadPool:
 
 class DownloadRequest():
 
-    def __init__(self,  package_file, presigned_url, package_id):
+    def __init__(self,  package_file, presigned_url, package_id, download_dir):
         self.presigned_url = presigned_url
         self.package_file_id = str(package_file['package_file_id'])
-        self.package_file_expected_location = package_file['download_alias']
-        self.nda_s3_url = None,
-        self.exists = False,
+        self.package_file_relative_path = package_file['download_alias']
+        self.completed_download_abs_path = os.path.normpath(Utils.convert_to_abs_path(os.path.join(download_dir, self.package_file_relative_path)))
+        self.package_download_directory = Utils.convert_to_abs_path(os.path.join(NDATools.NDA_TOOLS_DOWNLOADS_FOLDER, str(package_id)))
+        self.nda_s3_url = None
+        self.exists = False
         self.expected_file_size = package_file['file_size']
-        self.actual_file_size = 0,
+        self.actual_file_size = 0
         self.e_tag = None,
         self.download_complete_time = None
-        self.package_download_directory = Utils.convert_to_abs_path(os.path.join(NDATools.NDA_TOOLS_DOWNLOADS_FOLDER, str(package_id)))
-        self.partial_download = os.path.normpath(
-            os.path.join(self.package_download_directory, self.package_file_expected_location + '.partial'))
+        self.partial_download_abs_path = self.completed_download_abs_path + '.partial'
 
 
 class Download(Protocol):
@@ -111,9 +112,9 @@ class Download(Protocol):
             download_directory = args.directory[0]
         else:
             download_directory = os.path.join(NDATools.NDA_TOOLS_DOWNLOADS_FOLDER, str(args.package))
-        self.downloadcmd_package_metadata_directory = os.path.join(NDATools.NDA_TOOLS_DOWNLOADS_FOLDER,
-                                                                   str(args.package))
-        self.package_download_directory = Utils.convert_to_abs_path(download_directory)
+        self.package_metadata_directory = os.path.join(NDATools.NDA_TOOLS_DOWNLOADS_FOLDER,
+                                                       str(args.package))
+        self.download_directory = Utils.convert_to_abs_path(download_directory)
         self.s3_links_file = args.txt
         self.inline_s3_links = args.paths
         self.package_id = args.package
@@ -151,7 +152,7 @@ class Download(Protocol):
             'uuid': self.download_job_uuid,
             'run_date': time.strftime("%Y%m%dT%H%M%S"),
             'package_id': self.package_id,
-            'download_directory': self.package_download_directory,
+            'download_directory': self.download_directory,
             's3_destination': self.custom_user_s3_endpoint,
             'data_structure': self.data_structure,
             's3_links_file': self.s3_links_file,
@@ -169,7 +170,7 @@ class Download(Protocol):
         }
         self.download_progress_report_file_path = self.initialize_verification_files()
         self.default_download_batch_size = 50
-        self.metadata_file_path = os.path.join(self.package_download_directory, NDATools.NDA_TOOLS_PACKAGE_FILE_METADATA_TEMPLATE%self.package_id)
+        self.metadata_file_path = os.path.join(self.package_metadata_directory, NDATools.NDA_TOOLS_PACKAGE_FILE_METADATA_TEMPLATE % self.package_id)
 
     # exlcude arg list is the long-parameter name
     def build_rerun_download_cmd(self, exclude_arg_list):
@@ -183,8 +184,8 @@ class Download(Protocol):
             download_cmd += ' --file-regex {}'.format(self.regex_file_filter)
         if self.username and '--username' not in exclude_arg_list:
             download_cmd += ' -u {}'.format(self.username)
-        if self.package_download_directory and '--directory' not in exclude_arg_list:
-            download_cmd += ' -d {}'.format(self.package_download_directory)
+        if self.download_directory and '--directory' not in exclude_arg_list:
+            download_cmd += ' -d {}'.format(self.download_directory)
         if self.verify_flg and '--verify' not in exclude_arg_list:
             download_cmd += ' --verify'
         if self.thread_num and '--workerThreads' not in exclude_arg_list:
@@ -264,7 +265,7 @@ class Download(Protocol):
         completed_files = tmp = None #remove large structures from memory
         skipping_message = ''
         if completed_file_ct>0:
-            download_progress_report_path = os.path.join(self.downloadcmd_package_metadata_directory,
+            download_progress_report_path = os.path.join(self.package_metadata_directory,
                                                          '.download-progress', self.download_job_uuid,
                                                          'download-progress-report.csv')
 
@@ -278,7 +279,7 @@ class Download(Protocol):
             file_ct,
             Utils.human_size(file_sz),
             f' matching {self.regex_file_filter}' if self.regex_file_filter else '',
-            self.custom_user_s3_endpoint or self.package_download_directory,
+            self.custom_user_s3_endpoint or self.download_directory,
             self.thread_num)
 
         logger.info('')
@@ -389,7 +390,7 @@ class Download(Protocol):
         logger.info(' Exiting Program...')
 
     def download_local(self, download_request, err_if_exists=False):
-        completed_download = os.path.normpath(os.path.join(self.package_download_directory, download_request.package_file_expected_location))
+        #completed_download = os.path.normpath(os.path.join(self.download_directory, download_request.package_file_relative_path))
         downloaded = False
         resume_header = None
 
@@ -413,43 +414,43 @@ class Download(Protocol):
                 if e.errno != 17:
                     raise
                 pass
-        if os.path.isfile(completed_download):
+        if os.path.isfile(download_request.completed_download_abs_path):
             if err_if_exists:
                 msg = "File {} already exists. Move or rename the file before re-running the command to continue".format(
-                    completed_download)
+                    download_request.completed_download_abs_path)
                 logger.info(msg)
                 logger.info('Exiting...')
                 sys.exit(1)
 
-            logger.info('Skipping download (already exists): {}'.format(completed_download))
-            actual_size = os.path.getsize(completed_download)
+            logger.info('Skipping download (already exists): {}'.format(download_request.completed_download_abs_path))
+            actual_size = os.path.getsize(download_request.completed_download_abs_path)
             download_request.actual_file_size = actual_size
             download_request.exists = True
             return download_request
 
-        if os.path.isfile(download_request.partial_download):
+        if os.path.isfile(download_request.partial_download_abs_path):
             downloaded = True
-            downloaded_size = os.path.getsize(download_request.partial_download)
+            downloaded_size = os.path.getsize(download_request.partial_download_abs_path)
             resume_header = {'Range': 'bytes={}-'.format(downloaded_size)}
             logger.info('Resuming download: {}'.
-                        format(download_request.partial_download))
+                        format(download_request.partial_download_abs_path))
         else:
-            mk_dir_ignore_err(os.path.dirname(download_request.partial_download))
-            logger.info('Starting download: {}'.format(download_request.partial_download))
+            mk_dir_ignore_err(os.path.dirname(download_request.partial_download_abs_path))
+            logger.info('Starting download: {}'.format(download_request.partial_download_abs_path))
             # downloading to local machine
         bytes_written = 0
         with requests.session() as s:
             s.mount(download_request.presigned_url, get_http_adapter(download_request.presigned_url))
             if resume_header:
                 s.headers.update(resume_header)
-            with open(download_request.partial_download, "ab" if downloaded else "wb") as download_file:
+            with open(download_request.partial_download_abs_path, "ab" if downloaded else "wb") as download_file:
                 with s.get(download_request.presigned_url, stream=True) as response:
                     response.raise_for_status()
                     for chunk in response.iter_content(chunk_size=1024 * 1024 * 5):  # iterate 5MB chunks
                         if chunk:
                             bytes_written += download_file.write(chunk)
-        os.rename(download_request.partial_download, completed_download)
-        logger.info('Completed download {}'.format(completed_download))
+        os.rename(download_request.partial_download_abs_path, download_request.completed_download_abs_path)
+        logger.info('Completed download {}'.format(download_request.completed_download_abs_path))
         download_request.actual_file_size = bytes_written
         bucket, key = Utils.deconstruct_s3_url(download_request.presigned_url)
         download_request.nda_s3_url = 's3://{}/{}'.format(bucket, key)
@@ -560,14 +561,17 @@ class Download(Protocol):
         # if source_uri is set, it means they're downloading to s3 bucket and there will not be any partial file
         if download_request.actual_file_size == 0 and not download_local:
             try:
-                os.remove(download_request.partial_download)
+                os.remove(download_request.partial_download_abs_path)
             except:
-                logger.error('error removing partial file {}'.format(download_request.partial_download))
+                logger.error('error removing partial file {}'.format(download_request.partial_download_abs_path))
 
-    def download_from_s3link(self, package_file, presigned_url, download_local=None, err_if_exists=False, failed_s3_links_file=None):
+    def download_from_s3link(self, package_file, presigned_url, download_local=None, err_if_exists=False, failed_s3_links_file=None, download_dir=None):
         if download_local is None:
             download_local = False if self.custom_user_s3_endpoint else True
-        download_request = DownloadRequest(package_file, presigned_url, self.package_id)
+        if not download_dir:
+            download_dir = self.download_directory
+
+        download_request = DownloadRequest(package_file, presigned_url, self.package_id, download_dir)
         try:
             if download_local:
                 self.download_local(download_request, err_if_exists)
@@ -664,10 +668,10 @@ class Download(Protocol):
                 writer = csv.DictWriter(file, fieldnames=download_job_manifest_columns)
                 writer.writeheader()
 
-        if not os.path.exists(self.downloadcmd_package_metadata_directory):
-            os.mkdir(self.downloadcmd_package_metadata_directory)
+        if not os.path.exists(self.package_metadata_directory):
+            os.mkdir(self.package_metadata_directory)
 
-        DOWNLOAD_PROGRESS_FOLDER = os.path.join(self.downloadcmd_package_metadata_directory, '.download-progress')
+        DOWNLOAD_PROGRESS_FOLDER = os.path.join(self.package_metadata_directory, '.download-progress')
         if not os.path.exists(DOWNLOAD_PROGRESS_FOLDER):
             os.mkdir(DOWNLOAD_PROGRESS_FOLDER)
 
@@ -714,7 +718,7 @@ class Download(Protocol):
                 'The --verify command does not yet support checking for files in s3 endpoints. This feature will be added in a future iteration...')
             exit_client()
 
-        verification_report_path = os.path.join(self.downloadcmd_package_metadata_directory,
+        verification_report_path = os.path.join(self.package_metadata_directory,
                                                 'download-verification-report.csv')
         err_mess_template = 'Cannot start verification process - {} already exists \nYou must move or rename the file in order to continue'
         if os.path.exists(verification_report_path):
@@ -722,13 +726,13 @@ class Download(Protocol):
             logger.info(err_mess_template.format(verification_report_path))
             exit_client()
 
-        fpath = os.path.join(self.downloadcmd_package_metadata_directory, 'download-verification-retry-s3-links.csv')
+        fpath = os.path.join(self.package_metadata_directory, 'download-verification-retry-s3-links.csv')
         if os.path.exists(fpath):
             logger.info(err_mess_template.format(fpath))
             exit_client()
 
         def get_download_progress_report_path():
-            return os.path.join(self.downloadcmd_package_metadata_directory, '.download-progress',
+            return os.path.join(self.package_metadata_directory, '.download-progress',
                                 self.download_job_uuid, 'download-progress-report.csv')
 
         def parse_download_progress_report_for_files(download_progress_report_path):
@@ -753,7 +757,7 @@ class Download(Protocol):
                 raise Exception('Unsupported download mode: {}'.format(self.download_mode))
 
         def create_download_verification_retry_links_file(s3_links):
-            fpath = os.path.join(self.downloadcmd_package_metadata_directory,
+            fpath = os.path.join(self.package_metadata_directory,
                                  'download-verification-retry-s3-links.csv')
             with open(fpath, 'w') as retry_file:
                 for link in s3_links:
@@ -770,7 +774,7 @@ class Download(Protocol):
                 record['package_file_expected_location'] = file_info['download_alias']
                 record['expected_file_size'] = int(file_info['file_size'])
                 record['package_file_id'] = int(file_id)
-                download_path = os.path.join(self.package_download_directory,
+                download_path = os.path.join(self.download_directory,
                                              file_info['download_alias'])
                 if os.path.exists(download_path):
                     record['exists'] = True
@@ -806,7 +810,7 @@ class Download(Protocol):
         logger.info(
             'Running verification process. This process will check whether all of the files from the following downloadcmd were successfully downloaded to the computer:')
 
-        verification_report_path = os.path.join(self.downloadcmd_package_metadata_directory,
+        verification_report_path = os.path.join(self.package_metadata_directory,
                                                 'download-verification-report.csv')
 
         logger.info('{}'.format(self.build_rerun_download_cmd(['--verify'])))
@@ -841,7 +845,7 @@ class Download(Protocol):
         probably_missing_files = complete_file_set - downloaded_file_set
         logger.info(
             'Checking {} for all files which were not found in the program system logs. Detailed report will be created at {}...'
-            .format(self.package_download_directory, verification_report_path))
+            .format(self.download_directory, verification_report_path))
         undownloaded_s3_links = add_files_to_report(pr_path, verification_report_path, probably_missing_files, df)
         logger.info('')
         if undownloaded_s3_links:
@@ -852,7 +856,7 @@ class Download(Protocol):
             logger.info(
                 'Generating list of s3 links for all missing/incomplete files...'.format(len(undownloaded_s3_links)))
             create_download_verification_retry_links_file(undownloaded_s3_links)
-            incomplete_s3_fp = os.path.join(self.downloadcmd_package_metadata_directory,
+            incomplete_s3_fp = os.path.join(self.package_metadata_directory,
                                             'download-verification-retry-s3-links.csv')
             logger.info(
                 'Finished creating {} file. \nThis file contains s3-links for all files that were found to be missing or incomplete. You may '
@@ -910,9 +914,8 @@ class Download(Protocol):
             creds = self.generate_metadata_and_get_creds()
 
         file_resource = self.get_package_file(creds['package_file_id'])
-        result = self.download_from_s3link(file_resource, creds['downloadURL'], download_local=True)
-        download_location = os.path.normpath(
-            os.path.join(self.package_download_directory, result.package_file_expected_location))
+        self.download_from_s3link(file_resource, creds['downloadURL'], download_local=True, download_dir=self.package_metadata_directory)
+        download_location = f"{self.metadata_file_path}.gz"
         outfile = download_location.rstrip('.gz')
         logger.debug(f'unzipping metadata file at {time.strftime("%H:%M:%S")}...')
         with gzip.open(download_location, 'rb') as f_in:
@@ -1013,7 +1016,7 @@ class Download(Protocol):
         return creds
 
     def get_completed_files_in_download(self):
-        download_progress_report_path = os.path.join(self.downloadcmd_package_metadata_directory,
+        download_progress_report_path = os.path.join(self.package_metadata_directory,
                                                      '.download-progress', self.download_job_uuid,
                                                      'download-progress-report.csv')
 

@@ -336,14 +336,3 @@ The following statement should be added to your key's policy:
 ## Further Assistance
 
 If you have any problems with this Validation Tool Python client or would like to provide feedback/comments, please email us at [NDAHelp@mail.nih.gov ](mailto:NDAHelp@mail.nih.gov).
-
-# nda-tools
-
-## How to push to Code Artifact locally
-
-- export AWS_PROFILE=<AWS_PROFILE>
-- export CODEARTIFACT_AUTH_TOKEN=`aws codeartifact get-authorization-token --domain nda --domain-owner 846214067917 --region us-east-1 --query authorizationToken --output text`
-- export TWINE_USERNAME=aws
-- export TWINE_PASSWORD=`aws codeartifact get-authorization-token --domain nda --domain-owner 846214067917 --region us-east-1 --query authorizationToken --output text`
-- export TWINE_REPOSITORY_URL=`aws codeartifact get-repository-endpoint --domain nda --domain-owner 846214067917 --repository pypi-store --region us-east-1 --format pypi --query repositoryEndpoint --output text`
-- `docker build --build-arg CODEARTIFACT_AUTH_TOKEN=$CODEARTIFACT_AUTH_TOKEN --build-arg TWINE_USERNAME=$TWINE_USERNAME --build-arg TWINE_PASSWORD=$TWINE_PASSWORD --build-arg TWINE_REPOSITORY_URL=$TWINE_REPOSITORY_URL .`
