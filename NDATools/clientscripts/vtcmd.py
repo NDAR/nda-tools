@@ -1,11 +1,10 @@
 import argparse
-import signal
 
 import NDATools
 from NDATools.BuildPackage import SubmissionPackage
 from NDATools.Configuration import *
 from NDATools.Submission import Submission
-from NDATools.Utils import evaluate_yes_no_input, exit_client, get_request
+from NDATools.Utils import evaluate_yes_no_input, exit_error, get_request
 from NDATools.Validation import Validation
 
 logger = logging.getLogger(__name__)
@@ -234,7 +233,7 @@ def validate_files(file_list, warnings, build_package, threads, config=None, pen
             prompt += '\nAre you sure you want to continue? <Yes/No>: '
             proceed = evaluate_yes_no_input(prompt, 'n')
             if str(proceed).lower() == 'n':
-                exit_client(signal=signal.SIGTERM, message='')
+                exit_error(message='')
 
     return validation.uuid, validation.associated_files_to_upload
 
@@ -263,11 +262,6 @@ def build_package(uuid, associated_files_to_upload, config, pending_changes=None
     logger.info('created date: {}'.format(package.create_date))
     logger.info('expiration date: {}'.format(package.expiration_date))
     logger.info('\nPackage finished building.\n')
-
-    logger.info('Downloading submission package.')
-    package.download_package(hide_progress=config.hideProgress)
-    logger.info('\nA copy of your submission package has been saved to: {}'.
-          format(os.path.join(NDATools.NDA_TOOLS_SUB_PACKAGE_FOLDER, package.package_folder)))
 
     return [package.package_id, package.full_file_path]
 
@@ -315,12 +309,10 @@ def retrieve_replacement_submission_params(config, submission_id):
     except Exception as e:
 
         if e.response.status_code == 403:
-            exit_client(signal=signal.SIGTERM,
-                        message='You are not authorized to access submission {}. If you think this is a mistake, please contact NDA help desk'.format(
+            exit_error(message='You are not authorized to access submission {}. If you think this is a mistake, please contact NDA help desk'.format(
                             submission_id))
         else:
-            exit_client(signal=signal.SIGTERM,
-                        message='There was a General Error communicating with the NDA server. Please try again later')
+            exit_error(message='There was a General Error communicating with the NDA server. Please try again later')
 
     # TODO - check for 404 response
 
@@ -330,16 +322,14 @@ def retrieve_replacement_submission_params(config, submission_id):
             message = '''Submission {} was already replaced by {} on {}.
 If you need to make further edits to this submission, please reach out the the NDA help desk''' \
                 .format(submission_id, response[0]['created_by'], response[0]['created_date'])
-            exit_client(signal=signal.SIGTERM, message=message)
+            exit_error(message=message)
         else:
-            exit_client(signal=signal.SIGTERM,
-                        message='submission_id {} is not authorized to be replaced. Please contact the NDA help desk for approval to replace this submission'.format(
+            exit_error(message='submission_id {} is not authorized to be replaced. Please contact the NDA help desk for approval to replace this submission'.format(
                             submission_id))
 
     response = get_request('/'.join([config.submission_api, submission_id]), auth=auth)
     if response is None:
-        exit_client(signal=signal.SIGTERM,
-                    message='There was a General Error communicating with the NDA server. Please try again later')
+        exit_error(message='There was a General Error communicating with the NDA server. Please try again later')
 
     submission_id = response['submission_id']
     config.title = response['dataset_title']
@@ -349,8 +339,7 @@ If you need to make further edits to this submission, please reach out the the N
     # get pending-changes for submission-id
     response = get_request('/'.join([config.submission_api, submission_id, 'pending-changes']), auth=auth);
     if response is None:
-        exit_client(signal=signal.SIGTERM,
-                    message='There was a General Error communicating with the NDA server. Please try again later')
+        exit_error(message='There was a General Error communicating with the NDA server. Please try again later')
 
     # get list of associated-files that have already been uplaoded for pending changes
     pending_changes = []

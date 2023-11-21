@@ -195,7 +195,7 @@ def main():
             'Invalid argument for -s3 option :{}. Argument must start with "s3://"'.format(args.s3_destination))
     if sys.version_info < (3, 5):
         logger.error('ERROR: "--verify" only works with python 3.5 or later. Please upgrade Python in order to continue')
-        exit_client()
+        exit_error()
 
     s3Download = Download(config, args)
     if args.verify:

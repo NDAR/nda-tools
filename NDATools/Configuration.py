@@ -15,7 +15,7 @@ import yaml
 from requests import HTTPError
 
 from NDATools import NDA_TOOLS_LOGGING_YML_FILE, Utils
-from NDATools.Utils import exit_client, HttpErrorHandlingStrategy
+from NDATools.Utils import exit_error, HttpErrorHandlingStrategy
 
 if sys.version_info[0] < 3:
     import ConfigParser as configparser
@@ -211,10 +211,10 @@ class ClientConfiguration:
                     tmp = json.loads(e.response.text)
                     logger.error('\nError: %s', tmp['message'])
                     logger.error('\nPlease contact NDAHelp@mail.nih.gov for help in resolving this error')
-                    exit_client()
+                    exit_error()
                 else:
                     return False
             else:
                 logger.error('\nSystemError while checking credentials for user %s', self.username)
                 logger.error('\nPlease contact NDAHelp@mail.nih.gov for help in resolving this error')
-                exit_client()
+                exit_error()

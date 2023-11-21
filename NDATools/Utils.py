@@ -7,7 +7,6 @@ import logging
 import os
 import random
 import re
-import signal
 import sys
 import threading
 import time
@@ -77,13 +76,14 @@ class HttpErrorHandlingStrategy():
         else:
             message = '\nAn unexpected error was encountered and the program could not continue. Error message from service was: \n%s' % message
         logger.error(message)
-        exit_client()
+        exit_error()
 
     @staticmethod
     def reraise_status(response):
         response.raise_for_status()
 
-def exit_client(signal=signal.SIGTERM, frame=None, message=None):
+
+def _exit_client (message=None, status_code=1):
     for t in threading.enumerate():
         try:
             t.shutdown_flag.set()
@@ -93,8 +93,14 @@ def exit_client(signal=signal.SIGTERM, frame=None, message=None):
         logger.info('\n\n{}'.format(message))
     else:
         logger.info('\n\nExit signal received, shutting down...')
-    os._exit(1)
+    os._exit(status_code)
 
+
+def exit_error(message=None):
+    _exit_client(message, status_code=1)
+
+def exit_normal(message=None):
+    _exit_client(message, status_code=0)
 
 def parse_local_files(directory_list, no_match, full_file_path, no_read_access, skip_local_file_check):
     """
@@ -116,10 +122,9 @@ def parse_local_files(directory_list, no_match, full_file_path, no_read_access, 
                 try:
                     full_file_path[file_key] = (file_name, os.path.getsize(file_name))
                     no_match.remove(file)
-                except (OSError, IOError) as err:
-                    if err.errno == 13:
-                        logger.info('Permission Denied: {}'.format(file_name))
-                    continue
+                except (OSError, IOError) :
+                    full_file_path[file_key] = (file_name, None)
+                    no_match.remove(file)
                 break
             else:
                 if os.path.isfile(file):

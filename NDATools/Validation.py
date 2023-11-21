@@ -17,7 +17,6 @@ else:
 from NDATools.Configuration import *
 from NDATools.Utils import *
 import threading
-import signal
 
 logger = logging.getLogger(__name__)
 class Validation:
@@ -184,7 +183,7 @@ class Validation:
             if unrecognized_ds:
                 message = 'ERROR - The following datastructures were not included in the original submission and therefore cannot be included in the replacement submission: '
                 message += "\r\n" + "\r\n".join(unrecognized_ds)
-                exit_client(signal=signal.SIGTERM, message=message)
+                exit_error(message=message)
             else:
                 self.data_structures_with_missing_rows = data_structures_with_missing_rows
                 self.uuid = new_uuids
@@ -249,13 +248,13 @@ class Validation:
                             except KeyError:
                                 logger.error('Unrecognized result from validation service - {}. '.format(json.dumps(response)))
                                 logger.error('\nPlease contact NDAHelp@mail.nih.gov for help in resolving this error')
-                                exit_client()
+                                exit_error()
         csvfile.close()
         logger.info('Validation report output to: {}'.format(self.log_file))
         if encountered_system_error:
             logger.error('Unexpected error occurred while validating one or more of the csv files')
             logger.error('\nPlease email NDAHelp@mail.nih.gov for help in resolving this error and include {} as an attachment to help us resolve the issue'.format(self.log_file))
-            exit_client()
+            exit_error()
 
     def get_warnings(self):
         if self.config.JSON:
@@ -480,7 +479,7 @@ class Validation:
                     message = 'This file does not exist in current directory: {}'.format(file_name)
                     logger.error(message)
 
-                    exit_client()
+                    exit_error()
 
                 data = file.read()
 

@@ -2,8 +2,10 @@ from __future__ import absolute_import, with_statement
 
 import copy
 import gzip
+import pathlib
 import shutil
 import sys
+import tempfile
 import uuid
 from shutil import copyfile
 
@@ -218,7 +220,7 @@ class Download(Protocol):
             if not package_resource['has_associated_files']:
                 logger.info(''''No Associated files detected in this package. In order to download associated files, you must create a new package
         on the NDA website and make sure that you check the option to "Include associated files"''')
-                exit_client()
+                exit_error()
             df = self.use_data_structure()
         elif self.download_mode == 'text':
             logger.info('Downloading S3 links from text file: {}'.format(self.s3_links_file))
@@ -240,10 +242,11 @@ class Download(Protocol):
         download_progress_report = open(self.download_progress_report_file_path, 'a', newline='')
         download_progress_report_writer = csv.DictWriter(download_progress_report,
                                                          fieldnames=self.download_job_progress_report_column_defs, extrasaction='ignore')
-
-        failed_s3_links_file = open(os.path.join(NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER,
-                                                 'failed_s3_links_file_{}.txt'.format(time.strftime("%Y%m%dT%H%M%S"))),
-                                    'a')
+        failed_s3_links_file = tempfile.NamedTemporaryFile(mode='a',
+                                                           delete=False,
+                                                           prefix='failed_s3_links_file_{}.txt'.format(time.strftime("%Y%m%dT%H%M%S")),
+                                                           dir=NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER
+                                                           )
 
         message = 'S3 links for files that failed to download will be written out to {}. You can attempt to download these files later by running: ' \
             .format(failed_s3_links_file.name)
@@ -716,7 +719,7 @@ class Download(Protocol):
         if self.custom_user_s3_endpoint:
             raise Exception(
                 'The --verify command does not yet support checking for files in s3 endpoints. This feature will be added in a future iteration...')
-            exit_client()
+            exit_error()
 
         verification_report_path = os.path.join(self.package_metadata_directory,
                                                 'download-verification-report.csv')
@@ -724,12 +727,12 @@ class Download(Protocol):
         if os.path.exists(verification_report_path):
             logger.info('')
             logger.info(err_mess_template.format(verification_report_path))
-            exit_client()
+            exit_error()
 
         fpath = os.path.join(self.package_metadata_directory, 'download-verification-retry-s3-links.csv')
         if os.path.exists(fpath):
             logger.info(err_mess_template.format(fpath))
-            exit_client()
+            exit_error()
 
         def get_download_progress_report_path():
             return os.path.join(self.package_metadata_directory, '.download-progress',
@@ -772,9 +775,13 @@ class Download(Protocol):
                 record = copy.deepcopy(self.download_job_progress_report_column_defs)
                 # TODO - consider making these the same names
                 record['package_file_expected_location'] = file_info['download_alias']
-                record['expected_file_size'] = int(file_info['file_size'])
+                record['expected_file_size'] = min(abs(int(file_info['file_size'])),1)
                 record['package_file_id'] = int(file_id)
-                download_path = os.path.join(self.download_directory,
+                if file_info['download_alias'] == (pathlib.Path(self.metadata_file_path).name + '.gz'):
+                    download_path = os.path.join(self.package_metadata_directory,
+                                                 file_info['download_alias'])
+                else:
+                    download_path = os.path.join(self.download_directory,
                                              file_info['download_alias'])
                 if os.path.exists(download_path):
                     record['exists'] = True
@@ -872,7 +879,7 @@ class Download(Protocol):
         logger.info(
             'Details about status of files in download can be found at {} (This file can be opened with Excel or Google Spreadsheets)'.format(
                 verification_report_path))
-        exit_client()
+        exit_normal()
 
     def get_temp_creds_for_file(self, package_file_id, custom_user_s3_endpoint=None):
         url = self.package_url + '/{}/files/{}/download_token'.format(self.package_id, package_file_id)
@@ -902,7 +909,7 @@ class Download(Protocol):
                 if datetime.datetime.now() > end_time:
                     logger.error('Error during creation of package meta-data file')
                     logger.error('\nPlease contact NDAHelp@mail.nih.gov for help in resolving this error')
-                    exit_client()
+                    exit_error()
 
     def download_package_metadata_file(self):
         if os.path.exists(self.metadata_file_path):
@@ -1046,7 +1053,7 @@ class Download(Protocol):
             if not path_list:
                 logger.info(
                     'No valid paths found in s3-links file. If you specified a regular expression, make sure your regular expression is correct before re-running the command.')
-                exit_client()
+                exit_error()
 
             return self.query_files_by_s3_path(path_list)
         except IOError as e:
@@ -1064,7 +1071,7 @@ class Download(Protocol):
         if df.empty:
             logger.info(
                 '{} data structure is not included in the package {}'.format(self.data_structure, self.package_id))
-            exit_client()
+            exit_error()
         return df
 
     def rename_df_columns_to_lowercase(self, df):
@@ -1072,7 +1079,7 @@ class Download(Protocol):
 
     def query_files_by_s3_path(self, path_list):
         if not path_list:
-            exit_client(signal=signal.SIGTERM, message='Illegal Argument - path_list cannot be empty')
+            exit_error(message='Illegal Argument - path_list cannot be empty')
         df = pd.read_csv(self.metadata_file_path, header=0)
         df = self.rename_df_columns_to_lowercase(df)
         return df[df['nda_s3_url'].isin(path_list)]
