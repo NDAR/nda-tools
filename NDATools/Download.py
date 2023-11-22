@@ -715,6 +715,7 @@ class Download(Protocol):
     '''
 
     def verify_download(self):
+        self.download_package_metadata_file()
 
         if self.custom_user_s3_endpoint:
             raise Exception(
