@@ -52,8 +52,6 @@ and always ends in a 2 digit number. (For example, see the data-structure page f
     parser.add_argument('-u', '--username', metavar='<username>', type=str, action='store',
                         help='NDA username')
 
-    parser.add_argument('-p', '--password', help='Warning: Support for this setting has been deprecated and will no longer be '
-                                                 'used by this tool. This option will be removed in future releases')
 
     parser.add_argument('-d', '--directory', metavar='<download_directory>', type=str, nargs=1, action='store',
                         help='Enter an alternate full directory path where you would like your files to be saved. The default is ~/NDA/nda-tools/<package-id>')
@@ -163,10 +161,6 @@ For more details, check the information on the README page.
 
     args = parser.parse_args()
 
-    if args.password:
-        print('Warning: Support for the password flag (-p, --password) has been removed from nda-tools due to security '
-              'concerns and has been replaced with keyring.')
-        args.__dict__.pop('password')
 
     return args
 

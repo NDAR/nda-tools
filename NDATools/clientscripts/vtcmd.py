@@ -51,10 +51,6 @@ def parse_args():
     parser.add_argument('-d', '--description', metavar='<arg>', type=str, nargs='+', action='store',
                         help='The description of the submission')
 
-    parser.add_argument('-p', '--password', help='Warning: Detected non-empty value for the -p/--password argument. '
-                                                 'Support for this setting has been deprecated and will no longer be '
-                                                 'used by this tool. Password storage is not recommended for security'
-                                                 ' considerations')
 
     parser.add_argument('-t', '--title', metavar='<arg>', type=str, nargs='+', action='store',
                         help='The title of the submission')
@@ -104,11 +100,6 @@ def parse_args():
                         help='Enables debug logging.')
 
     args = parser.parse_args()
-
-    if args.password:
-        print('Warning: Support for the password flag (-p, --password) has been removed from nda-tools due to security '
-              'concerns and has been replaced with keyring.')
-        args.__dict__.pop('password')
 
     return args
 
