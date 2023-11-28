@@ -6,7 +6,7 @@ import pathlib
 import shutil
 import sys
 
-__version__ = '0.2.26.dev11'
+__version__ = '0.2.26.dev12'
 
 from pkg_resources import resource_filename
 
@@ -45,9 +45,12 @@ def check_version():
     pypi_version = str(version)
 
     if parse(__version__) < parse(pypi_version):
-        print("Your version of nda-tools is out of date. Please upgrade to the latest version ({}) from PyPi or GitHub and "
-              "try again. \n\tTo upgrade using pip, run: \r\npip install nda-tools=={}".format(pypi_version, pypi_version))
+        print(
+            "Your version of nda-tools is out of date. Please upgrade to the latest version ({}) from PyPi or GitHub and "
+            "try again. \n\tTo upgrade using pip, run: \r\npip install nda-tools=={}".format(pypi_version,
+                                                                                             pypi_version))
         sys.exit(1)
+
 
 NDA_ORGINIZATION_ROOT_FOLDER = os.path.join(os.path.expanduser('~'), 'NDA')
 NDA_TOOLS_ROOT_FOLDER = os.path.join(NDA_ORGINIZATION_ROOT_FOLDER, 'nda-tools')
@@ -69,6 +72,8 @@ NDA_TOOLS_DEFAULT_LOG_FORMAT = '%(asctime)s:%(levelname)s:%(message)s'
 NDA_TOOLS_SETTINGS_FOLDER = os.path.join(os.path.expanduser('~'), '.NDATools')
 NDA_TOOLS_LOGGING_YML_FILE = os.path.join(NDA_TOOLS_SETTINGS_FOLDER, 'logging.yml')
 NDA_TOOLS_SETTINGS_CFG_FILE = os.path.join(NDA_TOOLS_SETTINGS_FOLDER, 'settings.cfg')
+
+
 def create_nda_folders():
     # init folder structure for program runtime files
     if not os.path.exists(NDA_ORGINIZATION_ROOT_FOLDER):
@@ -110,5 +115,3 @@ def create_nda_folders():
                         NDA_TOOLS_SETTINGS_CFG_FILE)
     # MAC users sometimes see output from python warnings module. Suppress these msgs
     os.environ['PYTHONWARNINGS'] = 'ignore'
-
-
