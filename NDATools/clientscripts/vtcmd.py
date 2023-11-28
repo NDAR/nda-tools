@@ -109,16 +109,8 @@ def configure(args):
 
     # always set password if --username flag is supplied, or if user is submitting data
     auth_req = True if args.buildPackage or args.resume or args.replace_submission or args.username else False
-
-    if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
-        config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'), args.username,
-                                     args.accessKey, args.secretKey)
-        config.read_user_credentials(auth_req)
-    else:
-        config = ClientConfiguration('clientscripts/config/settings.cfg', args.username, args.accessKey,
-                                     args.secretKey)
-        config.read_user_credentials(auth_req)
-        config.make_config()
+    config = ClientConfiguration(NDATools.NDA_TOOLS_SETTINGS_CFG_FILE, args.username, args.accessKey, args.secretKey)
+    config.read_user_credentials(auth_req)
 
     if args.collectionID:
         config.collection_id = args.collectionID

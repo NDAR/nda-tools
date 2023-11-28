@@ -2,9 +2,14 @@ from __future__ import print_function
 
 import json
 import os
+import pathlib
+import shutil
 import sys
 
-__version__ = '0.2.26.dev10'
+__version__ = '0.2.26.dev11'
+
+from pkg_resources import resource_filename
+
 pypi_version = None
 initialization_complete = False
 
@@ -61,7 +66,9 @@ NDA_TOOLS_SUB_PACKAGE_FOLDER = os.path.join(
 
 NDA_TOOLS_PACKAGE_FILE_METADATA_TEMPLATE = 'package_file_metadata_%s.txt'
 NDA_TOOLS_DEFAULT_LOG_FORMAT = '%(asctime)s:%(levelname)s:%(message)s'
-NDA_TOOLS_LOGGING_YML_FILE = os.path.join(os.path.expanduser('~'), '.NDATools/logging.yml')
+NDA_TOOLS_SETTINGS_FOLDER = os.path.join(os.path.expanduser('~'), '.NDATools')
+NDA_TOOLS_LOGGING_YML_FILE = os.path.join(NDA_TOOLS_SETTINGS_FOLDER, 'logging.yml')
+NDA_TOOLS_SETTINGS_CFG_FILE = os.path.join(NDA_TOOLS_SETTINGS_FOLDER, 'settings.cfg')
 def create_nda_folders():
     # init folder structure for program runtime files
     if not os.path.exists(NDA_ORGINIZATION_ROOT_FOLDER):
@@ -91,6 +98,16 @@ def create_nda_folders():
     if not os.path.exists(NDA_TOOLS_SUB_PACKAGE_FOLDER):
         os.mkdir(NDA_TOOLS_SUB_PACKAGE_FOLDER)
 
+    if not os.path.exists(NDA_TOOLS_SETTINGS_FOLDER):
+        os.mkdir(NDA_TOOLS_SETTINGS_FOLDER)
+
+    if not pathlib.Path(NDA_TOOLS_LOGGING_YML_FILE):
+        shutil.copyfile(resource_filename(__name__, 'clientscripts/config/logging.yml'),
+                        NDA_TOOLS_LOGGING_YML_FILE)
+
+    if not pathlib.Path(NDA_TOOLS_SETTINGS_CFG_FILE):
+        shutil.copyfile(resource_filename(__name__, 'clientscripts/config/settings.cfg'),
+                        NDA_TOOLS_SETTINGS_CFG_FILE)
     # MAC users sometimes see output from python warnings module. Suppress these msgs
     os.environ['PYTHONWARNINGS'] = 'ignore'
 

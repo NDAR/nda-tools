@@ -5,7 +5,6 @@ import json
 import logging
 import logging.config
 import platform
-import shutil
 import sys
 import time
 
@@ -35,17 +34,6 @@ class LoggingConfiguration:
 
     @staticmethod
     def load_config(logs_directory, verbose=False):
-        def make_config():
-            file_path = os.path.join(os.path.expanduser('~'), '.NDATools')
-            if not os.path.exists(file_path):
-                os.makedirs(file_path)
-
-            if not os.path.exists(NDA_TOOLS_LOGGING_YML_FILE):
-                shutil.copyfile(resource_filename(__name__, 'clientscripts/config/logging.yml'),
-                                NDA_TOOLS_LOGGING_YML_FILE)
-
-        if not os.path.exists(NDA_TOOLS_LOGGING_YML_FILE):
-            make_config()
 
         with open(NDA_TOOLS_LOGGING_YML_FILE, 'r') as stream:
             config = yaml.load(stream, Loader=yaml.FullLoader)
@@ -62,11 +50,8 @@ class ClientConfiguration:
 
     def __init__(self, settings_file, username=None, access_key=None, secret_key=None):
         self.config = configparser.ConfigParser()
-        if settings_file == os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'):
-            self.config_location = settings_file
-            self._check_and_fix_missing_options(self.config_location)
-        else:
-            self.config_location = resource_filename(__name__, settings_file)
+        self.config_location = settings_file
+        self._check_and_fix_missing_options(self.config_location)
         logger.info('Using configuration file from {}'.format(self.config_location))
 
         self.config.read(self.config_location)
@@ -125,32 +110,6 @@ class ClientConfiguration:
                         self.config.set(section, option, default_settings[section][option])
                         self.config.write(configfile)
 
-    def make_config(self):
-        file_path = os.path.join(os.path.expanduser('~'), '.NDATools')
-        if not os.path.exists(file_path):
-            os.makedirs(file_path)
-        config_path = os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')
-
-        copy_config = configparser.ConfigParser()
-
-        copy_config.add_section("Endpoints")
-        copy_config.set("Endpoints", "user", self.user_api)
-        copy_config.set("Endpoints", "package", self.package_api)
-        copy_config.set("Endpoints", "validation", self.validation_api)
-        copy_config.set("Endpoints", "submission_package", self.submission_package_api)
-        copy_config.set("Endpoints", "submission", self.submission_api)
-        copy_config.set("Endpoints", "validationtool", self.validationtool_api)
-        copy_config.set("Endpoints", "datadictionary", self.datadictionary_api)
-        copy_config.set("Endpoints", "package_creation", self.package_creation_api)
-
-        copy_config.add_section("User")
-        copy_config.set("User", "username", self.username)
-        copy_config.set("User", "access_key", self.aws_access_key)
-        copy_config.set("User", "secret_key", self.aws_secret_key)
-        copy_config.set("User", "session_token", self.aws_session_token)
-
-        with open(config_path, 'w') as configfile:
-            copy_config.write(configfile)
 
     def read_user_credentials(self, auth_req=True):
 

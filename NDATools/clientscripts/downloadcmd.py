@@ -161,21 +161,13 @@ For more details, check the information on the README page.
 
     args = parser.parse_args()
 
-
     return args
 
 
 def configure(args):
-    if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
-        config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'), args.username)
-        config.read_user_credentials()
-    else:
-        config = ClientConfiguration('clientscripts/config/settings.cfg', args.username)
-        config.read_user_credentials()
-        config.make_config()
-
+    config = ClientConfiguration(NDATools.NDA_TOOLS_SETTINGS_CFG_FILE, args.username)
+    config.read_user_credentials()
     LoggingConfiguration.load_config(NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER, args.verbose)
-
     return config
 
 
