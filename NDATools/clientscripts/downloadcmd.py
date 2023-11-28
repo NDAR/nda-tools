@@ -156,7 +156,7 @@ You may need to email your company/institution IT department to have this added 
 Note: If your bucket is encrypted with a customer-managed KMS key, then additional configuration is needed. 
 For more details, check the information on the README page.
 ''')
-    parser.add_argument('-debug', '--debugLogging', action='store_true',
+    parser.add_argument('--verbose', action='store_true',
                         help='Enables debug logging.')
 
     args = parser.parse_args()
@@ -174,7 +174,7 @@ def configure(args):
         config.read_user_credentials()
         config.make_config()
 
-    LoggingConfiguration.load_config(NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER)
+    LoggingConfiguration.load_config(NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER, args.verbose)
 
     return config
 
@@ -182,8 +182,6 @@ def configure(args):
 def main():
     args = parse_args()
     config = configure(args)
-    if args.debugLogging:
-        logging.getLogger().setLevel(logging.DEBUG)
     if args.s3_destination and not args.s3_destination.startswith('s3://'):
         raise Exception(
             'Invalid argument for -s3 option :{}. Argument must start with "s3://"'.format(args.s3_destination))

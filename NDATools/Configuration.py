@@ -34,7 +34,7 @@ class LoggingConfiguration:
         pass
 
     @staticmethod
-    def load_config(logs_directory):
+    def load_config(logs_directory, verbose=False):
         def make_config():
             file_path = os.path.join(os.path.expanduser('~'), '.NDATools')
             if not os.path.exists(file_path):
@@ -51,6 +51,9 @@ class LoggingConfiguration:
             config = yaml.load(stream, Loader=yaml.FullLoader)
         log_file = os.path.join(logs_directory, "debug_log_{}.txt").format(time.strftime("%Y%m%dT%H%M%S"))
         config['handlers']['file']['filename']=log_file
+        if verbose:
+            config['loggers']['NDATools']['level']='DEBUG'
+            config['handlers']['console']['formatter']='detailed'
         logging.config.dictConfig(config)
 
 class ClientConfiguration:
