@@ -163,9 +163,10 @@ For more details, check the information on the README page.
 
     return args
 
-
+# TODO move this to __init__
 def configure(args):
-    config = ClientConfiguration(NDATools.NDA_TOOLS_SETTINGS_CFG_FILE, args.username)
+    NDATools.prerun_checks_and_setup()
+    config = ClientConfiguration(args.username)
     config.read_user_credentials()
     LoggingConfiguration.load_config(NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER, args.verbose)
     return config

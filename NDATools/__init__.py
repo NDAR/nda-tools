@@ -12,7 +12,7 @@ from pkg_resources import resource_filename
 
 pypi_version = None
 initialization_complete = False
-
+print('Running NDATools Version {}'.format(__version__))
 
 def check_version():
     global pypi_version, initialization_complete
@@ -27,7 +27,7 @@ def check_version():
         print()
         print('''WARNING - Detected Python version 2. Support for Python 2 is being removed from nda-tools. It is recommended to upgrade to the latest version of Python 
           before using the latest features in the downloadcmd''')
-    print('Running NDATools Version {}'.format(__version__))
+
     if parse(__version__).is_devrelease:
         return
     url_pattern = 'https://pypi.org/pypi/{package}/json'
@@ -106,12 +106,17 @@ def create_nda_folders():
     if not os.path.exists(NDA_TOOLS_SETTINGS_FOLDER):
         os.mkdir(NDA_TOOLS_SETTINGS_FOLDER)
 
-    if not pathlib.Path(NDA_TOOLS_LOGGING_YML_FILE):
+    if not pathlib.Path(NDA_TOOLS_LOGGING_YML_FILE).is_file():
         shutil.copyfile(resource_filename(__name__, 'clientscripts/config/logging.yml'),
                         NDA_TOOLS_LOGGING_YML_FILE)
 
-    if not pathlib.Path(NDA_TOOLS_SETTINGS_CFG_FILE):
+    if not pathlib.Path(NDA_TOOLS_SETTINGS_CFG_FILE).is_file():
         shutil.copyfile(resource_filename(__name__, 'clientscripts/config/settings.cfg'),
                         NDA_TOOLS_SETTINGS_CFG_FILE)
     # MAC users sometimes see output from python warnings module. Suppress these msgs
     os.environ['PYTHONWARNINGS'] = 'ignore'
+
+
+def prerun_checks_and_setup():
+    check_version()
+    create_nda_folders()

@@ -1,6 +1,5 @@
 import argparse
 
-import NDATools
 from NDATools.BuildPackage import SubmissionPackage
 from NDATools.Configuration import *
 from NDATools.Submission import Submission
@@ -74,9 +73,6 @@ def parse_args():
                         help='Restart an in-progress submission, resuming from the last successful part in a multi-part'
                              'upload. Must enter a valid submission ID.')
 
-    parser.add_argument('-v', '--validationAPI', metavar='<arg>', type=str, action='store',
-                        help='URL of the validation tool API')
-
     parser.add_argument('-j', '--JSON', action='store_true',
                         help='Flag whether to additionally download validation results in JSON format.')
 
@@ -105,11 +101,10 @@ def parse_args():
 
 
 def configure(args):
-    # create a new config file in user's home directory if one does not exist
-
+    NDATools.prerun_checks_and_setup()
     # always set password if --username flag is supplied, or if user is submitting data
     auth_req = True if args.buildPackage or args.resume or args.replace_submission or args.username else False
-    config = ClientConfiguration(NDATools.NDA_TOOLS_SETTINGS_CFG_FILE, args.username, args.accessKey, args.secretKey)
+    config = ClientConfiguration(args.username, args.accessKey, args.secretKey)
     config.read_user_credentials(auth_req)
 
     if args.collectionID:
@@ -132,8 +127,6 @@ def configure(args):
         config.description = ' '.join(args.description)
     if args.scope:
         config.scope = args.scope
-    if args.validationAPI:
-        config.validation_api = args.validationAPI[0]
     if args.JSON:
         config.JSON = True
     config.workerThreads = args.workerThreads

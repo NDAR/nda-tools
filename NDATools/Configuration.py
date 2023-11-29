@@ -13,6 +13,7 @@ import requests
 import yaml
 from requests import HTTPError
 
+import NDATools
 from NDATools import NDA_TOOLS_LOGGING_YML_FILE, Utils
 from NDATools.Utils import exit_error, HttpErrorHandlingStrategy
 
@@ -48,13 +49,11 @@ class ClientConfiguration:
 
     SERVICE_NAME = 'nda-tools'
 
-    def __init__(self, settings_file, username=None, access_key=None, secret_key=None):
+    def __init__(self, username=None, access_key=None, secret_key=None):
         self.config = configparser.ConfigParser()
-        self.config_location = settings_file
-        self._check_and_fix_missing_options(self.config_location)
-        logger.info('Using configuration file from {}'.format(self.config_location))
-
-        self.config.read(self.config_location)
+        logger.info('Using configuration file from {}'.format(NDATools.NDA_TOOLS_SETTINGS_CFG_FILE))
+        user_settings = self.config.read(NDATools.NDA_TOOLS_SETTINGS_CFG_FILE)
+        self._check_and_fix_missing_options()
         self.validation_api = self.config.get("Endpoints", "validation")
         self.submission_package_api = self.config.get("Endpoints", "submission_package")
         self.submission_api = self.config.get("Endpoints", "submission")
@@ -68,13 +67,11 @@ class ClientConfiguration:
         self.aws_session_token = self.config.get('User', 'session_token')
         self.username = self.config.get("User", "username")
 
-        self.check_deprecated_settings()
-
         if username:
             self.username = username
         elif self.username:
             logger.warning("-u/--username argument not provided. Using default value of '%s' which was saved in %s",
-                           self.username, self.config_location)
+                           self.username, NDATools.NDA_TOOLS_SETTINGS_CFG_FILE)
 
         if access_key:
             self.aws_access_key = access_key
@@ -94,22 +91,27 @@ class ClientConfiguration:
         self.skip_local_file_check = False
         logger.info('proceeding as nda user: {}'.format(self.username))
 
-    def _check_and_fix_missing_options(self, config_location):
+    def _check_and_fix_missing_options(self):
         default_config = configparser.ConfigParser()
         default_file_path = resource_filename(__name__, 'clientscripts/config/settings.cfg')
         default_config.read(default_file_path)
-        default_settings = dict(default_config._sections)
-        self.config.read(config_location)
-        user_settings = dict(self.config._sections)
-
-        for section in default_settings:
-            for option in default_settings[section]:
-                if option not in user_settings[section]:
+        change_detected = False
+        for section in default_config.sections():
+            if not section in self.config.sections():
+                logger.debug(f'adding {section} to settings.cfg')
+                self.config.add_section(section)
+                change_detected = True
+            for option in default_config[section]:
+                if option not in self.config[section]:
                     logger.debug('[{}][{}] is missing'.format(section, option))
-                    with open(config_location, 'w') as configfile:
-                        self.config.set(section, option, default_settings[section][option])
-                        self.config.write(configfile)
-
+                    self.config.set(section, option, default_config[section][option])
+                    change_detected = True
+        if change_detected:
+            logger.debug(f'updating settings.cfg')
+            with open(NDATools.NDA_TOOLS_SETTINGS_CFG_FILE, 'w') as configfile:
+                self.config.write(configfile)
+        else:
+            logger.debug(f'settings.cfg is up to date')
 
     def read_user_credentials(self, auth_req=True):
 
@@ -119,7 +121,7 @@ class ClientConfiguration:
                 try:
                     while not self.username:
                         self.username = input('Enter your NIMH Data Archives username:')
-                        with open(self.config_location, 'w') as configfile:
+                        with open(NDATools.NDA_TOOLS_SETTINGS_CFG_FILE, 'w') as configfile:
                             self.config.set('User', 'username', self.username)
                             self.config.write(configfile)
                     self.password = keyring.get_password(self.SERVICE_NAME, self.username)
@@ -128,7 +130,7 @@ class ClientConfiguration:
                     while not self.is_valid_nda_credentials():
                         logger.error("The password that was entered for user '%s' is invalid ...", self.username)
                         logger.error('If your username was previously entered incorrectly, you may update it in your '
-                                     'settings.cfg located at \n{}'.format(self.config_location))
+                                     'settings.cfg located at \n{}'.format(NDATools.NDA_TOOLS_SETTINGS_CFG_FILE))
                         self.password = getpass.getpass('Enter your NIMH Data Archives password:')
                         while self.password == '':
                             self.password = getpass.getpass('Enter your NIMH Data Archives password:')
@@ -153,11 +155,6 @@ class ClientConfiguration:
         if not self.aws_secret_key:
             self.aws_secret_key = getpass.getpass('Enter your aws_secret_key:')
 
-    def check_deprecated_settings(self):
-        if self.config.has_option('User', 'password') and self.config.get("User", "password"):
-            print('Warning: Detected non-empty value for "password" in settings.cfg. Support for this setting has been '
-                  'deprecated and will no longer be used by this tool. Password storage is not recommended for security'
-                  ' considerations')
 
     def is_valid_nda_credentials(self):
         try:
