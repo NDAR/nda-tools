@@ -204,7 +204,7 @@ vtcmd MultipleDataTypes/genomics_sample03.csv testdata/with_associated_files/gen
 **Note:** You can also upload associated files saved locally and in s3. Just make sure to include the directory where the local files are saved (-l path/to/local/associated/files)
 
 To create a package, enter "-b" at the end of your command line argument.
-You can also enter your username, AWS credentials, Collection ID or alternate endpoint title, and the title and description of your submission, or you can enter this information later when prompted by the client.
+You can also enter your username, AWS credentials, Collection ID, and the title and description of your submission, or you can enter this information later when prompted by the client.
 The client will not begin building the submission package until:
 
 - All your files are validated

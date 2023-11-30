@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 class SubmissionPackage:
     def __init__(self, uuid, associated_files, config, username=None, password=None, collection=None, title=None,
-                 description=None, alternate_location=None, allow_exit=False, pending_changes=None, original_uuids=None):
+                 description=None, pending_changes=None, original_uuids=None):
         self.config = config
         self.api = self.config.submission_package_api
         self.validationtool_api = self.config.validationtool_api
@@ -40,95 +40,41 @@ class SubmissionPackage:
         self.package_id = None
         self.package_folder = None
         self.collection_id = collection
-        self.endpoint_title = alternate_location
-        self.collections = {}
-        self.endpoints = []
         self.auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
-        self.get_collections()
-        self.get_custom_endpoints()
+        self.collections = self.get_collections()
+
         self.validation_results = []
         self.no_read_access = set()
-        self.exit = allow_exit
         self.pending_changes = pending_changes
         self.original_validation_uuids = original_uuids
 
     def get_collections(self):
         collections = get_request("/".join([self.validationtool_api, "user/collection"]), auth=self.auth, headers={'Accept':'application/json'})
-        if collections:
-            for c in collections:
-                self.collections.update({c['id']: c['title']})
+        return { int(c['id']):c['title'] for c in collections}
 
-    def get_custom_endpoints(self):
-        endpoints = get_request("/".join([self.validationtool_api, "user/customEndpoints"]), auth=self.auth, headers={'Accept':'application/json'})
-        if endpoints:
-            for endpoint in endpoints:
-                self.endpoints.append(endpoint['title'])
+    def set_upload_destination(self):
+        if not self.collections:
+            message = 'The user {} does not have permission to submit to any collections.'.format(self.config.username)
+            exit_error(message=message)
 
-    def set_upload_destination(self, hide_input=True):
-        if len(self.collections) > 0 or len(self.endpoints) > 0:
-            user_input = None
-            if self.config.collection_id and self.config.endpoint_title:
-                logger.info('You selected both a collection and an alternate endpoint.\n'
-                      'These options are mutually exclusive, please specify only one.')
-            elif self.config.endpoint_title:
-                self.endpoint_title = self.config.endpoint_title
-            elif self.config.collection_id:
-                self.collection_id = self.config.collection_id
-            else:
-                if not hide_input:
-                    user_input = input('\nEnter -c <collection ID> OR -a <alternate endpoint>:')
-            while True:
-                if user_input:
-                    try:
-                        if user_input.startswith('-c'):
-                            collection_id = user_input.split(" ")
-                            self.collection_id = collection_id[1]
-                            self.endpoint_title = ""
-                        elif user_input.startswith('-a'):
-                            endpoint_title = user_input.split(" ")
-                            self.endpoint_title = endpoint_title[1]
-                            self.collection_id = ""
-                    except IndexError:
-                        logger.info('Do not leave this section blank.')
-                try:
-                    if self.collection_id and int(self.collection_id) in self.collections:
-                        break
-                    elif self.endpoint_title in self.endpoints:
-                        break
-                    else:
-                        if not hide_input:
-                            print ('Collection IDs:')
-                            for k, v in self.collections.items():
-                                logger.info('{}: {}'.format(k, v.encode('ascii', 'ignore')))
-                            logger.info('\nAlternate Endpoints:')
-                            for endpoint in self.endpoints:
-                                logger.info(endpoint.encode('ascii', 'ignore'))
-                            message = '\nYou do not have access to submit to the collection or alternate upload location: {} '.format(self.collection_id or self.endpoint_title)
-                            logger.info(message)
-                            user_input = input('\nEnter -c <collection ID> OR -a <alternate endpoint> from the list above:')
-                        else:
-                            message = 'Incorrect/Missing collection ID or alternate endpoint.'
-                            if self.exit:
-                                exit_error(message=message)
-                            else:
-                                raise Exception(message)
-                except (AttributeError, ValueError, TypeError) as e:
-                    message = 'Error: Input must start with either a -c or -a and be an integer or string value, respectively.'
-                    if not hide_input:
-                        logger.info(message)
-                        user_input = input('\nEnter -c <collection ID> OR -a <alternate endpoint>:')
-                    else:
-                        message = 'Incorrect/Missing collection ID or alternate endpoint.'
-                        if self.exit:
-                            exit_error(message=message)
-                        else:
-                            raise Exception(message)
-        else:
-            message = 'The user {} does not have permission to submit to any collections or alternate upload locations.'.format(self.config.username)
-            if self.exit:
+        if self.config.collection_id:
+            self.collection_id = self.config.collection_id
+            if not self.collection_id in self.collections:
+                message = 'The user {} does not have permission to submit to collection {}.'.format(self.config.username, self.collection_id)
                 exit_error(message=message)
-            else:
-                raise Exception(message)
+
+        while self.collection_id not in self.collections:
+            user_input = input('\nEnter collection ID:')
+            try:
+                self.collection_id = int(user_input.strip())
+                if self.collection_id not in self.collections:
+                    logger.error(f'You do not have access to submit to the collection: {self.collection_id} ')
+                    logger.info(f'Please choose from one of the following collections: ')
+                    for collection_id in sorted(self.collections.keys()):
+                        logger.info('{}: {}'.format(collection_id, self.collections[collection_id]))
+            except ValueError:
+                logger.error('Error: Input must be a valid integer')
+
 
     def recollect_file_search_info(self):
         retry = input('Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
@@ -248,20 +194,19 @@ class SubmissionPackage:
         if self.dataset_description is None:
             raise_error('dataset description')
 
-        if self.collection_id is None and self.endpoint_title is None:
-            raise_error('collection ID or alternate endpoint')
+        if self.collection_id is None:
+            raise_error('collection ID')
 
         self.package_info = {
             "package_info": {
                 "dataset_description": self.dataset_description,
                 "dataset_name": self.dataset_name,
-                "collection_id": self.collection_id,
-                "endpoint_title": self.endpoint_title
+                "collection_id": self.collection_id
             },
             "validation_results":
                 self.uuid
         }
-        if hasattr(self.config, 'replace_submission'):
+        if self.config.replace_submission:
             self.package_info['package_info']['replacement_submission'] = self.config.replace_submission
             self.print_replacement_summary()
             if not self.config.force:
@@ -284,10 +229,7 @@ class SubmissionPackage:
                 message = 'There was an error creating your package.'
                 if response['status'] == Status.ERROR:
                     message = response['errors'][0]['message']
-                if self.exit:
-                    exit_error(message=message)
-                else:
-                    raise Exception(message)
+                exit_error(message=message)
 
             while response['package_info']['status'] == Status.PROCESSING:
                 time.sleep(1.1)
@@ -304,16 +246,10 @@ class SubmissionPackage:
                     message=response['errors']['system'][0]['message']
                 elif 'has changed since validation' in response['errors']:
                     message = response['errors']
-                if self.exit:
-                    exit_error(message=message)
-                else:
-                    raise Exception(message)
+                exit_error(message=message)
         else:
             message='There was an error with your package request.'
-            if self.exit:
-                exit_error(message=message)
-            else:
-                raise Exception(message)
+            exit_error(message=message)
 
 
     def print_replacement_summary(self):

@@ -6,8 +6,6 @@ import sys
 
 from tqdm import tqdm
 
-import NDATools
-
 if sys.version_info[0] < 3:
     import Queue as queue
 
@@ -215,41 +213,38 @@ class Validation:
                 json.dump(json_data, outfile)
 
         else:
-            if sys.version_info[0] < 3:
-                csvfile = open(self.log_file, 'wb')
-            else:
-                csvfile = open(self.log_file, 'w', newline='')
-            writer = csv.DictWriter(csvfile, fieldnames=self.field_names)
-            writer.writeheader()
-            for (response, file) in self.responses:
-                if response['status'] == Status.SYSERROR:
-                    encountered_system_error=True
+            with open(self.log_file, 'w', newline='') as csvfile:
+                writer = csv.DictWriter(csvfile, fieldnames=self.field_names)
+                writer.writeheader()
+                for (response, file) in self.responses:
+                    if response['status'] == Status.SYSERROR:
+                        encountered_system_error=True
 
-                file_name = self.uuid_dict[response['id']]['file']
+                    file_name = self.uuid_dict[response['id']]['file']
 
-                if response['errors'] == {}:
-                    writer.writerow(
-                        {'FILE': file_name, 'ID': response['id'], 'STATUS': response['status'],
-                         'EXPIRATION_DATE': response['expiration_date'], 'ERRORS': 'None', 'COLUMN': 'None',
-                         'MESSAGE': 'None', 'RECORD': 'None'})
-                else:
-                    for error, value in response['errors'].items():
-                        if error == 'system':
-                            encountered_system_error = True
-                        for v in value:
-                            try:
-                                column = v['columnName'] if 'columnName' in v else None
-                                message = v['message']
-                                record = v['recordNumber'] if 'recordNumber' in v else None
-                                writer.writerow(
-                                    {'FILE': file_name, 'ID': response['id'], 'STATUS': response['status'],
-                                     'EXPIRATION_DATE': response['expiration_date'], 'ERRORS': error, 'COLUMN': column,
-                                     'MESSAGE': message, 'RECORD': record})
-                            except KeyError:
-                                logger.error('Unrecognized result from validation service - {}. '.format(json.dumps(response)))
-                                logger.error('\nPlease contact NDAHelp@mail.nih.gov for help in resolving this error')
-                                exit_error()
-        csvfile.close()
+                    if response['errors'] == {}:
+                        writer.writerow(
+                            {'FILE': file_name, 'ID': response['id'], 'STATUS': response['status'],
+                             'EXPIRATION_DATE': response['expiration_date'], 'ERRORS': 'None', 'COLUMN': 'None',
+                             'MESSAGE': 'None', 'RECORD': 'None'})
+                    else:
+                        for error, value in response['errors'].items():
+                            if error == 'system':
+                                encountered_system_error = True
+                            for v in value:
+                                try:
+                                    column = v['columnName'] if 'columnName' in v else None
+                                    message = v['message']
+                                    record = v['recordNumber'] if 'recordNumber' in v else None
+                                    writer.writerow(
+                                        {'FILE': file_name, 'ID': response['id'], 'STATUS': response['status'],
+                                         'EXPIRATION_DATE': response['expiration_date'], 'ERRORS': error, 'COLUMN': column,
+                                         'MESSAGE': message, 'RECORD': record})
+                                except KeyError:
+                                    logger.error('Unrecognized result from validation service - {}. '.format(json.dumps(response)))
+                                    logger.error('\nPlease contact NDAHelp@mail.nih.gov for help in resolving this error')
+                                    exit_error()
+
         logger.info('Validation report output to: {}'.format(self.log_file))
         if encountered_system_error:
             logger.error('Unexpected error occurred while validating one or more of the csv files')

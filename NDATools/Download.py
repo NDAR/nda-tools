@@ -244,7 +244,8 @@ class Download(Protocol):
                                                          fieldnames=self.download_job_progress_report_column_defs, extrasaction='ignore')
         failed_s3_links_file = tempfile.NamedTemporaryFile(mode='a',
                                                            delete=False,
-                                                           prefix='failed_s3_links_file_{}.txt'.format(time.strftime("%Y%m%dT%H%M%S")),
+                                                           prefix='failed_s3_links_file_{}'.format(time.strftime("%Y%m%dT%H%M%S")),
+                                                           suffix='.csv',
                                                            dir=NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER
                                                            )
 

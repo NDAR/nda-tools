@@ -49,10 +49,10 @@ class ClientConfiguration:
 
     SERVICE_NAME = 'nda-tools'
 
-    def __init__(self, username=None, access_key=None, secret_key=None):
+    def __init__(self, args):
         self.config = configparser.ConfigParser()
         logger.info('Using configuration file from {}'.format(NDATools.NDA_TOOLS_SETTINGS_CFG_FILE))
-        user_settings = self.config.read(NDATools.NDA_TOOLS_SETTINGS_CFG_FILE)
+        self.config.read(NDATools.NDA_TOOLS_SETTINGS_CFG_FILE)
         self._check_and_fix_missing_options()
         self.validation_api = self.config.get("Endpoints", "validation")
         self.submission_package_api = self.config.get("Endpoints", "submission_package")
@@ -67,28 +67,36 @@ class ClientConfiguration:
         self.aws_session_token = self.config.get('User', 'session_token')
         self.username = self.config.get("User", "username")
 
-        if username:
-            self.username = username
+        #options that appear in both vtcmd and downloadcmd
+        self.workerThreads = args.workerThreads
+        self.hideProgress = args.hideProgress
+        self.force = True if args.force else False
+
+        if args.username:
+            self.username = args.userName
         elif self.username:
             logger.warning("-u/--username argument not provided. Using default value of '%s' which was saved in %s",
                            self.username, NDATools.NDA_TOOLS_SETTINGS_CFG_FILE)
 
-        if access_key:
-            self.aws_access_key = access_key
-        if secret_key:
-            self.aws_secret_key = secret_key
-        self.collection_id = None
-        self.endpoint_title = None
-        self.scope = None
-        self.directory_list = None
-        self.manifest_path = None
-        self.source_bucket = None
-        self.source_prefix = None
-        self.title = None
-        self.description = None
-        self.JSON = False
-        self.hideProgress = False
-        self.skip_local_file_check = False
+        if args.accessKey:
+            self.aws_access_key = args.accessKey
+        if args.secretKey:
+            self.aws_secret_key = args.secretKey
+
+        is_vtcmd = 'collectionID' in args
+        if is_vtcmd:
+            self.collection_id = args.collectionID
+            self.directory_list = args.listDir
+            self.manifest_path = args.manifestPath
+            self.source_bucket = args.s3Bucket
+            self.source_prefix = args.s3Prefix
+            self.validation_timeout = args.validation_timeout
+            self.title = args.title
+            self.description = args.description
+            self.scope = args.scope
+            self.JSON = args.JSON
+            self.skip_local_file_check = args.skipLocalAssocFileCheck
+            self.replace_submission = args.replace_submission
         logger.info('proceeding as nda user: {}'.format(self.username))
 
     def _check_and_fix_missing_options(self):

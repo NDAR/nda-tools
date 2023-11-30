@@ -38,20 +38,17 @@ def parse_args():
     parser.add_argument('-w', '--warning', action='store_true',
                         help='Returns validation warnings for list of files')
 
-    parser.add_argument('-a', '--alternateEndpoint', metavar='<arg>', type=str, action='store',
-                        help='An alternate upload location for the submission package')
-
     parser.add_argument('-b', '--buildPackage', action='store_true',
                         help='Flag whether to construct the submission package')
 
     parser.add_argument('-c', '--collectionID', metavar='<arg>', type=int, action='store',
                         help='The NDA collection ID')
 
-    parser.add_argument('-d', '--description', metavar='<arg>', type=str, nargs='+', action='store',
+    parser.add_argument('-d', '--description', metavar='<arg>', type=str, action='store',
                         help='The description of the submission')
 
 
-    parser.add_argument('-t', '--title', metavar='<arg>', type=str, nargs='+', action='store',
+    parser.add_argument('-t', '--title', metavar='<arg>', type=str, action='store',
                         help='The title of the submission')
 
     parser.add_argument('-u', '--username', metavar='<arg>', type=str, action='store',
@@ -100,46 +97,6 @@ def parse_args():
     return args
 
 
-def configure(args):
-    NDATools.prerun_checks_and_setup()
-    # always set password if --username flag is supplied, or if user is submitting data
-    auth_req = True if args.buildPackage or args.resume or args.replace_submission or args.username else False
-    config = ClientConfiguration(args.username, args.accessKey, args.secretKey)
-    config.read_user_credentials(auth_req)
-
-    if args.collectionID:
-        config.collection_id = args.collectionID
-    if args.alternateEndpoint:
-        config.endpoint_title = args.alternateEndpoint
-    if args.listDir:
-        config.directory_list = args.listDir
-    if args.manifestPath:
-        config.manifest_path = args.manifestPath
-    if args.s3Bucket:
-        config.source_bucket = args.s3Bucket
-    if args.s3Prefix:
-        config.source_prefix = args.s3Prefix
-    if args.validation_timeout:
-        config.validation_timeout = args.validation_timeout
-    if args.title:
-        config.title = ' '.join(args.title)
-    if args.description:
-        config.description = ' '.join(args.description)
-    if args.scope:
-        config.scope = args.scope
-    if args.JSON:
-        config.JSON = True
-    config.workerThreads = args.workerThreads
-    config.hideProgress = args.hideProgress
-    if args.skipLocalAssocFileCheck:
-        config.skip_local_file_check = True
-    if args.replace_submission:
-        config.replace_submission = args.replace_submission
-    config.force = True if args.force else False
-    LoggingConfiguration.load_config(NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER, args.verbose)
-    return config
-
-
 class Status:
     UPLOADING = 'Uploading'
     SYSERROR = 'SystemError'
@@ -183,7 +140,7 @@ def validate_files(file_list, warnings, build_package, threads, config=None, pen
                 if validation.uuid_dict[uuid]['errors']:
                     logger.info('UUID {}: {}'.format(uuid, validation.uuid_dict[uuid]['file']))
     # If some files had errors, give option to submit just the files that passed
-    if not hasattr(config, 'replace_submission'):
+    if not config.replace_submission:
         # If some files had errors, give option to submit just the files that passed
         if build_package and validation.e and not config.force:
             proceed = evaluate_yes_no_input('Some files have errors, do you want to continue '
@@ -214,16 +171,14 @@ def validate_files(file_list, warnings, build_package, threads, config=None, pen
     return validation.uuid, validation.associated_files_to_upload
 
 
-
 def build_package(uuid, associated_files_to_upload, config, pending_changes=None, original_uuids=None):
     if not config.title:
         config.title = input('Enter title for dataset name:')
     if not config.description:
         config.description = input('Enter description for the dataset submission:')
 
-    package = SubmissionPackage(uuid, associated_files_to_upload, config=config, allow_exit=True,
-                                pending_changes=pending_changes, original_uuids=original_uuids)
-    package.set_upload_destination(hide_input=False)
+    package = SubmissionPackage(uuid, associated_files_to_upload, config=config, pending_changes=pending_changes, original_uuids=original_uuids)
+    package.set_upload_destination()
     directories = config.directory_list
     source_bucket = config.source_bucket
     source_prefix = config.source_prefix
@@ -348,13 +303,13 @@ def check_args(args):
 def main():
     # confirm most up to date version of nda-tools is installed
     args = parse_args()
-    config = configure(args)
+    auth_req = True if args.buildPackage or args.resume or args.replace_submission or args.username else False
+    config = NDATools.init_and_create_configuration(args, NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER, auth_req=auth_req)
     pending_changes, original_uuids, original_submission_id = None, None, None
     check_args(args)
     if args.replace_submission:
         pending_changes, original_uuids, original_submission_id = retrieve_replacement_submission_params(config,
                                                                                                          args.replace_submission)
-
     if args.resume:
         submission_id = args.files[0]
         # Need to check to see if i need to update this step!

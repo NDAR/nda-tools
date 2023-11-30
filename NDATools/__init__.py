@@ -10,6 +10,7 @@ __version__ = '0.2.26.dev12'
 
 from pkg_resources import resource_filename
 
+
 pypi_version = None
 initialization_complete = False
 print('Running NDATools Version {}'.format(__version__))
@@ -120,3 +121,12 @@ def create_nda_folders():
 def prerun_checks_and_setup():
     check_version()
     create_nda_folders()
+
+
+def init_and_create_configuration(args, logs_folder , auth_req=True):
+    from NDATools.Configuration import ClientConfiguration, LoggingConfiguration
+    prerun_checks_and_setup()
+    LoggingConfiguration.load_config(logs_folder, args.verbose)
+    config = ClientConfiguration(args)
+    config.read_user_credentials(auth_req)
+    return config

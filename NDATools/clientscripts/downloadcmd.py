@@ -2,8 +2,6 @@ from __future__ import absolute_import, print_function, with_statement
 
 import sys
 
-import NDATools
-
 if sys.version_info[0] < 3:
     input = raw_input
 import argparse
@@ -163,18 +161,10 @@ For more details, check the information on the README page.
 
     return args
 
-# TODO move this to __init__
-def configure(args):
-    NDATools.prerun_checks_and_setup()
-    config = ClientConfiguration(args.username)
-    config.read_user_credentials()
-    LoggingConfiguration.load_config(NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER, args.verbose)
-    return config
-
 
 def main():
     args = parse_args()
-    config = configure(args)
+    config = NDATools.init_and_create_configuration(args, NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER)
     if args.s3_destination and not args.s3_destination.startswith('s3://'):
         raise Exception(
             'Invalid argument for -s3 option :{}. Argument must start with "s3://"'.format(args.s3_destination))
