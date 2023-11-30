@@ -453,6 +453,7 @@ class Download(Protocol):
                     for chunk in response.iter_content(chunk_size=1024 * 1024 * 5):  # iterate 5MB chunks
                         if chunk:
                             bytes_written += download_file.write(chunk)
+        # TODO - this doesnt work when using s3fs...add ticket to make it easy to download using s3fs
         os.rename(download_request.partial_download_abs_path, download_request.completed_download_abs_path)
         logger.info('Completed download {}'.format(download_request.completed_download_abs_path))
         download_request.actual_file_size = bytes_written
@@ -540,7 +541,7 @@ class Download(Protocol):
             #if we are using expired credentials, regenerate and resume the download
             credentials_are_expired = False
             if download_local:
-                if isinstance(e, requests.exceptions.HTTPError)and 'Request has expired' in e.response.text:
+                if isinstance(e, requests.exceptions.HTTPError) and 'Request has expired' in e.response.text:
                     credentials_are_expired = True
                     
             if credentials_are_expired:

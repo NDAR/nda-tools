@@ -61,6 +61,7 @@ class ClientConfiguration:
         self.package_creation_api = self.config.get("Endpoints", "package_creation")
         self.package_api = self.config.get("Endpoints", "package")
         self.datadictionary_api = self.config.get("Endpoints", "datadictionary")
+        self.collection_api = self.config.get("Endpoints", "collection")
         self.user_api = self.config.get("Endpoints", "user")
         self.aws_access_key = self.config.get("User", "access_key")
         self.aws_secret_key = self.config.get("User", "secret_key")

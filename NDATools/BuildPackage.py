@@ -14,8 +14,7 @@ from NDATools.Utils import *
 logger = logging.getLogger(__name__)
 
 class SubmissionPackage:
-    def __init__(self, uuid, associated_files, config, username=None, password=None, collection=None, title=None,
-                 description=None, pending_changes=None, original_uuids=None):
+    def __init__(self, uuid, associated_files, config, pending_changes=None, original_uuids=None):
         self.config = config
         self.api = self.config.submission_package_api
         self.validationtool_api = self.config.validationtool_api
@@ -23,14 +22,6 @@ class SubmissionPackage:
         self.associated_files = associated_files
         self.full_file_path = {}
         self.no_match = []
-        if username:
-            self.config.username = username
-        if password:
-            self.config.password = password
-        if title:
-            self.config.title = title
-        if description:
-            self.config.description = description
         self.username = self.config.username
         self.password = self.config.password
         self.dataset_name = self.config.title
@@ -39,10 +30,9 @@ class SubmissionPackage:
         self.download_links = []
         self.package_id = None
         self.package_folder = None
-        self.collection_id = collection
         self.auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
-        self.collections = self.get_collections()
-
+        self.alt_endpoints = None
+        self.collection_id = self.check_and_get_collection_id()
         self.validation_results = []
         self.no_read_access = set()
         self.pending_changes = pending_changes
@@ -50,28 +40,50 @@ class SubmissionPackage:
 
     def get_collections(self):
         collections = get_request("/".join([self.validationtool_api, "user/collection"]), auth=self.auth, headers={'Accept':'application/json'})
-        return { int(c['id']):c['title'] for c in collections}
+        return {int(c['id']):c['title'] for c in collections}
 
-    def set_upload_destination(self):
-        if not self.collections:
+
+    def has_permissions_to_submit_to_collection(self, collection_id, user_collections):
+        if collection_id in user_collections:
+            return True
+        # TODO refactor collection-api to remove the need to make these separate api calls
+        if self.alt_endpoints is not None:
+            return collection_id in self.alt_endpoints
+        else:
+            endpoints = get_request("/".join([self.validationtool_api, "user/customEndpoints"]), auth=self.auth, headers={'Accept':'application/json'})
+            # TODO cache api response
+            all_collections = get_request("/".join([self.config.collection_api]), auth=self.auth, headers={'Accept':'application/json'})
+            tmp_endpoints = {e['title'] for e in endpoints}
+            self.alt_endpoints = {c['id']:c['title'] for c in all_collections if c['altEndpoint'] in tmp_endpoints}
+            return collection_id in self.alt_endpoints
+
+
+    def check_and_get_collection_id(self):
+        user_collections = self.get_collections()
+        if not user_collections:
             message = 'The user {} does not have permission to submit to any collections.'.format(self.config.username)
             exit_error(message=message)
-
         if self.config.collection_id:
-            self.collection_id = self.config.collection_id
-            if not self.collection_id in self.collections:
+            if not self.has_permissions_to_submit_to_collection(self.config.collection_id, user_collections):
                 message = 'The user {} does not have permission to submit to collection {}.'.format(self.config.username, self.collection_id)
                 exit_error(message=message)
+            else:
+                return self.config.collection_id
+        else:
+            return self.prompt_for_collection_id(user_collections)
 
-        while self.collection_id not in self.collections:
-            user_input = input('\nEnter collection ID:')
+
+    def prompt_for_collection_id(self, user_collections):
+        while True:
             try:
-                self.collection_id = int(user_input.strip())
-                if self.collection_id not in self.collections:
+                user_input = int(input('\nEnter collection ID:').strip())
+                if not self.has_permissions_to_submit_to_collection(user_input, user_collections):
                     logger.error(f'You do not have access to submit to the collection: {self.collection_id} ')
                     logger.info(f'Please choose from one of the following collections: ')
                     for collection_id in sorted(self.collections.keys()):
                         logger.info('{}: {}'.format(collection_id, self.collections[collection_id]))
+                else:
+                    return user_input
             except ValueError:
                 logger.error('Error: Input must be a valid integer')
 

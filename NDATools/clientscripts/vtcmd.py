@@ -54,10 +54,10 @@ def parse_args():
     parser.add_argument('-u', '--username', metavar='<arg>', type=str, action='store',
                         help='NDA username')
 
-    parser.add_argument('-ak', '--accessKey', metavar='<arg>', type=str, action='store',
+    parser.add_argument('--accessKey', metavar='<arg>', type=str, action='store',
                         help='AWS access key')
 
-    parser.add_argument('-sk', '--secretKey', metavar='<arg>', type=str, action='store',
+    parser.add_argument('--secretKey', metavar='<arg>', type=str, action='store',
                         help='AWS secret key')
 
     parser.add_argument('-s', '--scope', metavar='<arg>', type=str, action='store',
@@ -178,7 +178,6 @@ def build_package(uuid, associated_files_to_upload, config, pending_changes=None
         config.description = input('Enter description for the dataset submission:')
 
     package = SubmissionPackage(uuid, associated_files_to_upload, config=config, pending_changes=pending_changes, original_uuids=original_uuids)
-    package.set_upload_destination()
     directories = config.directory_list
     source_bucket = config.source_bucket
     source_prefix = config.source_prefix
