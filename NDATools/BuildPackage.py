@@ -78,10 +78,10 @@ class SubmissionPackage:
             try:
                 user_input = int(input('\nEnter collection ID:').strip())
                 if not self.has_permissions_to_submit_to_collection(user_input, user_collections):
-                    logger.error(f'You do not have access to submit to the collection: {self.collection_id} ')
+                    logger.error(f'You do not have access to submit to the collection: {user_input} ')
                     logger.info(f'Please choose from one of the following collections: ')
-                    for collection_id in sorted(self.collections.keys()):
-                        logger.info('{}: {}'.format(collection_id, self.collections[collection_id]))
+                    for collection_id in sorted(user_collections.keys()):
+                        logger.info('{}: {}'.format(collection_id, user_collections[collection_id]))
                 else:
                     return user_input
             except ValueError:

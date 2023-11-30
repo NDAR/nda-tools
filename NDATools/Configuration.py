@@ -70,8 +70,6 @@ class ClientConfiguration:
 
         #options that appear in both vtcmd and downloadcmd
         self.workerThreads = args.workerThreads
-        self.hideProgress = args.hideProgress
-        self.force = True if args.force else False
 
         if args.username:
             self.username = args.userName
@@ -79,13 +77,12 @@ class ClientConfiguration:
             logger.warning("-u/--username argument not provided. Using default value of '%s' which was saved in %s",
                            self.username, NDATools.NDA_TOOLS_SETTINGS_CFG_FILE)
 
-        if args.accessKey:
-            self.aws_access_key = args.accessKey
-        if args.secretKey:
-            self.aws_secret_key = args.secretKey
-
         is_vtcmd = 'collectionID' in args
         if is_vtcmd:
+            self.aws_access_key = args.accessKey
+            self.aws_secret_key = args.secretKey
+            self.hideProgress = args.hideProgress
+            self.force = True if args.force else False
             self.collection_id = args.collectionID
             self.directory_list = args.listDir
             self.manifest_path = args.manifestPath
@@ -154,7 +151,7 @@ class ClientConfiguration:
 
         # Only ask for access-key/secret-key when needed (which is only when a user is creating a submission
         # and the files are stored in an s3 bucket.
-        if self.source_bucket:
+        if hasattr(self,'source_bucket') and self.source_bucket:
             self.read_aws_credentials()
 
     def read_aws_credentials(self):
