@@ -39,7 +39,8 @@ def parse_args():
                              ' s3 urls.')
 
     parser.add_argument('-t', '--txt', metavar='<s3-links-file>', type=str, action='store',
-                        help='Flags that a text file has been entered from where to download S3 files.')
+                        help='Flags that a text file has been entered from where to download S3 files. '
+                             'For more details, check the information on the README page.')
 
     parser.add_argument('-ds', '--datastructure', metavar='<structure short-name>', type=str, action='store',
                         help='''Downloads all the files in a package from the specified data-structure. 
@@ -51,8 +52,6 @@ and always ends in a 2 digit number. (For example, see the data-structure page f
     parser.add_argument('-u', '--username', metavar='<username>', type=str, action='store',
                         help='NDA username')
 
-    parser.add_argument('-p', '--password', help='Warning: Support for this setting has been deprecated and will no longer be '
-                                                 'used by this tool. This option will be removed in future releases')
 
     parser.add_argument('-d', '--directory', metavar='<download_directory>', type=str, nargs=1, action='store',
                         help='Enter an alternate full directory path where you would like your files to be saved. The default is ~/NDA/nda-tools/<package-id>')
@@ -157,41 +156,31 @@ You may need to email your company/institution IT department to have this added 
 Note: If your bucket is encrypted with a customer-managed KMS key, then additional configuration is needed. 
 For more details, check the information on the README page.
 ''')
+    parser.add_argument('--verbose', action='store_true',
+                        help='Enables debug logging.')
 
     args = parser.parse_args()
 
-    if args.password:
-        print('Warning: Support for the password flag (-p, --password) has been removed from nda-tools due to security '
-              'concerns and has been replaced with keyring.')
-        args.__dict__.pop('password')
-
     return args
 
-
+# TODO move this to __init__
 def configure(args):
-    if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
-        config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'), args.username)
-        config.read_user_credentials()
-    else:
-        config = ClientConfiguration('clientscripts/config/settings.cfg', args.username)
-        config.read_user_credentials()
-        config.make_config()
-
-    LoggingConfiguration.load_config(NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER)
-
+    NDATools.prerun_checks_and_setup()
+    config = ClientConfiguration(args.username)
+    config.read_user_credentials()
+    LoggingConfiguration.load_config(NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER, args.verbose)
     return config
 
 
 def main():
     args = parse_args()
     config = configure(args)
-
     if args.s3_destination and not args.s3_destination.startswith('s3://'):
         raise Exception(
             'Invalid argument for -s3 option :{}. Argument must start with "s3://"'.format(args.s3_destination))
     if sys.version_info < (3, 5):
         logger.error('ERROR: "--verify" only works with python 3.5 or later. Please upgrade Python in order to continue')
-        exit_client()
+        exit_error()
 
     s3Download = Download(config, args)
     if args.verify:

@@ -313,8 +313,7 @@ class Submission:
                         sys.stdout.write('.')
                 if self.status == Status.UPLOADING:
                     if self.exit:
-                        exit_client(signal=signal.SIGTERM,
-                                    message=timeout_message)
+                        exit_error(message=timeout_message)
                     else:
                         raise Exception("{}\n{}".format('TimeOutError', timeout_message))
 

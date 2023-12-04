@@ -90,7 +90,7 @@ class UploadMultiParts:
         md5 = hashlib.md5(data).hexdigest()
         if md5 != ETag:
             message = "The file seems to be modified since previous upload attempt(md5 value does not match)."
-            exit_client(signal=signal.SIGTERM, message=message) # force exit because file has been modified (data integrity)
+            exit_error(message=message) # force exit because file has been modified (data integrity)
 
     def upload_part(self, data, i):
         part = self.client.upload_part(Body=data, Bucket=self.bucket, Key=self.key, UploadId=self.upload_id, PartNumber=i)

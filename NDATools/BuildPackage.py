@@ -5,12 +5,9 @@ import sys
 import botocore
 import requests.packages.urllib3.util
 
-import NDATools
-
 if sys.version_info[0] < 3:
     input = raw_input
 import requests.packages.urllib3.util
-from tqdm import tqdm
 from NDATools.Configuration import *
 from NDATools.Utils import *
 
@@ -112,8 +109,7 @@ class SubmissionPackage:
                         else:
                             message = 'Incorrect/Missing collection ID or alternate endpoint.'
                             if self.exit:
-                                exit_client(signal=signal.SIGTERM,
-                                            message=message)
+                                exit_error(message=message)
                             else:
                                 raise Exception(message)
                 except (AttributeError, ValueError, TypeError) as e:
@@ -124,13 +120,13 @@ class SubmissionPackage:
                     else:
                         message = 'Incorrect/Missing collection ID or alternate endpoint.'
                         if self.exit:
-                            exit_client(signal=signal.SIGTERM, message=message)
+                            exit_error(message=message)
                         else:
                             raise Exception(message)
         else:
             message = 'The user {} does not have permission to submit to any collections or alternate upload locations.'.format(self.config.username)
             if self.exit:
-                exit_client(signal=signal.SIGTERM, message=message)
+                exit_error(message=message)
             else:
                 raise Exception(message)
 
@@ -204,7 +200,7 @@ class SubmissionPackage:
                     logger.info('\n%s', message)
                     for b in set(no_access_buckets):
                         logger.info(b)
-                    exit_client()
+                    exit_error()
                 else:
                     error = "".join(['Bucket Access:', message])
                     raise_error(error, no_access_buckets)
@@ -271,7 +267,7 @@ class SubmissionPackage:
             if not self.config.force:
                 user_input = evaluate_yes_no_input("Are you sure you want to continue?", 'n')
                 if user_input.lower() == 'n':
-                    exit_client(signal.SIGTERM, message='Exiting...')
+                    exit_error(message='Exiting...')
 
 
         json_data = json.dumps(self.package_info)
@@ -289,16 +285,13 @@ class SubmissionPackage:
                 if response['status'] == Status.ERROR:
                     message = response['errors'][0]['message']
                 if self.exit:
-                    exit_client(signal.SIGTERM, message=message)
+                    exit_error(message=message)
                 else:
                     raise Exception(message)
 
-            polling = 0
             while response['package_info']['status'] == Status.PROCESSING:
                 time.sleep(1.1)
                 response = get_request("/".join([self.api, self.package_id]), auth=self.auth)
-                polling += 1
-                self.package_id = response['submission_package_uuid']
             if response['package_info']['status'] == Status.COMPLETE:
                 for f in [f for f in response['files']
                           if f['type'] in ('Submission Memento', 'Submission Data Package')]:
@@ -312,54 +305,16 @@ class SubmissionPackage:
                 elif 'has changed since validation' in response['errors']:
                     message = response['errors']
                 if self.exit:
-                    exit_client(signal.SIGTERM, message=message)
+                    exit_error(message=message)
                 else:
                     raise Exception(message)
         else:
             message='There was an error with your package request.'
             if self.exit:
-                exit_client(signal.SIGTERM, message=message)
+                exit_error(message=message)
             else:
                 raise Exception(message)
 
-    def download_package(self, hide_progress):
-        folder = self.download_links[0][1]
-        folder = folder.split('/')
-        self.package_folder = folder[0]
-        session = requests.session()
-        total_package_size = 0
-        for i, (url, file_name) in enumerate(self.download_links):
-            r = session.get(url, auth=(self.username, self.password), stream=True)
-            size = r.headers['content-length']
-            total_package_size += int(size)
-            self.download_links[i] = (url, file_name, int(size))
-            r.close()
-        if not hide_progress:
-            package_download = tqdm(total=total_package_size,
-                                    unit="bytes",
-                                    unit_scale=True,
-                                    desc="Submission Package Download",
-                                    ascii=os.name == 'nt')
-        # logger.info('dl_links: {}'.format(self.download_links))
-        for url, file_name, size in self.download_links:
-            path = os.path.join(NDATools.NDA_TOOLS_SUB_PACKAGE_FOLDER, self.package_folder)
-            if not os.path.exists(path):
-                os.mkdir(path)
-            file_name = file_name.split('/')
-            file_name = file_name[1]
-            file = os.path.join(path, file_name)
-            r = session.get(url, auth=(self.username, self.password), stream=True)
-            with open(file, 'wb') as out_file:
-                for chunk in r.iter_content(chunk_size=1024 * 1024):
-                    if chunk:
-                        out_file.write(chunk)
-                        if not hide_progress:
-                            package_download.update(sys.getsizeof(chunk))
-            session.close()
-        if not hide_progress:
-            if package_download.total > package_download.n:
-                package_download.update(package_download.total - package_download.n)
-            package_download.close()
 
     def print_replacement_summary(self):
         logger.info('Below is a summary of what your submission will look like with the validation files provided:')

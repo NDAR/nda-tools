@@ -1,5 +1,12 @@
 
 # CHANGELOG
+## 0.2.26 - 2023-12-04
+* [`nda-tools`] Added --verbose parser option. Enables debug logging.
+* [`nda-tools`] Removed obsolete --password and -qa as parser option.
+* [`downloadcmd`] Updated the package-metadata file naming conventions to be unique per package to avoid name collisions.
+* [`downloadcmd`] Updated the logic to regenerate credentials if they expire.
+* [`downloadcmd`] Fixed regression in s3 bucket download functionality.
+
 ## 0.2.23 - 2023-1-23
 * [`vtcmd`] updated logic to allow alt-endpoints to contain sub-folders
 * [`downloadcmd`] Added validation for -dp arg

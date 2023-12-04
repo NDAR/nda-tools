@@ -42,7 +42,7 @@ class TestDownload:
             self = args[0]
             meta = tmpdir / "meta"
             meta.mkdir()
-            self.downloadcmd_package_metadata_directory = str(meta)
+            self.package_metadata_directory = str(meta)
             logs = tmpdir / "logs"
             logs.mkdir()
             NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER = str(logs)
@@ -113,7 +113,7 @@ class TestDownload:
             self = args[0]
             meta = tmpdir / "meta"
             meta.mkdir()
-            self.downloadcmd_package_metadata_directory = str(meta)
+            self.package_metadata_directory = str(meta)
             logs = tmpdir / "logs"
             logs.mkdir()
             NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER = str(logs)
@@ -165,7 +165,7 @@ class TestDownload:
             self = args[0]
             meta = tmpdir / "meta"
             meta.mkdir()
-            self.downloadcmd_package_metadata_directory = str(meta)
+            self.package_metadata_directory = str(meta)
             logs = tmpdir / "logs"
             logs.mkdir()
             NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER = str(logs)
@@ -211,7 +211,7 @@ class TestDownload:
             self = args[0]
             meta = tmpdir / "meta"
             meta.mkdir()
-            self.downloadcmd_package_metadata_directory = str(meta)
+            self.package_metadata_directory = str(meta)
             logs = tmpdir / "logs"
             logs.mkdir()
             NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER = str(logs)
@@ -265,7 +265,7 @@ class TestDownload:
             self = args[0]
             meta = tmpdir / "meta"
             meta.mkdir()
-            self.downloadcmd_package_metadata_directory = str(meta)
+            self.package_metadata_directory = str(meta)
             logs = tmpdir / "logs"
             logs.mkdir()
             NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER = str(logs)
@@ -313,7 +313,7 @@ class TestDownload:
             meta = tmpdir / "meta"
             if not os.path.exists(meta):
                 meta.mkdir()
-            self.downloadcmd_package_metadata_directory = str(meta)
+            self.package_metadata_directory = str(meta)
             self.download_job_uuid = '123e4567-e89b-12d3-a456-426614174000'
             logs = tmpdir / "logs"
             if not os.path.exists(logs):

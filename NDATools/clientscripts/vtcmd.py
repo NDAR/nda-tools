@@ -1,11 +1,9 @@
 import argparse
-import signal
 
-import NDATools
 from NDATools.BuildPackage import SubmissionPackage
 from NDATools.Configuration import *
 from NDATools.Submission import Submission
-from NDATools.Utils import evaluate_yes_no_input, exit_client, get_request
+from NDATools.Utils import evaluate_yes_no_input, exit_error, get_request
 from NDATools.Validation import Validation
 
 logger = logging.getLogger(__name__)
@@ -52,10 +50,6 @@ def parse_args():
     parser.add_argument('-d', '--description', metavar='<arg>', type=str, nargs='+', action='store',
                         help='The description of the submission')
 
-    parser.add_argument('-p', '--password', help='Warning: Detected non-empty value for the -p/--password argument. '
-                                                 'Support for this setting has been deprecated and will no longer be '
-                                                 'used by this tool. Password storage is not recommended for security'
-                                                 ' considerations')
 
     parser.add_argument('-t', '--title', metavar='<arg>', type=str, nargs='+', action='store',
                         help='The title of the submission')
@@ -79,9 +73,6 @@ def parse_args():
                         help='Restart an in-progress submission, resuming from the last successful part in a multi-part'
                              'upload. Must enter a valid submission ID.')
 
-    parser.add_argument('-v', '--validationAPI', metavar='<arg>', type=str, action='store',
-                        help='URL of the validation tool API')
-
     parser.add_argument('-j', '--JSON', action='store_true',
                         help='Flag whether to additionally download validation results in JSON format.')
 
@@ -101,32 +92,20 @@ def parse_args():
     parser.add_argument('--validation-timeout', default=300, type=int, action='store', help='Timeout in seconds until the program errors out with an error. '
                                                                                'In most cases the default value of ''300'' seconds should be sufficient to validate submissions however it may'
                                                                                'be necessary to increase this value to a specific duration.')
+    parser.add_argument('--verbose', action='store_true',
+                        help='Enables detailed logging.')
 
     args = parser.parse_args()
-
-    if args.password:
-        print('Warning: Support for the password flag (-p, --password) has been removed from nda-tools due to security '
-              'concerns and has been replaced with keyring.')
-        args.__dict__.pop('password')
 
     return args
 
 
 def configure(args):
-    # create a new config file in user's home directory if one does not exist
-
+    NDATools.prerun_checks_and_setup()
     # always set password if --username flag is supplied, or if user is submitting data
     auth_req = True if args.buildPackage or args.resume or args.replace_submission or args.username else False
-
-    if os.path.isfile(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg')):
-        config = ClientConfiguration(os.path.join(os.path.expanduser('~'), '.NDATools/settings.cfg'), args.username,
-                                     args.accessKey, args.secretKey)
-        config.read_user_credentials(auth_req)
-    else:
-        config = ClientConfiguration('clientscripts/config/settings.cfg', args.username, args.accessKey,
-                                     args.secretKey)
-        config.read_user_credentials(auth_req)
-        config.make_config()
+    config = ClientConfiguration(args.username, args.accessKey, args.secretKey)
+    config.read_user_credentials(auth_req)
 
     if args.collectionID:
         config.collection_id = args.collectionID
@@ -148,8 +127,6 @@ def configure(args):
         config.description = ' '.join(args.description)
     if args.scope:
         config.scope = args.scope
-    if args.validationAPI:
-        config.validation_api = args.validationAPI[0]
     if args.JSON:
         config.JSON = True
     config.workerThreads = args.workerThreads
@@ -159,8 +136,7 @@ def configure(args):
     if args.replace_submission:
         config.replace_submission = args.replace_submission
     config.force = True if args.force else False
-    LoggingConfiguration.load_config(NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER)
-
+    LoggingConfiguration.load_config(NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER, args.verbose)
     return config
 
 
@@ -184,8 +160,8 @@ def validate_files(file_list, warnings, build_package, threads, config=None, pen
     validation.output()
 
     if warnings:
-        validation.get_warnings()
-        logger.info('Warnings output to: {}'.format(validation.log_file))
+        warning_path = validation.get_warnings()
+        logger.info('Warnings output to: {}'.format(warning_path))
     else:
         if validation.w:
             logger.info('\nNote: Your data has warnings. To save warnings, run again with -w argument.')
@@ -233,7 +209,7 @@ def validate_files(file_list, warnings, build_package, threads, config=None, pen
             prompt += '\nAre you sure you want to continue? <Yes/No>: '
             proceed = evaluate_yes_no_input(prompt, 'n')
             if str(proceed).lower() == 'n':
-                exit_client(signal=signal.SIGTERM, message='')
+                exit_error(message='')
 
     return validation.uuid, validation.associated_files_to_upload
 
@@ -262,11 +238,6 @@ def build_package(uuid, associated_files_to_upload, config, pending_changes=None
     logger.info('created date: {}'.format(package.create_date))
     logger.info('expiration date: {}'.format(package.expiration_date))
     logger.info('\nPackage finished building.\n')
-
-    logger.info('Downloading submission package.')
-    package.download_package(hide_progress=config.hideProgress)
-    logger.info('\nA copy of your submission package has been saved to: {}'.
-          format(os.path.join(NDATools.NDA_TOOLS_SUB_PACKAGE_FOLDER, package.package_folder)))
 
     return [package.package_id, package.full_file_path]
 
@@ -303,24 +274,21 @@ def submit_package(package_id, full_file_path, associated_files_to_upload, threa
         print_submission_complete_message(submission, replacement=True if original_submission_id else False)
 
 
-# sets self.pendingChanges and
 def retrieve_replacement_submission_params(config, submission_id):
-    # get submission-id
+
     api = type('', (), {})()
     api.config = config
     auth = requests.auth.HTTPBasicAuth(config.username, config.password)
-    # check if the qa token provided is actually the latest or not
+
     try:
         response = get_request('/'.join([config.submission_api, submission_id, 'change-history']), auth=auth)
     except Exception as e:
 
         if e.response.status_code == 403:
-            exit_client(signal=signal.SIGTERM,
-                        message='You are not authorized to access submission {}. If you think this is a mistake, please contact NDA help desk'.format(
+            exit_error(message='You are not authorized to access submission {}. If you think this is a mistake, please contact NDA help desk'.format(
                             submission_id))
         else:
-            exit_client(signal=signal.SIGTERM,
-                        message='There was a General Error communicating with the NDA server. Please try again later')
+            exit_error(message='There was a General Error communicating with the NDA server. Please try again later')
 
     # TODO - check for 404 response
 
@@ -330,16 +298,14 @@ def retrieve_replacement_submission_params(config, submission_id):
             message = '''Submission {} was already replaced by {} on {}.
 If you need to make further edits to this submission, please reach out the the NDA help desk''' \
                 .format(submission_id, response[0]['created_by'], response[0]['created_date'])
-            exit_client(signal=signal.SIGTERM, message=message)
+            exit_error(message=message)
         else:
-            exit_client(signal=signal.SIGTERM,
-                        message='submission_id {} is not authorized to be replaced. Please contact the NDA help desk for approval to replace this submission'.format(
+            exit_error(message='submission_id {} is not authorized to be replaced. Please contact the NDA help desk for approval to replace this submission'.format(
                             submission_id))
 
     response = get_request('/'.join([config.submission_api, submission_id]), auth=auth)
     if response is None:
-        exit_client(signal=signal.SIGTERM,
-                    message='There was a General Error communicating with the NDA server. Please try again later')
+        exit_error(message='There was a General Error communicating with the NDA server. Please try again later')
 
     submission_id = response['submission_id']
     config.title = response['dataset_title']
@@ -349,8 +315,7 @@ If you need to make further edits to this submission, please reach out the the N
     # get pending-changes for submission-id
     response = get_request('/'.join([config.submission_api, submission_id, 'pending-changes']), auth=auth);
     if response is None:
-        exit_client(signal=signal.SIGTERM,
-                    message='There was a General Error communicating with the NDA server. Please try again later')
+        exit_error(message='There was a General Error communicating with the NDA server. Please try again later')
 
     # get list of associated-files that have already been uplaoded for pending changes
     pending_changes = []
@@ -375,7 +340,7 @@ def check_args(args):
     if args.replace_submission:
         if args.title or args.description or args.collectionID:
             message = 'Neither title, description nor collection_id arguments can be specified if' \
-                      ' qa token is provided. Exiting...'
+                      ' replacing data for a submission (using the -rs flag). Exiting...'
             logger.error(message)
             exit(1)
 
@@ -384,7 +349,6 @@ def main():
     # confirm most up to date version of nda-tools is installed
     args = parse_args()
     config = configure(args)
-
     pending_changes, original_uuids, original_submission_id = None, None, None
     check_args(args)
     if args.replace_submission:

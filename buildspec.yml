@@ -1,0 +1,22 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.8
+
+  build:
+    commands:
+      - pip install --upgrade pip
+      - pip install setuptools wheel twine
+      - python setup.py sdist bdist_wheel
+      - twine upload $PYTHON_ENV dist/* -u $PYPI_USER -p $TESTPYPI_PASSWORD
+      - $GITSCRIPT
+
+  post_build:
+    commands:
+      - echo $CODEBUILD_RESOLVED_SOURCE_VERSION
+
+artifacts:
+  files:
+    - dist/*

@@ -2,8 +2,10 @@ from __future__ import absolute_import, with_statement
 
 import copy
 import gzip
+import pathlib
 import shutil
 import sys
+import tempfile
 import uuid
 from shutil import copyfile
 
@@ -77,6 +79,22 @@ class ThreadPool:
         """ Wait for completion of all the tasks in the queue """
         self.tasks.join()
 
+class DownloadRequest():
+
+    def __init__(self,  package_file, presigned_url, package_id, download_dir):
+        self.presigned_url = presigned_url
+        self.package_file_id = str(package_file['package_file_id'])
+        self.package_file_relative_path = package_file['download_alias']
+        self.completed_download_abs_path = os.path.normpath(Utils.convert_to_abs_path(os.path.join(download_dir, self.package_file_relative_path)))
+        self.package_download_directory = Utils.convert_to_abs_path(os.path.join(NDATools.NDA_TOOLS_DOWNLOADS_FOLDER, str(package_id)))
+        self.nda_s3_url = None
+        self.exists = False
+        self.expected_file_size = package_file['file_size']
+        self.actual_file_size = 0
+        self.e_tag = None,
+        self.download_complete_time = None
+        self.partial_download_abs_path = self.completed_download_abs_path + '.partial'
+
 
 class Download(Protocol):
 
@@ -96,9 +114,9 @@ class Download(Protocol):
             download_directory = args.directory[0]
         else:
             download_directory = os.path.join(NDATools.NDA_TOOLS_DOWNLOADS_FOLDER, str(args.package))
-        self.downloadcmd_package_metadata_directory = os.path.join(NDATools.NDA_TOOLS_DOWNLOADS_FOLDER,
-                                                                   str(args.package))
-        self.package_download_directory = Utils.convert_to_abs_path(download_directory)
+        self.package_metadata_directory = os.path.join(NDATools.NDA_TOOLS_DOWNLOADS_FOLDER,
+                                                       str(args.package))
+        self.download_directory = Utils.convert_to_abs_path(download_directory)
         self.s3_links_file = args.txt
         self.inline_s3_links = args.paths
         self.package_id = args.package
@@ -136,7 +154,7 @@ class Download(Protocol):
             'uuid': self.download_job_uuid,
             'run_date': time.strftime("%Y%m%dT%H%M%S"),
             'package_id': self.package_id,
-            'download_directory': self.package_download_directory,
+            'download_directory': self.download_directory,
             's3_destination': self.custom_user_s3_endpoint,
             'data_structure': self.data_structure,
             's3_links_file': self.s3_links_file,
@@ -154,7 +172,7 @@ class Download(Protocol):
         }
         self.download_progress_report_file_path = self.initialize_verification_files()
         self.default_download_batch_size = 50
-        self.metadata_file_path = os.path.join(self.package_download_directory, NDATools.NDA_TOOLS_PACKAGE_FILE_METADATA)
+        self.metadata_file_path = os.path.join(self.package_metadata_directory, NDATools.NDA_TOOLS_PACKAGE_FILE_METADATA_TEMPLATE % self.package_id)
 
     # exlcude arg list is the long-parameter name
     def build_rerun_download_cmd(self, exclude_arg_list):
@@ -168,8 +186,8 @@ class Download(Protocol):
             download_cmd += ' --file-regex {}'.format(self.regex_file_filter)
         if self.username and '--username' not in exclude_arg_list:
             download_cmd += ' -u {}'.format(self.username)
-        if self.package_download_directory and '--directory' not in exclude_arg_list:
-            download_cmd += ' -d {}'.format(self.package_download_directory)
+        if self.download_directory and '--directory' not in exclude_arg_list:
+            download_cmd += ' -d {}'.format(self.download_directory)
         if self.verify_flg and '--verify' not in exclude_arg_list:
             download_cmd += ' --verify'
         if self.thread_num and '--workerThreads' not in exclude_arg_list:
@@ -202,7 +220,7 @@ class Download(Protocol):
             if not package_resource['has_associated_files']:
                 logger.info(''''No Associated files detected in this package. In order to download associated files, you must create a new package
         on the NDA website and make sure that you check the option to "Include associated files"''')
-                exit_client()
+                exit_error()
             df = self.use_data_structure()
         elif self.download_mode == 'text':
             logger.info('Downloading S3 links from text file: {}'.format(self.s3_links_file))
@@ -223,11 +241,12 @@ class Download(Protocol):
 
         download_progress_report = open(self.download_progress_report_file_path, 'a', newline='')
         download_progress_report_writer = csv.DictWriter(download_progress_report,
-                                                         fieldnames=self.download_job_progress_report_column_defs)
-
-        failed_s3_links_file = open(os.path.join(NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER,
-                                                 'failed_s3_links_file_{}.txt'.format(time.strftime("%Y%m%dT%H%M%S"))),
-                                    'a')
+                                                         fieldnames=self.download_job_progress_report_column_defs, extrasaction='ignore')
+        failed_s3_links_file = tempfile.NamedTemporaryFile(mode='a',
+                                                           delete=False,
+                                                           prefix='failed_s3_links_file_{}.txt'.format(time.strftime("%Y%m%dT%H%M%S")),
+                                                           dir=NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER
+                                                           )
 
         message = 'S3 links for files that failed to download will be written out to {}. You can attempt to download these files later by running: ' \
             .format(failed_s3_links_file.name)
@@ -235,7 +254,7 @@ class Download(Protocol):
             .format(self.build_rerun_download_cmd(['--text', '--datastructure']), failed_s3_links_file.name)
         logger.info(message)
         logger.info('')
-        time.sleep(1.5)
+        #time.sleep(1.5)
 
         file_ct =  df['download_alias'].unique().size
         file_sz = df['file_size'].sum()
@@ -249,7 +268,7 @@ class Download(Protocol):
         completed_files = tmp = None #remove large structures from memory
         skipping_message = ''
         if completed_file_ct>0:
-            download_progress_report_path = os.path.join(self.downloadcmd_package_metadata_directory,
+            download_progress_report_path = os.path.join(self.package_metadata_directory,
                                                          '.download-progress', self.download_job_uuid,
                                                          'download-progress-report.csv')
 
@@ -263,12 +282,12 @@ class Download(Protocol):
             file_ct,
             Utils.human_size(file_sz),
             f' matching {self.regex_file_filter}' if self.regex_file_filter else '',
-            self.custom_user_s3_endpoint or self.package_download_directory,
+            self.custom_user_s3_endpoint or self.download_directory,
             self.thread_num)
 
         logger.info('')
         logger.info(message)
-        time.sleep(5)
+        #time.sleep(5)
 
         # These are all arrays just so that the print_download_progress_report method can update the variables inside them
         trailing_50_file_bytes = []
@@ -278,8 +297,13 @@ class Download(Protocol):
 
         def write_to_download_progress_report_file(download_record):
             # if file-size =0, there could have been an error. Dont add to file
-            if download_record['actual_file_size'] > 0:
-                download_progress_report_writer.writerow(download_record)
+            newRecord = vars(download_record)
+            if type(newRecord['actual_file_size']) is tuple:
+                check = newRecord['actual_file_size'][0] > 0
+            else:
+                check = newRecord['actual_file_size'] > 0
+            if check:
+                download_progress_report_writer.writerow(newRecord)
                 if (datetime.datetime.now()-download_progress_flush_date[0]).seconds>10:
                     download_progress_report.flush()
                     download_progress_flush_date[0]=datetime.datetime.now()
@@ -321,11 +345,10 @@ class Download(Protocol):
             package_file = file_id_to_cred_list[0]
             cred = file_id_to_cred_list[1]
             # check if  these exist, and if not, get and set:
-            download_record = self.download_from_s3link(package_file, cred,
-                                                        failed_s3_links_file=failed_s3_links_file)
+            download_record = self.download_from_s3link(package_file, cred, failed_s3_links_file=failed_s3_links_file)
             # dont add bytes if file-existed and didnt need to be downloaded
-            if download_record['download_complete_time']:
-                trailing_50_file_bytes.append(download_record['actual_file_size'])
+            if download_record.download_complete_time:
+                trailing_50_file_bytes.append(download_record.actual_file_size)
             success_files.add(package_file['package_file_id'])
             num_downloaded = len(success_files)
 
@@ -334,7 +357,7 @@ class Download(Protocol):
 
             download_progress_file_writer_pool.add_task(write_to_download_progress_report_file, download_record)
 
-        download_pool = ThreadPool(self.thread_num)
+        download_pool = ThreadPool(self.thread_num, self.thread_num*6)
         download_progress_file_writer_pool = ThreadPool(1, 1000)
 
         for package_files in self.generate_download_batch_file_ids(completed_file_ids, df):
@@ -342,7 +365,7 @@ class Download(Protocol):
                 additional_file_ct = len(package_files)
                 download_request_count += additional_file_ct
                 logger.info('Adding {} files to download queue. Queue contains {} files\n'.format(additional_file_ct,
-                                                                                                       download_request_count))
+                                                                                                  download_request_count))
                 tmp_id_pkfiles = {f['package_file_id']:f for f in package_files}
                 file_id_to_cred_list = self.get_presigned_urls(list(tmp_id_pkfiles.keys()))
 
@@ -369,7 +392,11 @@ class Download(Protocol):
         logger.info('')
         logger.info(' Exiting Program...')
 
-    def download_from_s3link(self, package_file, s3_link, err_if_exists=False, failed_s3_links_file=None):
+    def download_local(self, download_request, err_if_exists=False):
+        #completed_download = os.path.normpath(os.path.join(self.download_directory, download_request.package_file_relative_path))
+        downloaded = False
+        resume_header = None
+
         # check if we are downloading from alt endpoint where bucket name contains dots.
         def get_http_adapter(s3_link):
             bucket, path = deconstruct_s3_url(s3_link)
@@ -390,167 +417,175 @@ class Download(Protocol):
                 if e.errno != 17:
                     raise
                 pass
+        if os.path.isfile(download_request.completed_download_abs_path):
+            if err_if_exists:
+                msg = "File {} already exists. Move or rename the file before re-running the command to continue".format(
+                    download_request.completed_download_abs_path)
+                logger.info(msg)
+                logger.info('Exiting...')
+                sys.exit(1)
 
-        # declare to avoid 'reference before declared' error
-        source_uri = None
+            logger.info('Skipping download (already exists): {}'.format(download_request.completed_download_abs_path))
+            actual_size = os.path.getsize(download_request.completed_download_abs_path)
+            download_request.actual_file_size = actual_size
+            download_request.exists = True
+            return download_request
+
+        if os.path.isfile(download_request.partial_download_abs_path):
+            downloaded = True
+            downloaded_size = os.path.getsize(download_request.partial_download_abs_path)
+            resume_header = {'Range': 'bytes={}-'.format(downloaded_size)}
+            logger.info('Resuming download: {}'.
+                        format(download_request.partial_download_abs_path))
+        else:
+            mk_dir_ignore_err(os.path.dirname(download_request.partial_download_abs_path))
+            logger.info('Starting download: {}'.format(download_request.partial_download_abs_path))
+            # downloading to local machine
         bytes_written = 0
-        return_value = copy.deepcopy(self.download_job_progress_report_column_defs)
-        return_value['package_file_id'] = str(package_file['package_file_id'])
+        with requests.session() as s:
+            s.mount(download_request.presigned_url, get_http_adapter(download_request.presigned_url))
+            if resume_header:
+                s.headers.update(resume_header)
+            with open(download_request.partial_download_abs_path, "ab" if downloaded else "wb") as download_file:
+                with s.get(download_request.presigned_url, stream=True) as response:
+                    response.raise_for_status()
+                    for chunk in response.iter_content(chunk_size=1024 * 1024 * 5):  # iterate 5MB chunks
+                        if chunk:
+                            bytes_written += download_file.write(chunk)
+        os.rename(download_request.partial_download_abs_path, download_request.completed_download_abs_path)
+        logger.info('Completed download {}'.format(download_request.completed_download_abs_path))
+        download_request.actual_file_size = bytes_written
+        bucket, key = Utils.deconstruct_s3_url(download_request.presigned_url)
+        download_request.nda_s3_url = 's3://{}/{}'.format(bucket, key)
+
+    def download_to_s3(self, download_request):
+        # downloading directly to s3 bucket
+        # get cred for file
+        response = self.get_temp_creds_for_file(download_request.package_file_id, self.custom_user_s3_endpoint)
+        ak = response['access_key']
+        sk = response['secret_key']
+        sess_token = response['session_token']
+        source_uri = response['source_uri']
+        dest_uri = response['destination_uri']
+
+        download_request.nda_s3_url = source_uri
+
+        dest_bucket, dest_path = Utils.deconstruct_s3_url(dest_uri)
+        src_bucket, src_path = Utils.deconstruct_s3_url(source_uri)
+
+        logger.info('Starting download: s3://{}/{}'.format(dest_bucket, dest_path))
+
+        # boto3 copy
+        sess = boto3.session.Session(aws_access_key_id=ak,
+                                     aws_secret_access_key=sk,
+                                     aws_session_token=sess_token,
+                                     region_name='us-east-1')
+
+        s3_client = sess.client('s3')
+        response = s3_client.head_object(Bucket=src_bucket, Key=src_path)
+        download_request.actual_file_size = response['ContentLength']
+        download_request.e_tag = response['ETag'].replace('"', '')
+
+        s3 = sess.resource('s3')
+        copy_source = {
+            'Bucket': src_bucket,
+            'Key': src_path
+        }
+
+        def print_upload_part_info(bytes):
+            logger.info('Transferred {} for {}'.format(Utils.human_size(bytes), download_request.nda_s3_url))
+
+        KB = 1024
+        MB = KB * KB
+        GB = KB ** 3
+        LARGE_OBJECT_THRESHOLD = 5 * GB
+        args = {
+            'ExtraArgs': {'ACL': 'bucket-owner-full-control'}
+        }
+
+        if int(download_request.actual_file_size) >= LARGE_OBJECT_THRESHOLD:
+            logger.info('Transferring large object {} ({}) in multiple parts'
+                        .format(download_request.nda_s3_url,
+                                Utils.human_size(int(download_request.actual_file_size))))
+            config = TransferConfig(multipart_threshold=LARGE_OBJECT_THRESHOLD, multipart_chunksize=1 * GB)
+            args['Config'] = config
+            args['Callback'] = print_upload_part_info
+
+        s3.meta.client.copy(copy_source,
+                            dest_bucket,
+                            dest_path,
+                            **args)
+
+    def handle_download_exception(self, download_request, e, download_local, err_if_exists, package_file, failed_s3_links_file=None):
+        if not download_request.presigned_url and download_local:
+            # we couldnt get credentials, which means the service has become un-responsive.
+            # Instruct the user to retry at another time
+            logger.info('')
+            logger.info(
+                'Unexpected Error During File Download - Service Unresponsive. Unable to obtain credentials for file-id {}'.format(
+                    download_request.package_file_id))
+            logger.info('Please re-try downloading files at a later time. ')
+            logger.info('You may contact NDAHelp@mail.nih.gov for assistance in resolving this error.')
+            # use os._exit to kill the whole program. This works even if this is called in a child thread, unlike sys.exit()
+            os._exit(1)
+
+        self.write_to_failed_download_link_file(failed_s3_links_file, s3_link=download_request.presigned_url, source_uri=download_request.nda_s3_url)
+
+        error_code = -1 if not isinstance(e, HTTPError) else int(e.response.status_code)
+        if error_code == 404:
+            message = 'This path is incorrect: {}. Please try again.'.format(download_request.presigned_url)
+            logger.error(message)
+        elif error_code == 403:
+            #if we are using expired credentials, regenerate and resume the download
+            credentials_are_expired = False
+            if download_local:
+                if isinstance(e, requests.exceptions.HTTPError)and 'Request has expired' in e.response.text:
+                    credentials_are_expired = True
+                    
+            if credentials_are_expired:
+                logger.warning(f'Temporary credentials have expired for file {download_request.package_file_id}. Regenerating credentials and restarting download')
+                presigned_url = self.get_temp_creds_for_file(download_request.package_file_id)
+                return self.download_from_s3link(package_file, presigned_url, download_local, err_if_exists, failed_s3_links_file )
+            else:
+                message = '\nThis is a private bucket. Please contact NDAR for help: {}'.format(download_request.presigned_url)
+                logger.error(message)
+        else:
+            logger.error(str(e))
+            logger.error(get_traceback())
+            if 'operation: Access Denied' in str(e):
+                logger.error('')
+                logger.error(
+                    'This error is likely caused by a misconfiguration on the target s3 bucket')
+                logger.error(
+                    "For more information about how to correctly configure the target bucket, run 'downloadcmd -h' and read the description of the s3 argument")
+                logger.error('')
+                time.sleep(2)
+
+        # if source_uri is set, it means they're downloading to s3 bucket and there will not be any partial file
+        if download_request.actual_file_size == 0 and not download_local:
+            try:
+                os.remove(download_request.partial_download_abs_path)
+            except:
+                logger.error('error removing partial file {}'.format(download_request.partial_download_abs_path))
+
+    def download_from_s3link(self, package_file, presigned_url, download_local=None, err_if_exists=False, failed_s3_links_file=None, download_dir=None):
+        if download_local is None:
+            download_local = False if self.custom_user_s3_endpoint else True
+        if not download_dir:
+            download_dir = self.download_directory
+
+        download_request = DownloadRequest(package_file, presigned_url, self.package_id, download_dir)
         try:
-            alias = package_file['download_alias']
-            return_value['expected_file_size'] = package_file['file_size']
-            return_value['package_file_expected_location'] = alias
-            completed_download = os.path.normpath(os.path.join(self.package_download_directory, alias))
-            partial_download = os.path.normpath(
-                os.path.join(self.package_download_directory, alias + '.partial'))
-            downloaded = False
-            resume_header = None
-
-            if not self.custom_user_s3_endpoint:
-                if os.path.isfile(completed_download):
-                    if err_if_exists:
-                        msg = "File {} already exists. Move or rename the file before re-running the command to continue".format(
-                            completed_download)
-                        logger.info(msg)
-                        logger.info('Exiting...')
-                        sys.exit(1)
-
-                    logger.info('Skipping download (already exists): {}'.format(completed_download))
-                    actual_size = os.path.getsize(completed_download)
-                    return_value['actual_file_size'] = actual_size
-                    return_value['exists'] = True
-                    return return_value
-
-                if os.path.isfile(partial_download):
-                    downloaded = True
-                    downloaded_size = os.path.getsize(partial_download)
-                    resume_header = {'Range': 'bytes={}-'.format(downloaded_size)}
-                    logger.info('Resuming download: {}'.
-                                format(partial_download))
-                else:
-                    mk_dir_ignore_err(os.path.dirname(partial_download))
-                    logger.info('Starting download: {}'.format(partial_download))
-
-            if self.custom_user_s3_endpoint:
-                # downloading directly to s3 bucket
-                # get cred for file
-                response = self.get_temp_creds_for_file(package_file['package_file_id'], self.custom_user_s3_endpoint)
-                ak = response['access_key']
-                sk = response['secret_key']
-                sess_token = response['session_token']
-                source_uri = response['source_uri']
-                dest_uri = response['destination_uri']
-
-                dest_bucket, dest_path = Utils.deconstruct_s3_url(dest_uri)
-                src_bucket, src_path = Utils.deconstruct_s3_url(source_uri)
-
-                logger.info('Starting download: s3://{}/{}'.format(dest_bucket, dest_path))
-
-                # boto3 copy
-                sess = boto3.session.Session(aws_access_key_id=ak,
-                                             aws_secret_access_key=sk,
-                                             aws_session_token=sess_token,
-                                             region_name='us-east-1')
-
-                s3_client = sess.client('s3')
-                response = s3_client.head_object(Bucket=src_bucket, Key=src_path)
-                return_value['actual_file_size'] = response['ContentLength']
-                return_value['e_tag'] = response['ETag'].replace('"', '')
-                return_value['nda_s3_url'] = 's3://{}/{}'.format(src_bucket, src_path)
-
-                s3 = sess.resource('s3')
-                copy_source = {
-                    'Bucket': src_bucket,
-                    'Key': src_path
-                }
-
-                def print_upload_part_info(bytes):
-                    logger.info('Transferred {} for {}'.format(Utils.human_size(bytes), return_value['nda_s3_url']))
-
-                KB = 1024
-                MB = KB * KB
-                GB = KB ** 3
-                LARGE_OBJECT_THRESHOLD = 5 * GB
-                args = {
-                    'ExtraArgs': {'ACL': 'bucket-owner-full-control'}
-                }
-
-                if int(return_value['actual_file_size']) >= LARGE_OBJECT_THRESHOLD:
-                    logger.info('Transferring large object {} ({}) in multiple parts'
-                                .format(return_value['nda_s3_url'],
-                                        Utils.human_size(int(return_value['actual_file_size']))))
-                    config = TransferConfig(multipart_threshold=LARGE_OBJECT_THRESHOLD, multipart_chunksize=1 * GB)
-                    args['Config'] = config
-                    args['Callback'] = print_upload_part_info
-
-                s3.meta.client.copy(copy_source,
-                                    dest_bucket,
-                                    dest_path,
-                                    **args)
-
+            if download_local:
+                self.download_local(download_request, err_if_exists)
             else:
-                # downloading to local machine
-
-                with requests.session() as s:
-                    s.mount(s3_link, get_http_adapter(s3_link))
-                    if resume_header:
-                        s.headers.update(resume_header)
-                    with open(partial_download, "ab" if downloaded else "wb") as download_file:
-                        with s.get(s3_link, stream=True) as response:
-                            response.raise_for_status()
-                            for chunk in response.iter_content(chunk_size=1024 * 1024 * 5):  # iterate 5MB chunks
-                                if chunk:
-                                    bytes_written += download_file.write(chunk)
-                os.rename(partial_download, completed_download)
-                logger.info('Completed download {}'.format(completed_download))
-                return_value['actual_file_size'] = bytes_written
-                bucket, key = Utils.deconstruct_s3_url(s3_link)
-                return_value['nda_s3_url'] = 's3://{}/{}'.format(bucket, key)
-            return_value['exists'] = True
-            return_value['download_complete_time'] = time.strftime("%Y%m%dT%H%M%S")
-            return return_value
-
+                self.download_to_s3(download_request)
+            download_request.exists = True
+            download_request.download_complete_time = time.strftime("%Y%m%dT%H%M%S")
+            return download_request
         except Exception as e:
-            if not s3_link and not source_uri:
-                # we couldnt get credentials, which means the service has become un-responsive.
-                # Instruct the user to retry at another time
-                logger.info('')
-                logger.info(
-                    'Unexpected Error During File Download - Service Unresponsive. Unable to obtain credentials for file-id {}'.format(
-                        package_file['package_file_id']))
-                logger.info('Please re-try downloading files at a later time. ')
-                logger.info('You may contact NDAHelp@mail.nih.gov for assistance in resolving this error.')
-                # use os._exit to kill the whole program. This works even if this is called in a child thread, unlike sys.exit()
-                os._exit(1)
-
-            self.write_to_failed_download_link_file(failed_s3_links_file, s3_link=s3_link, source_uri=source_uri)
-
-            error_code = -1 if not isinstance(e, HTTPError) else int(e.response.status_code)
-            if error_code == 404:
-                message = 'This path is incorrect: {}. Please try again.'.format(s3_link)
-                logger.error(message)
-            elif error_code == 403:
-                message = '\nThis is a private bucket. Please contact NDAR for help: {}'.format(s3_link)
-                logger.error(message)
-            else:
-                logger.error(str(e))
-                logger.error(get_traceback())
-                if 'operation: Access Denied' in str(e):
-                    logger.error('')
-                    logger.error(
-                        'This error is likely caused by a misconfiguration on the target s3 bucket')
-                    logger.error(
-                        "For more information about how to correctly configure the target bucket, run 'downloadcmd -h' and read the description of the s3 argument")
-                    logger.error('')
-                    time.sleep(2)
-
-            # if source_uri is set, it means they're downloading to s3 bucket and there will not be any partial file
-            if bytes_written == 0 and not source_uri:
-                try:
-                    os.remove(partial_download)
-                except:
-                    logger.error('error removing partial file {}'.format(partial_download))
-            return return_value
+            self.handle_download_exception(download_request, e, download_local, err_if_exists,package_file, failed_s3_links_file)
+            return download_request
 
     def write_to_failed_download_link_file(self, failed_s3_links_file, s3_link, source_uri):
         src_bucket, src_path = Utils.deconstruct_s3_url(s3_link if s3_link else source_uri)
@@ -636,10 +671,10 @@ class Download(Protocol):
                 writer = csv.DictWriter(file, fieldnames=download_job_manifest_columns)
                 writer.writeheader()
 
-        if not os.path.exists(self.downloadcmd_package_metadata_directory):
-            os.mkdir(self.downloadcmd_package_metadata_directory)
+        if not os.path.exists(self.package_metadata_directory):
+            os.mkdir(self.package_metadata_directory)
 
-        DOWNLOAD_PROGRESS_FOLDER = os.path.join(self.downloadcmd_package_metadata_directory, '.download-progress')
+        DOWNLOAD_PROGRESS_FOLDER = os.path.join(self.package_metadata_directory, '.download-progress')
         if not os.path.exists(DOWNLOAD_PROGRESS_FOLDER):
             os.mkdir(DOWNLOAD_PROGRESS_FOLDER)
 
@@ -680,27 +715,28 @@ class Download(Protocol):
     '''
 
     def verify_download(self):
+        self.download_package_metadata_file()
 
         if self.custom_user_s3_endpoint:
             raise Exception(
                 'The --verify command does not yet support checking for files in s3 endpoints. This feature will be added in a future iteration...')
-            exit_client()
+            exit_error()
 
-        verification_report_path = os.path.join(self.downloadcmd_package_metadata_directory,
+        verification_report_path = os.path.join(self.package_metadata_directory,
                                                 'download-verification-report.csv')
         err_mess_template = 'Cannot start verification process - {} already exists \nYou must move or rename the file in order to continue'
         if os.path.exists(verification_report_path):
             logger.info('')
             logger.info(err_mess_template.format(verification_report_path))
-            exit_client()
+            exit_error()
 
-        fpath = os.path.join(self.downloadcmd_package_metadata_directory, 'download-verification-retry-s3-links.csv')
+        fpath = os.path.join(self.package_metadata_directory, 'download-verification-retry-s3-links.csv')
         if os.path.exists(fpath):
             logger.info(err_mess_template.format(fpath))
-            exit_client()
+            exit_error()
 
         def get_download_progress_report_path():
-            return os.path.join(self.downloadcmd_package_metadata_directory, '.download-progress',
+            return os.path.join(self.package_metadata_directory, '.download-progress',
                                 self.download_job_uuid, 'download-progress-report.csv')
 
         def parse_download_progress_report_for_files(download_progress_report_path):
@@ -725,7 +761,7 @@ class Download(Protocol):
                 raise Exception('Unsupported download mode: {}'.format(self.download_mode))
 
         def create_download_verification_retry_links_file(s3_links):
-            fpath = os.path.join(self.downloadcmd_package_metadata_directory,
+            fpath = os.path.join(self.package_metadata_directory,
                                  'download-verification-retry-s3-links.csv')
             with open(fpath, 'w') as retry_file:
                 for link in s3_links:
@@ -740,9 +776,13 @@ class Download(Protocol):
                 record = copy.deepcopy(self.download_job_progress_report_column_defs)
                 # TODO - consider making these the same names
                 record['package_file_expected_location'] = file_info['download_alias']
-                record['expected_file_size'] = int(file_info['file_size'])
+                record['expected_file_size'] = min(abs(int(file_info['file_size'])),1)
                 record['package_file_id'] = int(file_id)
-                download_path = os.path.join(self.package_download_directory,
+                if file_info['download_alias'] == (pathlib.Path(self.metadata_file_path).name + '.gz'):
+                    download_path = os.path.join(self.package_metadata_directory,
+                                                 file_info['download_alias'])
+                else:
+                    download_path = os.path.join(self.download_directory,
                                              file_info['download_alias'])
                 if os.path.exists(download_path):
                     record['exists'] = True
@@ -778,7 +818,7 @@ class Download(Protocol):
         logger.info(
             'Running verification process. This process will check whether all of the files from the following downloadcmd were successfully downloaded to the computer:')
 
-        verification_report_path = os.path.join(self.downloadcmd_package_metadata_directory,
+        verification_report_path = os.path.join(self.package_metadata_directory,
                                                 'download-verification-report.csv')
 
         logger.info('{}'.format(self.build_rerun_download_cmd(['--verify'])))
@@ -813,7 +853,7 @@ class Download(Protocol):
         probably_missing_files = complete_file_set - downloaded_file_set
         logger.info(
             'Checking {} for all files which were not found in the program system logs. Detailed report will be created at {}...'
-            .format(self.package_download_directory, verification_report_path))
+            .format(self.download_directory, verification_report_path))
         undownloaded_s3_links = add_files_to_report(pr_path, verification_report_path, probably_missing_files, df)
         logger.info('')
         if undownloaded_s3_links:
@@ -824,7 +864,7 @@ class Download(Protocol):
             logger.info(
                 'Generating list of s3 links for all missing/incomplete files...'.format(len(undownloaded_s3_links)))
             create_download_verification_retry_links_file(undownloaded_s3_links)
-            incomplete_s3_fp = os.path.join(self.downloadcmd_package_metadata_directory,
+            incomplete_s3_fp = os.path.join(self.package_metadata_directory,
                                             'download-verification-retry-s3-links.csv')
             logger.info(
                 'Finished creating {} file. \nThis file contains s3-links for all files that were found to be missing or incomplete. You may '
@@ -840,7 +880,7 @@ class Download(Protocol):
         logger.info(
             'Details about status of files in download can be found at {} (This file can be opened with Excel or Google Spreadsheets)'.format(
                 verification_report_path))
-        exit_client()
+        exit_normal()
 
     def get_temp_creds_for_file(self, package_file_id, custom_user_s3_endpoint=None):
         url = self.package_url + '/{}/files/{}/download_token'.format(self.package_id, package_file_id)
@@ -870,7 +910,7 @@ class Download(Protocol):
                 if datetime.datetime.now() > end_time:
                     logger.error('Error during creation of package meta-data file')
                     logger.error('\nPlease contact NDAHelp@mail.nih.gov for help in resolving this error')
-                    exit_client()
+                    exit_error()
 
     def download_package_metadata_file(self):
         if os.path.exists(self.metadata_file_path):
@@ -880,10 +920,10 @@ class Download(Protocol):
             creds = self.get_package_file_metadata_creds()
         except:
             creds = self.generate_metadata_and_get_creds()
+
         file_resource = self.get_package_file(creds['package_file_id'])
-        result = self.download_from_s3link(file_resource, creds['downloadURL'])
-        download_location = os.path.normpath(
-            os.path.join(self.package_download_directory, result['package_file_expected_location']))
+        self.download_from_s3link(file_resource, creds['downloadURL'], download_local=True, download_dir=self.package_metadata_directory)
+        download_location = f"{self.metadata_file_path}.gz"
         outfile = download_location.rstrip('.gz')
         logger.debug(f'unzipping metadata file at {time.strftime("%H:%M:%S")}...')
         with gzip.open(download_location, 'rb') as f_in:
@@ -977,14 +1017,14 @@ class Download(Protocol):
             logger.debug('Retrieving credentials for {} files'.format(len(id_list)))
         url = self.package_url + '/{}/files/batchGeneratePresignedUrls'.format(self.package_id)
         response = post_request(url,  payload=id_list, auth=self.auth,
-                           error_handler=HttpErrorHandlingStrategy.reraise_status, deserialize_handler=DeserializeHandler.convert_json)
+                                error_handler=HttpErrorHandlingStrategy.reraise_status, deserialize_handler=DeserializeHandler.convert_json)
         creds = {e['package_file_id']: e['downloadURL'] for e in response['presignedUrls']}
         if not self.verify_flg:
             logger.debug('Finished retrieving credentials')
         return creds
 
     def get_completed_files_in_download(self):
-        download_progress_report_path = os.path.join(self.downloadcmd_package_metadata_directory,
+        download_progress_report_path = os.path.join(self.package_metadata_directory,
                                                      '.download-progress', self.download_job_uuid,
                                                      'download-progress-report.csv')
 
@@ -1014,7 +1054,7 @@ class Download(Protocol):
             if not path_list:
                 logger.info(
                     'No valid paths found in s3-links file. If you specified a regular expression, make sure your regular expression is correct before re-running the command.')
-                exit_client()
+                exit_error()
 
             return self.query_files_by_s3_path(path_list)
         except IOError as e:
@@ -1032,7 +1072,7 @@ class Download(Protocol):
         if df.empty:
             logger.info(
                 '{} data structure is not included in the package {}'.format(self.data_structure, self.package_id))
-            exit_client()
+            exit_error()
         return df
 
     def rename_df_columns_to_lowercase(self, df):
@@ -1040,7 +1080,7 @@ class Download(Protocol):
 
     def query_files_by_s3_path(self, path_list):
         if not path_list:
-            exit_client(signal=signal.SIGTERM, message='Illegal Argument - path_list cannot be empty')
+            exit_error(message='Illegal Argument - path_list cannot be empty')
         df = pd.read_csv(self.metadata_file_path, header=0)
         df = self.rename_df_columns_to_lowercase(df)
         return df[df['nda_s3_url'].isin(path_list)]
