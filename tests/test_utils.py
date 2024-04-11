@@ -1,13 +1,14 @@
 import logging
 import os
 
-from NDATools.Utils import parse_local_files, sanitize_file_path, check_read_permissions
+from NDATools.Utils import parse_local_files, sanitize_file_path, check_read_permissions, sanitize_windows_download_filename
 from unittest import TestCase
 from mock import patch
 import mock
 
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s:%(levelname)s:%(message)s")
 logger = logging.getLogger(__name__)
+
 
 class TestUtils(TestCase):
 
@@ -16,6 +17,11 @@ class TestUtils(TestCase):
         linux_path = '/home/test/path/file.csv'
         self.assertEqual(sanitize_file_path(windows_path), 'Users/test/path/file.csv')
         self.assertEqual(sanitize_file_path(linux_path), 'home/test/path/file.csv')
+
+    def test_sanitize_windows_download_filename(self):
+        path_containing_prohibited_windows_char = r'C:\\Users\\test\\path><\\package|15?*15\\file:12:22.csv'
+        self.assertEqual(r'C%3A\\Users\\test\\path%3E%3C\\package%7C15%3F%2A15\\file%3A12%3A22.csv',
+                         sanitize_windows_download_filename(path_containing_prohibited_windows_char))
 
     @patch('os.path.getsize')
     @patch('os.path.isfile')

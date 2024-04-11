@@ -2,8 +2,6 @@ from __future__ import absolute_import, print_function, with_statement
 
 import sys
 
-import NDATools
-
 if sys.version_info[0] < 3:
     input = raw_input
 import argparse
@@ -49,7 +47,7 @@ For example, to download all the image03 files from your package 12345, you shou
 Note - the program only recognizes the short-names of the data-structures. The short-name is listed on the data-structures page 
 and always ends in a 2 digit number. (For example, see the data-structure page for image03 at https://nda.nih.gov/data_structure.html?short_name=image03)''')
 
-    parser.add_argument('-u', '--username', metavar='<username>', type=str, action='store',
+    parser.add_argument('-u', '--username', metavar='<username>', type=str.lower, action='store',
                         help='NDA username')
 
 
@@ -159,22 +157,17 @@ For more details, check the information on the README page.
     parser.add_argument('--verbose', action='store_true',
                         help='Enables debug logging.')
 
+    parser.add_argument('--log-dir', type=str, action='store', help='Customize the file directory of logs. '
+                                                                    'If this value is not provided or the provided directory does not exist, logs will be saved to NDA/nda-tools/downloadcmd/logs inside your root folder.')
+
     args = parser.parse_args()
 
     return args
 
-# TODO move this to __init__
-def configure(args):
-    NDATools.prerun_checks_and_setup()
-    config = ClientConfiguration(args.username)
-    config.read_user_credentials()
-    LoggingConfiguration.load_config(NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER, args.verbose)
-    return config
-
 
 def main():
     args = parse_args()
-    config = configure(args)
+    config = NDATools.init_and_create_configuration(args, NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER)
     if args.s3_destination and not args.s3_destination.startswith('s3://'):
         raise Exception(
             'Invalid argument for -s3 option :{}. Argument must start with "s3://"'.format(args.s3_destination))

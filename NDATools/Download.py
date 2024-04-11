@@ -3,9 +3,11 @@ from __future__ import absolute_import, with_statement
 import copy
 import gzip
 import pathlib
+import platform
 import shutil
 import sys
 import tempfile
+import urllib.parse
 import uuid
 from shutil import copyfile
 
@@ -82,10 +84,16 @@ class ThreadPool:
 class DownloadRequest():
 
     def __init__(self,  package_file, presigned_url, package_id, download_dir):
+        operating_system = platform.system()
+        if operating_system == 'Windows':
+            download_dir = Utils.sanitize_windows_download_filename(download_dir)
         self.presigned_url = presigned_url
         self.package_file_id = str(package_file['package_file_id'])
         self.package_file_relative_path = package_file['download_alias']
-        self.completed_download_abs_path = os.path.normpath(Utils.convert_to_abs_path(os.path.join(download_dir, self.package_file_relative_path)))
+        self.completed_download_abs_path = os.path.normpath(Utils.convert_to_abs_path(os.path.join(download_dir,
+                         Utils.sanitize_windows_download_filename(self.package_file_relative_path)
+                         if operating_system == 'Windows' else self.package_file_relative_path)
+        ))
         self.package_download_directory = Utils.convert_to_abs_path(os.path.join(NDATools.NDA_TOOLS_DOWNLOADS_FOLDER, str(package_id)))
         self.nda_s3_url = None
         self.exists = False
@@ -244,7 +252,8 @@ class Download(Protocol):
                                                          fieldnames=self.download_job_progress_report_column_defs, extrasaction='ignore')
         failed_s3_links_file = tempfile.NamedTemporaryFile(mode='a',
                                                            delete=False,
-                                                           prefix='failed_s3_links_file_{}.txt'.format(time.strftime("%Y%m%dT%H%M%S")),
+                                                           prefix='failed_s3_links_file_{}'.format(time.strftime("%Y%m%dT%H%M%S")),
+                                                           suffix='.csv',
                                                            dir=NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER
                                                            )
 
@@ -452,6 +461,7 @@ class Download(Protocol):
                     for chunk in response.iter_content(chunk_size=1024 * 1024 * 5):  # iterate 5MB chunks
                         if chunk:
                             bytes_written += download_file.write(chunk)
+        # TODO - this doesnt work when using s3fs...add ticket to make it easy to download using s3fs
         os.rename(download_request.partial_download_abs_path, download_request.completed_download_abs_path)
         logger.info('Completed download {}'.format(download_request.completed_download_abs_path))
         download_request.actual_file_size = bytes_written
@@ -539,7 +549,7 @@ class Download(Protocol):
             #if we are using expired credentials, regenerate and resume the download
             credentials_are_expired = False
             if download_local:
-                if isinstance(e, requests.exceptions.HTTPError)and 'Request has expired' in e.response.text:
+                if isinstance(e, requests.exceptions.HTTPError) and 'Request has expired' in e.response.text:
                     credentials_are_expired = True
                     
             if credentials_are_expired:

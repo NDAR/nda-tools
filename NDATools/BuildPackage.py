@@ -2,7 +2,6 @@ from __future__ import absolute_import, with_statement
 
 import sys
 
-import botocore
 import requests.packages.urllib3.util
 
 if sys.version_info[0] < 3:
@@ -13,24 +12,14 @@ from NDATools.Utils import *
 
 logger = logging.getLogger(__name__)
 
+
 class SubmissionPackage:
-    def __init__(self, uuid, associated_files, config, username=None, password=None, collection=None, title=None,
-                 description=None, alternate_location=None, allow_exit=False, pending_changes=None, original_uuids=None):
+    def __init__(self, uuid, associated_files, config, pending_changes=None, original_uuids=None):
         self.config = config
         self.api = self.config.submission_package_api
         self.validationtool_api = self.config.validationtool_api
         self.uuid = uuid
         self.associated_files = associated_files
-        self.full_file_path = {}
-        self.no_match = []
-        if username:
-            self.config.username = username
-        if password:
-            self.config.password = password
-        if title:
-            self.config.title = title
-        if description:
-            self.config.description = description
         self.username = self.config.username
         self.password = self.config.password
         self.dataset_name = self.config.title
@@ -39,236 +28,98 @@ class SubmissionPackage:
         self.download_links = []
         self.package_id = None
         self.package_folder = None
-        self.collection_id = collection
-        self.endpoint_title = alternate_location
-        self.collections = {}
-        self.endpoints = []
         self.auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
-        self.get_collections()
-        self.get_custom_endpoints()
+        self.alt_endpoints = None
+        self.collection_id = self.check_and_get_collection_id()
         self.validation_results = []
-        self.no_read_access = set()
-        self.exit = allow_exit
         self.pending_changes = pending_changes
         self.original_validation_uuids = original_uuids
+        # these fields will be set after the package is created
+        self.expiration_date = None
+        self.create_date = None
+        self.submission_package_uuid = None
 
     def get_collections(self):
-        collections = get_request("/".join([self.validationtool_api, "user/collection"]), auth=self.auth, headers={'Accept':'application/json'})
-        if collections:
-            for c in collections:
-                self.collections.update({c['id']: c['title']})
+        collections = get_request("/".join([self.validationtool_api, "user/collection"]), auth=self.auth,
+                                  headers={'Accept': 'application/json'})
+        return {int(c['id']): c['title'] for c in collections}
 
-    def get_custom_endpoints(self):
-        endpoints = get_request("/".join([self.validationtool_api, "user/customEndpoints"]), auth=self.auth, headers={'Accept':'application/json'})
-        if endpoints:
-            for endpoint in endpoints:
-                self.endpoints.append(endpoint['title'])
-
-    def set_upload_destination(self, hide_input=True):
-        if len(self.collections) > 0 or len(self.endpoints) > 0:
-            user_input = None
-            if self.config.collection_id and self.config.endpoint_title:
-                logger.info('You selected both a collection and an alternate endpoint.\n'
-                      'These options are mutually exclusive, please specify only one.')
-            elif self.config.endpoint_title:
-                self.endpoint_title = self.config.endpoint_title
-            elif self.config.collection_id:
-                self.collection_id = self.config.collection_id
-            else:
-                if not hide_input:
-                    user_input = input('\nEnter -c <collection ID> OR -a <alternate endpoint>:')
-            while True:
-                if user_input:
-                    try:
-                        if user_input.startswith('-c'):
-                            collection_id = user_input.split(" ")
-                            self.collection_id = collection_id[1]
-                            self.endpoint_title = ""
-                        elif user_input.startswith('-a'):
-                            endpoint_title = user_input.split(" ")
-                            self.endpoint_title = endpoint_title[1]
-                            self.collection_id = ""
-                    except IndexError:
-                        logger.info('Do not leave this section blank.')
-                try:
-                    if self.collection_id and int(self.collection_id) in self.collections:
-                        break
-                    elif self.endpoint_title in self.endpoints:
-                        break
-                    else:
-                        if not hide_input:
-                            print ('Collection IDs:')
-                            for k, v in self.collections.items():
-                                logger.info('{}: {}'.format(k, v.encode('ascii', 'ignore')))
-                            logger.info('\nAlternate Endpoints:')
-                            for endpoint in self.endpoints:
-                                logger.info(endpoint.encode('ascii', 'ignore'))
-                            message = '\nYou do not have access to submit to the collection or alternate upload location: {} '.format(self.collection_id or self.endpoint_title)
-                            logger.info(message)
-                            user_input = input('\nEnter -c <collection ID> OR -a <alternate endpoint> from the list above:')
-                        else:
-                            message = 'Incorrect/Missing collection ID or alternate endpoint.'
-                            if self.exit:
-                                exit_error(message=message)
-                            else:
-                                raise Exception(message)
-                except (AttributeError, ValueError, TypeError) as e:
-                    message = 'Error: Input must start with either a -c or -a and be an integer or string value, respectively.'
-                    if not hide_input:
-                        logger.info(message)
-                        user_input = input('\nEnter -c <collection ID> OR -a <alternate endpoint>:')
-                    else:
-                        message = 'Incorrect/Missing collection ID or alternate endpoint.'
-                        if self.exit:
-                            exit_error(message=message)
-                        else:
-                            raise Exception(message)
+    def has_permissions_to_submit_to_collection(self, collection_id, user_collections):
+        c_id = int(collection_id)
+        if c_id in user_collections:
+            return True
+        # TODO refactor collection-api to remove the need to make these separate api calls
+        if self.alt_endpoints is not None:
+            return c_id in self.alt_endpoints
         else:
-            message = 'The user {} does not have permission to submit to any collections or alternate upload locations.'.format(self.config.username)
-            if self.exit:
+            endpoints = get_request("/".join([self.validationtool_api, "user/customEndpoints"]), auth=self.auth,
+                                    headers={'Accept': 'application/json'})
+            # TODO cache api response
+            all_collections = get_request("/".join([self.config.collection_api]), auth=self.auth,
+                                          headers={'Accept': 'application/json'})
+            tmp_endpoints = {e['title'] for e in endpoints}
+            self.alt_endpoints = {int(c['id']): c['title'] for c in all_collections if
+                                  c['altEndpoint'] in tmp_endpoints}
+            return c_id in self.alt_endpoints
+
+    def check_and_get_collection_id(self):
+        user_collections = self.get_collections()
+        if not user_collections:
+            message = 'The user {} does not have permission to submit to any collections.'.format(self.config.username)
+            exit_error(message=message)
+        if self.config.collection_id:
+            if not self.has_permissions_to_submit_to_collection(self.config.collection_id, user_collections):
+                message = 'The user {} does not have permission to submit to collection {}.'.format(
+                    self.config.username, self.config.collection_id)
                 exit_error(message=message)
             else:
-                raise Exception(message)
+                return self.config.collection_id
+        else:
+            return self.prompt_for_collection_id(user_collections)
 
-    def recollect_file_search_info(self):
-        retry = input('Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
-                      '<bucket name> to locate your associated files:')
-        response = retry.split(' ')
-        self.directory_list = response
-        if response[0] == '-s3':
-            self.source_bucket = response[1]
-            self.source_prefix = input('Enter any prefix for your S3 object, or hit "Enter": ')
-            if self.source_prefix == "":
-                self.source_prefix = None
-
-    def file_search(self, directories=None, source_bucket=None, source_prefix=None, retry_allowed=False):
-        def raise_error(error, l = []):
-            m = '\n'.join([error] + list(set(l)))
-            raise Exception(m)
-
-        self.directory_list = directories
-        self.source_bucket = source_bucket
-        self.source_prefix = source_prefix
-
-        if not self.directory_list and not self.source_bucket:
-            if retry_allowed:
-                self.recollect_file_search_info()
-            else:
-                error ='Missing directory and/or an S3 bucket.'
-                raise_error(error)
-
-        if not self.no_match:
-            for file in self.associated_files:
-                self.no_match.append(file)
-
-        # local files
-        if self.directory_list:
-            parse_local_files(self.directory_list, self.no_match, self.full_file_path, self.no_read_access,
-                              self.config.skip_local_file_check)
-
-        # files in s3
-        no_access_buckets = []
-        if self.source_bucket:
-            if not self.config.aws_access_key:
-                self.config.read_aws_credentials()
-
-            s3_client = get_s3_client_with_config(self.config.aws_access_key, self.config.aws_secret_key, self.config.aws_session_token)
-            for file in self.no_match[:]:
-                key = file
-                if self.source_prefix:
-                    key = '/'.join([self.source_prefix, file])
-                file_name = '/'.join(['s3:/', self.source_bucket, key])
-                try:
-                    response = s3_client.head_object(Bucket=self.source_bucket, Key=key)
-                    self.full_file_path[file] = (file_name, int(response['ContentLength']))
-                    self.no_match.remove(file)
-                except botocore.exceptions.ClientError as e:
-                    # If a client error is thrown, then check that it was a 404 error.
-                    # If it was a 404 error, then the bucket does not exist.
-                    error_code = int(e.response['Error']['Code'])
-                    if error_code == 404:
-                        pass
-                    if error_code == 403:
-                        no_access_buckets.append(self.source_bucket)
-                        pass
-
-        if self.no_match:
-            if no_access_buckets:
-                message = 'Your user does NOT have access to the following buckets. Please review the bucket ' \
-                          'and/or your AWS credentials and re-run the command.'
-                if retry_allowed:
-                    logger.info('\n%s', message)
-                    for b in set(no_access_buckets):
-                        logger.info(b)
-                    exit_error()
+    def prompt_for_collection_id(self, user_collections):
+        while True:
+            try:
+                user_input = int(input('\nEnter collection ID:').strip())
+                if not self.has_permissions_to_submit_to_collection(user_input, user_collections):
+                    logger.error(f'You do not have access to submit to the collection: {user_input} ')
+                    logger.info(f'Please choose from one of the following collections: ')
+                    for collection_id in sorted(user_collections.keys()):
+                        logger.info('{}: {}'.format(collection_id, user_collections[collection_id]))
                 else:
-                    error = "".join(['Bucket Access:', message])
-                    raise_error(error, no_access_buckets)
-            message = 'You must make sure all associated files listed in your validation file' \
-                      ' are located in the specified directory or AWS bucket. Associated file not found in specified directory:\n'
-            if retry_allowed:
-                logger.info('\n%s', message)
-
-                for idx, file in enumerate(self.no_match):
-                    logger.info(file)
-                    if idx >= 49:
-                        logger.info('...and (%d) other files', len(self.no_match)-50)
-                        break
-                self.recollect_file_search_info()
-                self.file_search(self.directory_list, self.source_bucket, self.source_prefix, retry_allowed=True)
-            else:
-                error = "".join(['Missing Files:', message])
-                raise_error(error, self.no_match)
-
-        while self.no_read_access:
-            message = 'You must make sure you have read-access to all the of the associated files listed in your validation file. ' \
-                      'Please update your permissions for the following associated files:\n'
-            if retry_allowed:
-                logger.info(message)
-                for file in self.no_read_access:
-                    logger.info(file)
-                self.recollect_file_search_info()
-                [self.no_read_access.remove(i) for i in
-                    [file for file in self.no_read_access if check_read_permissions(file)]]
-            else:
-                error = "".join(['Read Permission Error:', message])
-                raise_error(error, self.no_match)
-
-        self.config.directory_list = self.directory_list
-        self.config.source_bucket = self.source_bucket
-        self.config.source_prefix = self.source_prefix
+                    return user_input
+            except ValueError:
+                logger.error('Error: Input must be a valid integer')
 
     def build_package(self):
         def raise_error(value):
             raise Exception("Missing {}. Please try again.".format(value))
 
-        if self.dataset_name is None:
+        if not self.dataset_name:
             raise_error('dataset name')
 
-        if self.dataset_description is None:
+        if not self.dataset_description:
             raise_error('dataset description')
 
-        if self.collection_id is None and self.endpoint_title is None:
-            raise_error('collection ID or alternate endpoint')
+        if self.collection_id is None:
+            raise_error('collection ID')
 
         self.package_info = {
             "package_info": {
                 "dataset_description": self.dataset_description,
                 "dataset_name": self.dataset_name,
-                "collection_id": self.collection_id,
-                "endpoint_title": self.endpoint_title
+                "collection_id": self.collection_id
             },
             "validation_results":
                 self.uuid
         }
-        if hasattr(self.config, 'replace_submission'):
+        if self.config.replace_submission:
             self.package_info['package_info']['replacement_submission'] = self.config.replace_submission
             self.print_replacement_summary()
             if not self.config.force:
                 user_input = evaluate_yes_no_input("Are you sure you want to continue?", 'n')
                 if user_input.lower() == 'n':
                     exit_error(message='Exiting...')
-
 
         json_data = json.dumps(self.package_info)
         response = post_request(self.api, json_data, auth=self.auth)
@@ -284,10 +135,7 @@ class SubmissionPackage:
                 message = 'There was an error creating your package.'
                 if response['status'] == Status.ERROR:
                     message = response['errors'][0]['message']
-                if self.exit:
-                    exit_error(message=message)
-                else:
-                    raise Exception(message)
+                exit_error(message=message)
 
             while response['package_info']['status'] == Status.PROCESSING:
                 time.sleep(1.1)
@@ -301,27 +149,20 @@ class SubmissionPackage:
             else:
                 message = 'There was an error in building your package.'
                 if response['package_info']['status'] == Status.SYSERROR:
-                    message=response['errors']['system'][0]['message']
+                    message = response['errors']['system'][0]['message']
                 elif 'has changed since validation' in response['errors']:
                     message = response['errors']
-                if self.exit:
-                    exit_error(message=message)
-                else:
-                    raise Exception(message)
-        else:
-            message='There was an error with your package request.'
-            if self.exit:
                 exit_error(message=message)
-            else:
-                raise Exception(message)
-
+        else:
+            message = 'There was an error with your package request.'
+            exit_error(message=message)
 
     def print_replacement_summary(self):
         logger.info('Below is a summary of what your submission will look like with the validation files provided:')
         logger.info('')
-        logger.info ('Short-Name, Number of Rows')
+        logger.info('Short-Name, Number of Rows')
         for change in self.pending_changes:
-            logger.info ('{},{}'.format(change['shortName'], change['rows']))
+            logger.info('{},{}'.format(change['shortName'], change['rows']))
         logger.info('')
         logger.info('')
 

@@ -1,5 +1,12 @@
 
 # CHANGELOG
+## 0.2.27 - 2024-04-11
+* [`nda-tools`] Username is now case-insensitive.
+* [`nda-tools`] added --log-dir command line arg to configure location of generated log file
+* [`vtcmd`] added validation for dataset description
+* [`vtcmd`] updated error handling when structure missing from data-expected
+* [`vtcmd`] code refactor to reduce memory footprint when handling large submissions. scroll through associated files instead of requesting credentials all up front
+
 ## 0.2.26 - 2023-12-04
 * [`nda-tools`] Added --verbose parser option. Enables debug logging.
 * [`nda-tools`] Removed obsolete --password and -qa as parser option.

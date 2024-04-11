@@ -2,23 +2,16 @@ from __future__ import absolute_import, with_statement
 
 import csv
 import multiprocessing
-import sys
+import queue
 
 from tqdm import tqdm
 
-import NDATools
-
-if sys.version_info[0] < 3:
-    import Queue as queue
-
-    input = raw_input
-else:
-    import queue
 from NDATools.Configuration import *
 from NDATools.Utils import *
-import threading
 
 logger = logging.getLogger(__name__)
+
+
 class Validation:
     def __init__(self, file_list, config, hide_progress, allow_exit=False, thread_num=None,
                  pending_changes=None, original_uuids=None):
@@ -116,46 +109,11 @@ class Validation:
             self.uuid_dict[response['id']] = {
                 'file': file, 'errors': response['errors'] != {},
                 'short_name': response['short_name'],
-                'associated_file_paths': set(response['associated_file_paths']),
                 'rows': response['rows'],
                 'manifests': {manifest['localFileName'] for manifest in response['manifests']}
             }
 
         if self.pending_changes:
-            # remove the associated_files that have already been uplaoded
-            structure_to_new_associated_files = {}
-            unrecognized_ds = set()
-            for uuid in self.uuid_dict:
-                short_name = self.uuid_dict[uuid]['short_name']
-                structure_to_new_associated_files[short_name] = set()
-            for uuid in self.uuid_dict:
-                short_name = self.uuid_dict[uuid]['short_name']
-                structure_to_new_associated_files[short_name].update(
-                    {file for file in self.uuid_dict[uuid]['associated_file_paths']})
-
-            files_to_upload = set()
-            for data_structure in structure_to_new_associated_files:
-                expected_change_for_data_structure = next(
-                    filter(lambda pending_change: pending_change['shortName'] == data_structure, self.pending_changes),
-                    None)
-                if expected_change_for_data_structure is not None:
-                    original_associated_file_set = {associated_file for associated_file in
-                                                    expected_change_for_data_structure['associatedFiles']}
-                    for new_asssociated_file in structure_to_new_associated_files[data_structure]:
-                        if new_asssociated_file not in original_associated_file_set:
-                            files_to_upload.update({new_asssociated_file})
-                else:
-                    unrecognized_ds.update({data_structure})
-
-
-            self.associated_files_to_upload = set(files_to_upload)
-            if len(files_to_upload) > 0:
-                logger.info ('\nDetected {} new files that need to be uploaded for submission.\n'.format(len(files_to_upload)))
-            else:
-                logger.info('\nDetected that all associated files have been previously uploaded from previous submission\n')
-
-            # Find datastructures with missing data
-            # create a map of short_name to num-rows for files that the user uploaded
             structure_to_new_row_count = {}
             for uuid in self.uuid_dict:
                 short_name = self.uuid_dict[uuid]['short_name']
@@ -164,6 +122,7 @@ class Validation:
                 short_name = self.uuid_dict[uuid]['short_name']
                 structure_to_new_row_count[short_name] += self.uuid_dict[uuid]['rows']
 
+            unrecognized_ds = set()
             data_structures_with_missing_rows = []
             for data_structure in structure_to_new_row_count:
                 expected_change_for_data_structure = next(
@@ -193,16 +152,17 @@ class Validation:
             return set()
         # create a set of manifest files from the set of pending changes to enforce no duplicates
         # convert back into a list because the process_manifests method expects a list
-        return {manifest for manifests in list(map(lambda change: change['manifests'], self.pending_changes)) for manifest
-             in manifests}
+        return {manifest for manifests in list(map(lambda change: change['manifests'], self.pending_changes)) for
+                manifest
+                in manifests}
 
     def output(self):
-        encountered_system_error=False
+        encountered_system_error = False
         if self.config.JSON:
             json_data = dict(Results=[])
             for (response, file) in self.responses:
                 if response['status'] == Status.SYSERROR:
-                    encountered_system_error=True
+                    encountered_system_error = True
                 file_name = self.uuid_dict[response['id']]['file']
                 json_data['Results'].append({
                     'File': file_name,
@@ -215,45 +175,47 @@ class Validation:
                 json.dump(json_data, outfile)
 
         else:
-            if sys.version_info[0] < 3:
-                csvfile = open(self.log_file, 'wb')
-            else:
-                csvfile = open(self.log_file, 'w', newline='')
-            writer = csv.DictWriter(csvfile, fieldnames=self.field_names)
-            writer.writeheader()
-            for (response, file) in self.responses:
-                if response['status'] == Status.SYSERROR:
-                    encountered_system_error=True
+            with open(self.log_file, 'w', newline='') as csvfile:
+                writer = csv.DictWriter(csvfile, fieldnames=self.field_names)
+                writer.writeheader()
+                for (response, file) in self.responses:
+                    if response['status'] == Status.SYSERROR:
+                        encountered_system_error = True
 
-                file_name = self.uuid_dict[response['id']]['file']
+                    file_name = self.uuid_dict[response['id']]['file']
 
-                if response['errors'] == {}:
-                    writer.writerow(
-                        {'FILE': file_name, 'ID': response['id'], 'STATUS': response['status'],
-                         'EXPIRATION_DATE': response['expiration_date'], 'ERRORS': 'None', 'COLUMN': 'None',
-                         'MESSAGE': 'None', 'RECORD': 'None'})
-                else:
-                    for error, value in response['errors'].items():
-                        if error == 'system':
-                            encountered_system_error = True
-                        for v in value:
-                            try:
-                                column = v['columnName'] if 'columnName' in v else None
-                                message = v['message']
-                                record = v['recordNumber'] if 'recordNumber' in v else None
-                                writer.writerow(
-                                    {'FILE': file_name, 'ID': response['id'], 'STATUS': response['status'],
-                                     'EXPIRATION_DATE': response['expiration_date'], 'ERRORS': error, 'COLUMN': column,
-                                     'MESSAGE': message, 'RECORD': record})
-                            except KeyError:
-                                logger.error('Unrecognized result from validation service - {}. '.format(json.dumps(response)))
-                                logger.error('\nPlease contact NDAHelp@mail.nih.gov for help in resolving this error')
-                                exit_error()
-        csvfile.close()
+                    if response['errors'] == {}:
+                        writer.writerow(
+                            {'FILE': file_name, 'ID': response['id'], 'STATUS': response['status'],
+                             'EXPIRATION_DATE': response['expiration_date'], 'ERRORS': 'None', 'COLUMN': 'None',
+                             'MESSAGE': 'None', 'RECORD': 'None'})
+                    else:
+                        for error, value in response['errors'].items():
+                            if error == 'system':
+                                encountered_system_error = True
+                            for v in value:
+                                try:
+                                    column = v['columnName'] if 'columnName' in v else None
+                                    message = v['message']
+                                    record = v['recordNumber'] if 'recordNumber' in v else None
+                                    writer.writerow(
+                                        {'FILE': file_name, 'ID': response['id'], 'STATUS': response['status'],
+                                         'EXPIRATION_DATE': response['expiration_date'], 'ERRORS': error,
+                                         'COLUMN': column,
+                                         'MESSAGE': message, 'RECORD': record})
+                                except KeyError:
+                                    logger.error('Unrecognized result from validation service - {}. '.format(
+                                        json.dumps(response)))
+                                    logger.error(
+                                        '\nPlease contact NDAHelp@mail.nih.gov for help in resolving this error')
+                                    exit_error()
+
         logger.info('Validation report output to: {}'.format(self.log_file))
         if encountered_system_error:
             logger.error('Unexpected error occurred while validating one or more of the csv files')
-            logger.error('\nPlease email NDAHelp@mail.nih.gov for help in resolving this error and include {} as an attachment to help us resolve the issue'.format(self.log_file))
+            logger.error(
+                '\nPlease email NDAHelp@mail.nih.gov for help in resolving this error and include {} as an attachment to help us resolve the issue'.format(
+                    self.log_file))
             exit_error()
 
     def get_warnings(self):
@@ -378,12 +340,11 @@ class Validation:
                             yes_manifest.add(validation_manifest.local_file_name)
                             no_manifest.discard(validation_manifest.local_file_name)
                             uploaded_count += 1
-                            sys.stdout.write('\rUploaded manifest file {} of {}'.format(uploaded_count, files_to_upload))
+                            sys.stdout.write(
+                                '\rUploaded manifest file {} of {}'.format(uploaded_count, files_to_upload))
                             sys.stdout.flush()
                             break
                         except IOError:
-                            no_manifest.add(validation_manifest.local_file_name)
-                        except FileNotFoundError:
                             no_manifest.add(validation_manifest.local_file_name)
 
                         except json.decoder.JSONDecodeError as e:
@@ -392,7 +353,7 @@ class Validation:
                             raise Exception(error)
 
         for file in no_manifest:
-            logger.info('Manifest file not found: %s',file)
+            logger.info('Manifest file not found: %s', file)
 
         if no_manifest:
             logger.info(
@@ -415,7 +376,6 @@ class Validation:
                     raise Exception(error)
 
     class ValidationManifest:
-
 
         def __init__(self, _manifest, validation):
             self.config = validation.config
@@ -446,7 +406,8 @@ class Validation:
             self.manifests = manifests
 
     class ValidationTask(threading.Thread, Protocol):
-        def __init__(self, file_queue, result_queue, api, scope, responses, validation_progress, exit, validation_timeout, auth):
+        def __init__(self, file_queue, result_queue, api, scope, responses, validation_progress, exit,
+                     validation_timeout, auth):
             threading.Thread.__init__(self)
             self.file_queue = file_queue
             self.result_queue = result_queue
@@ -478,12 +439,12 @@ class Validation:
                         self.progress_bar.close()
                     message = 'This file does not exist in current directory: {}'.format(file_name)
                     logger.error(message)
-
                     exit_error()
 
                 data = file.read()
 
-                response = post_request(self.api_scope, data, timeout=self.validation_timeout, headers = {'content-type':'text/csv'}, auth=self.auth)
+                response = post_request(self.api_scope, data, timeout=self.validation_timeout,
+                                        headers={'content-type': 'text/csv'}, auth=self.auth)
                 while response and not response['done']:
                     response = get_request("/".join([self.api, response['id']]), auth=self.auth)
                     time.sleep(polling)

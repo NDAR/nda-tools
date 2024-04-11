@@ -11,6 +11,8 @@ import sys
 import threading
 import time
 import traceback
+import urllib.parse
+from pathlib import Path
 
 import boto3
 import requests
@@ -27,7 +29,6 @@ else:
 
 logger = logging.getLogger(__name__)
 
-
 if sys.version_info[0] < 3:
     input = raw_input
 else:
@@ -43,6 +44,7 @@ class Protocol(object):
     def get_protocol(cls):
         return cls.JSON
 
+
 class DeserializeHandler():
 
     @staticmethod
@@ -53,12 +55,12 @@ class DeserializeHandler():
     def convert_json(r):
         return json.loads(r.text)
 
+
 class HttpErrorHandlingStrategy():
     # error handling implementation methods. Each method takes a response object
     @staticmethod
     def ignore(r):
         pass
-
 
     @staticmethod
     def print_and_exit(r):
@@ -83,7 +85,7 @@ class HttpErrorHandlingStrategy():
         response.raise_for_status()
 
 
-def _exit_client (message=None, status_code=1):
+def _exit_client(message=None, status_code=1):
     for t in threading.enumerate():
         try:
             t.shutdown_flag.set()
@@ -99,8 +101,10 @@ def _exit_client (message=None, status_code=1):
 def exit_error(message=None):
     _exit_client(message, status_code=1)
 
+
 def exit_normal(message=None):
     _exit_client(message, status_code=0)
+
 
 def parse_local_files(directory_list, no_match, full_file_path, no_read_access, skip_local_file_check):
     """
@@ -122,7 +126,7 @@ def parse_local_files(directory_list, no_match, full_file_path, no_read_access, 
                 try:
                     full_file_path[file_key] = (file_name, os.path.getsize(file_name))
                     no_match.remove(file)
-                except (OSError, IOError) :
+                except (OSError, IOError):
                     full_file_path[file_key] = (file_name, None)
                     no_match.remove(file)
                 break
@@ -141,7 +145,7 @@ def parse_local_files(directory_list, no_match, full_file_path, no_read_access, 
                     '\rFound {} files out of {}\r'.format(str(files_to_match - len(no_match)), str(files_to_match)))
                 sys.stdout.flush()
                 break
-    sys.stdout.write('{}\r'.format(' '*64)) # clear out 'Found {} files ...' message and reset cursor
+    sys.stdout.write('{}\r'.format(' ' * 64))  # clear out 'Found {} files ...' message and reset cursor
     sys.stdout.flush()
     logger.debug(
         'Local directory search complete, found {} files out of {}'.format(str(files_to_match - len(no_match)),
@@ -166,6 +170,16 @@ def sanitize_file_path(file):
     return file_key
 
 
+def sanitize_windows_download_filename(filepath):
+    forbidden_windows_chars = ['<', '>', ':', '|', '?', '*']
+    drive, path = os.path.splitdrive(filepath)
+
+    if any(char in path for char in forbidden_windows_chars):
+        for char in forbidden_windows_chars:
+            filepath = os.path.join(drive, str(filepath).replace(char, urllib.parse.quote(char)))
+    return filepath
+
+
 def check_read_permissions(file):
     try:
         open(file)
@@ -178,7 +192,7 @@ def check_read_permissions(file):
 
 def evaluate_yes_no_input(message, default_input=None):
     while True:
-        default_print = ' (Y/n)' if default_input.upper() == 'Y' else  ' (y/N)' if default_input.upper() == 'N' else ''
+        default_print = ' (Y/n)' if default_input.upper() == 'Y' else ' (y/N)' if default_input.upper() == 'N' else ''
         user_input = input('{}{}'.format(message, default_print)) or default_input
         if str(user_input).upper() in ['Y', 'N']:
             return user_input.lower()
@@ -235,6 +249,7 @@ def human_size(bytes, units=[' bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']):
     """ Returns a human readable string representation of bytes """
     return str(round(bytes, 2)) + units[0] if bytes < 1024 else human_size(bytes / 1024, units[1:])
 
+
 def retry_connection_errors(func):
     @functools.wraps(func)
     def _retry(*args, **kwargs):
@@ -247,7 +262,9 @@ def retry_connection_errors(func):
                 if i == 9:
                     raise e
                 time.sleep(random.randint(10, 30))
+
     return _retry
+
 
 def is_json(test):
     try:
@@ -256,34 +273,48 @@ def is_json(test):
     except:
         return False
 
+
 @retry_connection_errors
-def _send_prepared_request(prepped, timeout=150, deserialize_handler=DeserializeHandler.convert_json, error_handler=HttpErrorHandlingStrategy.print_and_exit):
+def _send_prepared_request(prepped, timeout=150, deserialize_handler=DeserializeHandler.convert_json,
+                           error_handler=HttpErrorHandlingStrategy.print_and_exit):
     with requests.Session() as session:
         retries = Retry(total=10,
                         backoff_factor=0.1,
-                        status_forcelist=[ 502, 503, 504 ])
-        logger.debug('{} {} @ {}'.format(prepped.method , prepped.url, datetime.datetime.now()))
+                        status_forcelist=[502, 503, 504])
+        logger.debug('{} {} @ {}'.format(prepped.method, prepped.url, datetime.datetime.now()))
         session.mount(prepped.url, HTTPAdapter(max_retries=retries))
         tmp = session.send(prepped, timeout=timeout)
-        logger.debug('{} {} (elapsed = {})- STATUS {}'.format(prepped.method, prepped.url, tmp.elapsed, tmp.status_code))
+        logger.debug(
+            '{} {} (elapsed = {})- STATUS {}'.format(prepped.method, prepped.url, tmp.elapsed, tmp.status_code))
         if not tmp.ok:
             error_handler(tmp)
     return deserialize_handler(tmp)
 
 
-def get_request(url, headers={}, auth=None, timeout=150, deserialize_handler=DeserializeHandler.convert_json, error_handler=HttpErrorHandlingStrategy.print_and_exit):
+def get_request(url, headers={}, auth=None, timeout=150, deserialize_handler=DeserializeHandler.convert_json,
+                error_handler=HttpErrorHandlingStrategy.print_and_exit):
     req = requests.Request('GET', url, auth=auth, headers=headers)
-    return _send_prepared_request(req.prepare(), timeout=timeout, deserialize_handler=deserialize_handler, error_handler=error_handler)
+    return _send_prepared_request(req.prepare(), timeout=timeout, deserialize_handler=deserialize_handler,
+                                  error_handler=error_handler)
 
-def post_request(url, payload=None, headers={}, auth=None, timeout=150, deserialize_handler=DeserializeHandler.convert_json, error_handler=HttpErrorHandlingStrategy.print_and_exit):
-    data_param, headers = get_data_and_header_params(payload, headers)
-    req = requests.Request('POST',  url, auth=auth,  headers=headers, **data_param)
-    return _send_prepared_request(req.prepare(), timeout=timeout, deserialize_handler=deserialize_handler, error_handler=error_handler)
 
-def put_request(url, payload=None, headers={}, auth=None, timeout=150, deserialize_handler=DeserializeHandler.convert_json, error_handler=HttpErrorHandlingStrategy.print_and_exit):
+def post_request(url, payload=None, headers={}, auth=None, timeout=150,
+                 deserialize_handler=DeserializeHandler.convert_json,
+                 error_handler=HttpErrorHandlingStrategy.print_and_exit):
     data_param, headers = get_data_and_header_params(payload, headers)
-    req = requests.Request('PUT',  url, auth=auth, headers=headers, **data_param)
-    return _send_prepared_request(req.prepare(), timeout=timeout, deserialize_handler=deserialize_handler, error_handler=error_handler)
+    req = requests.Request('POST', url, auth=auth, headers=headers, **data_param)
+    return _send_prepared_request(req.prepare(), timeout=timeout, deserialize_handler=deserialize_handler,
+                                  error_handler=error_handler)
+
+
+def put_request(url, payload=None, headers={}, auth=None, timeout=150,
+                deserialize_handler=DeserializeHandler.convert_json,
+                error_handler=HttpErrorHandlingStrategy.print_and_exit):
+    data_param, headers = get_data_and_header_params(payload, headers)
+    req = requests.Request('PUT', url, auth=auth, headers=headers, **data_param)
+    return _send_prepared_request(req.prepare(), timeout=timeout, deserialize_handler=deserialize_handler,
+                                  error_handler=error_handler)
+
 
 def get_data_and_header_params(payload, headers):
     data_param = {}
@@ -291,7 +322,7 @@ def get_data_and_header_params(payload, headers):
         if isinstance(payload, dict) or isinstance(payload, list):
             # setting the json arg will automatically add the content-header
             # https://requests.readthedocs.io/en/latest/user/quickstart/#more-complicated-post-requests
-            data_param ={'json': payload}
+            data_param = {'json': payload}
         else:
             data_param = {'data': payload}
             if isinstance(payload, str) and is_json(payload) and 'content-type' not in headers:
@@ -299,6 +330,7 @@ def get_data_and_header_params(payload, headers):
     else:
         data_param = {'data': payload}
     return data_param, headers
+
 
 def get_s3_client_with_config(aws_access_key, aws_secret_key, aws_session_token):
     return boto3.session.Session(aws_access_key_id=aws_access_key,
@@ -311,3 +343,26 @@ def get_s3_resource(aws_access_key, aws_secret_key, aws_session_token, s3_config
     return boto3.Session(aws_access_key_id=aws_access_key,
                          aws_secret_access_key=aws_secret_key,
                          aws_session_token=aws_session_token).resource('s3', config=s3_config)
+
+
+def collect_directory_list():
+    while True:
+        retry = input('Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
+                      '<bucket name> to locate your associated files:')
+        response = retry.split(' ')
+        directories = list(map(lambda x: Path(x.strip()), response))
+        if all(map(lambda x: os.path.isdir(x), directories)):
+            return list(map(lambda x: x.resolve(), directories))
+        else: 
+            not_existent = list(filter(lambda x: not os.path.isdir(x), directories))
+            logger.error(f"The following directories cannot be found:\n")
+            for directory in not_existent:
+                logger.error(f"\t{directory.resolve()}")
+
+def get_non_blank_input(prompt, input_name):
+    while True:
+        user_input = input(prompt)
+        if user_input.strip():
+            return user_input
+        else:
+            print('{} cannot be blank. Please try again'.format(input_name))

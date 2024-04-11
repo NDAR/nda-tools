@@ -4,9 +4,10 @@ from unittest import mock
 import keyring
 import pytest
 
-from NDATools.clientscripts.downloadcmd import configure as download_configure, parse_args as download_parse_args
-from NDATools.clientscripts.vtcmd import configure as validation_configure, parse_args as validation_parse_args
 from NDATools.Configuration import ClientConfiguration
+from NDATools.clientscripts.downloadcmd import configure as download_configure, parse_args as download_parse_args
+from NDATools.clientscripts.vtcmd import init_and_create_configuration as validation_configure, \
+    parse_args as validation_parse_args
 
 
 # prevent tests from making any real http requests

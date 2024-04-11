@@ -11,9 +11,9 @@ with open("README.md", "r") as fh:
 setup(
         name='nda_tools',
         description="NIMH Data Archive Python Client",
-        install_requires=['boto3', 'tqdm', 'requests', 'packaging','pyyaml', 'keyring', 'pandas'],
-        extras_require={'test': ['pytest', 'pytest-datadir','mock']},
-        version= NDATools.__version__,
+        install_requires=['boto3', 'tqdm', 'requests', 'packaging', 'pyyaml', 'keyring', 'pandas', 's3transfer'],
+        extras_require={'test': ['pytest', 'pytest-datadir', 'mock']},
+        version=NDATools.__version__,
         long_description=long_description,
         long_description_content_type="text/markdown",
         author='NDA',
@@ -22,7 +22,8 @@ setup(
         license='MIT',
         packages=find_packages(),
         include_package_data=True,
-        data_files=[('config', ['NDATools/clientscripts/config/settings.cfg', 'NDATools/clientscripts/config/logging.yml'])],
+        data_files=[('config', ['NDATools/clientscripts/config/settings.cfg',
+                                'NDATools/clientscripts/config/logging.yml'])],
         entry_points={
             'console_scripts': [
                 'vtcmd = NDATools.clientscripts.vtcmd:main',

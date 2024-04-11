@@ -1,29 +1,23 @@
 from __future__ import absolute_import, with_statement
 
+import configparser
 import getpass
 import json
 import logging
 import logging.config
+import os
 import platform
-import sys
 import time
 
 import keyring
 import requests
 import yaml
+from pkg_resources import resource_filename
 from requests import HTTPError
 
 import NDATools
 from NDATools import NDA_TOOLS_LOGGING_YML_FILE, Utils
 from NDATools.Utils import exit_error, HttpErrorHandlingStrategy
-
-if sys.version_info[0] < 3:
-    import ConfigParser as configparser
-    input = raw_input
-else:
-    import configparser
-import os
-from pkg_resources import resource_filename
 
 logger = logging.getLogger(__name__)
 
@@ -34,25 +28,28 @@ class LoggingConfiguration:
         pass
 
     @staticmethod
-    def load_config(logs_directory, verbose=False):
+    def load_config(default_log_directory, verbose=False, log_dir=None):
 
         with open(NDA_TOOLS_LOGGING_YML_FILE, 'r') as stream:
             config = yaml.load(stream, Loader=yaml.FullLoader)
-        log_file = os.path.join(logs_directory, "debug_log_{}.txt").format(time.strftime("%Y%m%dT%H%M%S"))
-        config['handlers']['file']['filename']=log_file
+        if log_dir and os.path.exists(log_dir):
+            log_file = os.path.join(log_dir, "debug_log_{}.txt").format(time.strftime("%Y%m%dT%H%M%S"))
+        else:
+            log_file = os.path.join(default_log_directory, "debug_log_{}.txt").format(time.strftime("%Y%m%dT%H%M%S"))
+        config['handlers']['file']['filename'] = log_file
         if verbose:
-            config['loggers']['NDATools']['level']='DEBUG'
-            config['handlers']['console']['formatter']='detailed'
+            config['loggers']['NDATools']['level'] = 'DEBUG'
+            config['handlers']['console']['formatter'] = 'detailed'
         logging.config.dictConfig(config)
 
-class ClientConfiguration:
 
+class ClientConfiguration:
     SERVICE_NAME = 'nda-tools'
 
-    def __init__(self, username=None, access_key=None, secret_key=None):
+    def __init__(self, args):
         self.config = configparser.ConfigParser()
         logger.info('Using configuration file from {}'.format(NDATools.NDA_TOOLS_SETTINGS_CFG_FILE))
-        user_settings = self.config.read(NDATools.NDA_TOOLS_SETTINGS_CFG_FILE)
+        self.config.read(NDATools.NDA_TOOLS_SETTINGS_CFG_FILE)
         self._check_and_fix_missing_options()
         self.validation_api = self.config.get("Endpoints", "validation")
         self.submission_package_api = self.config.get("Endpoints", "submission_package")
@@ -61,34 +58,41 @@ class ClientConfiguration:
         self.package_creation_api = self.config.get("Endpoints", "package_creation")
         self.package_api = self.config.get("Endpoints", "package")
         self.datadictionary_api = self.config.get("Endpoints", "datadictionary")
+        self.collection_api = self.config.get("Endpoints", "collection")
         self.user_api = self.config.get("Endpoints", "user")
         self.aws_access_key = self.config.get("User", "access_key")
         self.aws_secret_key = self.config.get("User", "secret_key")
         self.aws_session_token = self.config.get('User', 'session_token')
-        self.username = self.config.get("User", "username")
+        self.username = self.config.get("User", "username").lower()
 
-        if username:
-            self.username = username
+        # options that appear in both vtcmd and downloadcmd
+        self.workerThreads = args.workerThreads
+
+        if args.username:
+            self.username = args.username
         elif self.username:
             logger.warning("-u/--username argument not provided. Using default value of '%s' which was saved in %s",
                            self.username, NDATools.NDA_TOOLS_SETTINGS_CFG_FILE)
+        self.password = None
 
-        if access_key:
-            self.aws_access_key = access_key
-        if secret_key:
-            self.aws_secret_key = secret_key
-        self.collection_id = None
-        self.endpoint_title = None
-        self.scope = None
-        self.directory_list = None
-        self.manifest_path = None
-        self.source_bucket = None
-        self.source_prefix = None
-        self.title = None
-        self.description = None
-        self.JSON = False
-        self.hideProgress = False
-        self.skip_local_file_check = False
+        is_vtcmd = 'collectionID' in args
+        if is_vtcmd:
+            self.aws_access_key = args.accessKey
+            self.aws_secret_key = args.secretKey
+            self.hideProgress = args.hideProgress
+            self.force = True if args.force else False
+            self.collection_id = args.collectionID
+            self.directory_list = args.listDir
+            self.manifest_path = args.manifestPath
+            self.source_bucket = args.s3Bucket
+            self.source_prefix = args.s3Prefix
+            self.validation_timeout = args.validation_timeout
+            self.title = args.title
+            self.description = args.description
+            self.scope = args.scope
+            self.JSON = args.JSON
+            self.skip_local_file_check = args.skipLocalAssocFileCheck
+            self.replace_submission = args.replace_submission
         logger.info('proceeding as nda user: {}'.format(self.username))
 
     def _check_and_fix_missing_options(self):
@@ -97,7 +101,7 @@ class ClientConfiguration:
         default_config.read(default_file_path)
         change_detected = False
         for section in default_config.sections():
-            if not section in self.config.sections():
+            if section not in self.config.sections():
                 logger.debug(f'adding {section} to settings.cfg')
                 self.config.add_section(section)
                 change_detected = True
@@ -115,12 +119,11 @@ class ClientConfiguration:
 
     def read_user_credentials(self, auth_req=True):
 
-        self.password = None
         if auth_req:
             while True:
                 try:
                     while not self.username:
-                        self.username = input('Enter your NIMH Data Archives username:')
+                        self.username = str(input('Enter your NIMH Data Archives username:')).lower()
                         with open(NDATools.NDA_TOOLS_SETTINGS_CFG_FILE, 'w') as configfile:
                             self.config.set('User', 'username', self.username)
                             self.config.write(configfile)
@@ -144,24 +147,24 @@ class ClientConfiguration:
                     raise e
 
         # Only ask for access-key/secret-key when needed (which is only when a user is creating a submission
-        # and the files are stored in an s3 bucket.
-        if self.source_bucket:
+        # and the files are stored in a s3 bucket)
+        if hasattr(self, 'source_bucket') and self.source_bucket:
             self.read_aws_credentials()
 
     def read_aws_credentials(self):
         if not self.aws_access_key:
-            self.aws_access_key = getpass.getpass("Enter your aws_access_key (must have read access to the %s bucket): " % self.source_bucket)
+            self.aws_access_key = getpass.getpass(
+                "Enter your aws_access_key (must have read access to the %s bucket): " % self.source_bucket)
 
         if not self.aws_secret_key:
             self.aws_secret_key = getpass.getpass('Enter your aws_secret_key:')
 
-
     def is_valid_nda_credentials(self):
         try:
             # will raise HTTP error 401 if invalid creds
-            tmp = Utils.get_request(self.user_api, headers={'content-type': 'application/json'},
-                                    auth=requests.auth.HTTPBasicAuth(self.username, self.password),
-                                    error_handler=HttpErrorHandlingStrategy.reraise_status)
+            Utils.get_request(self.user_api, headers={'content-type': 'application/json'},
+                              auth=requests.auth.HTTPBasicAuth(self.username, self.password),
+                              error_handler=HttpErrorHandlingStrategy.reraise_status)
             return True
         except HTTPError as e:
             if e.response.status_code == 401:

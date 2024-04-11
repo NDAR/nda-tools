@@ -1,12 +1,17 @@
 import argparse
+import sys
+
+import requests.exceptions
 
 from NDATools.BuildPackage import SubmissionPackage
 from NDATools.Configuration import *
 from NDATools.Submission import Submission
-from NDATools.Utils import evaluate_yes_no_input, exit_error, get_request
+from NDATools.Utils import evaluate_yes_no_input, exit_error, get_request, get_non_blank_input
 from NDATools.Validation import Validation
 
 logger = logging.getLogger(__name__)
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description='This application allows you to validate files and submit data into NDA. '
@@ -38,29 +43,25 @@ def parse_args():
     parser.add_argument('-w', '--warning', action='store_true',
                         help='Returns validation warnings for list of files')
 
-    parser.add_argument('-a', '--alternateEndpoint', metavar='<arg>', type=str, action='store',
-                        help='An alternate upload location for the submission package')
-
     parser.add_argument('-b', '--buildPackage', action='store_true',
                         help='Flag whether to construct the submission package')
 
     parser.add_argument('-c', '--collectionID', metavar='<arg>', type=int, action='store',
                         help='The NDA collection ID')
 
-    parser.add_argument('-d', '--description', metavar='<arg>', type=str, nargs='+', action='store',
+    parser.add_argument('-d', '--description', metavar='<arg>', type=str, action='store',
                         help='The description of the submission')
 
-
-    parser.add_argument('-t', '--title', metavar='<arg>', type=str, nargs='+', action='store',
+    parser.add_argument('-t', '--title', metavar='<arg>', type=str, action='store',
                         help='The title of the submission')
 
-    parser.add_argument('-u', '--username', metavar='<arg>', type=str, action='store',
+    parser.add_argument('-u', '--username', metavar='<arg>', type=str.lower, action='store',
                         help='NDA username')
 
-    parser.add_argument('-ak', '--accessKey', metavar='<arg>', type=str, action='store',
+    parser.add_argument('--accessKey', metavar='<arg>', type=str, action='store',
                         help='AWS access key')
 
-    parser.add_argument('-sk', '--secretKey', metavar='<arg>', type=str, action='store',
+    parser.add_argument('--secretKey', metavar='<arg>', type=str, action='store',
                         help='AWS secret key')
 
     parser.add_argument('-s', '--scope', metavar='<arg>', type=str, action='store',
@@ -89,55 +90,19 @@ def parse_args():
     parser.add_argument('-f', '--force', action='store_true',
                         help='Ignores all warnings and continues without prompting for input from the user.')
 
-    parser.add_argument('--validation-timeout', default=300, type=int, action='store', help='Timeout in seconds until the program errors out with an error. '
-                                                                               'In most cases the default value of ''300'' seconds should be sufficient to validate submissions however it may'
-                                                                               'be necessary to increase this value to a specific duration.')
+    parser.add_argument('--validation-timeout', default=300, type=int, action='store',
+                        help='Timeout in seconds until the program errors out with an error. '
+                             'In most cases the default value of ''300'' seconds should be sufficient to validate submissions however it may'
+                             'be necessary to increase this value to a specific duration.')
     parser.add_argument('--verbose', action='store_true',
                         help='Enables detailed logging.')
+
+    parser.add_argument('--log-dir', type=str, action='store', help='Customize the file directory of logs. '
+                                                                    'If this value is not provided or the provided directory does not exist, logs will be saved to NDA/nda-tools/vtcmd/logs inside your root folder.')
 
     args = parser.parse_args()
 
     return args
-
-
-def configure(args):
-    NDATools.prerun_checks_and_setup()
-    # always set password if --username flag is supplied, or if user is submitting data
-    auth_req = True if args.buildPackage or args.resume or args.replace_submission or args.username else False
-    config = ClientConfiguration(args.username, args.accessKey, args.secretKey)
-    config.read_user_credentials(auth_req)
-
-    if args.collectionID:
-        config.collection_id = args.collectionID
-    if args.alternateEndpoint:
-        config.endpoint_title = args.alternateEndpoint
-    if args.listDir:
-        config.directory_list = args.listDir
-    if args.manifestPath:
-        config.manifest_path = args.manifestPath
-    if args.s3Bucket:
-        config.source_bucket = args.s3Bucket
-    if args.s3Prefix:
-        config.source_prefix = args.s3Prefix
-    if args.validation_timeout:
-        config.validation_timeout = args.validation_timeout
-    if args.title:
-        config.title = ' '.join(args.title)
-    if args.description:
-        config.description = ' '.join(args.description)
-    if args.scope:
-        config.scope = args.scope
-    if args.JSON:
-        config.JSON = True
-    config.workerThreads = args.workerThreads
-    config.hideProgress = args.hideProgress
-    if args.skipLocalAssocFileCheck:
-        config.skip_local_file_check = True
-    if args.replace_submission:
-        config.replace_submission = args.replace_submission
-    config.force = True if args.force else False
-    LoggingConfiguration.load_config(NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER, args.verbose)
-    return config
 
 
 class Status:
@@ -145,14 +110,14 @@ class Status:
     SYSERROR = 'SystemError'
 
 
-def resume_submission(submission_id, batch, config=None):
-    submission = Submission( None, config, submission_id=submission_id, batch_size=batch, thread_num=config.workerThreads)
+def resume_submission(sub_id, batch, config=None):
+    submission = Submission(config, submission_id=sub_id, batch_size=batch, thread_num=config.workerThreads)
     submission.resume_submission()
     if submission.status != Status.UPLOADING:
         print_submission_complete_message(submission, False)
 
 
-def validate_files(file_list, warnings, build_package, threads, config=None, pending_changes=None, original_uuids=None):
+def validate_files(file_list, warnings, will_submit, threads, config=None, pending_changes=None, original_uuids=None):
     validation = Validation(file_list, config=config, hide_progress=config.hideProgress, thread_num=threads,
                             allow_exit=True, pending_changes=pending_changes, original_uuids=original_uuids)
     logger.info('\nValidating files...')
@@ -183,9 +148,9 @@ def validate_files(file_list, warnings, build_package, threads, config=None, pen
                 if validation.uuid_dict[uuid]['errors']:
                     logger.info('UUID {}: {}'.format(uuid, validation.uuid_dict[uuid]['file']))
     # If some files had errors, give option to submit just the files that passed
-    if not hasattr(config, 'replace_submission'):
+    if not config.replace_submission:
         # If some files had errors, give option to submit just the files that passed
-        if build_package and validation.e and not config.force:
+        if will_submit and validation.e and not config.force:
             proceed = evaluate_yes_no_input('Some files have errors, do you want to continue '
                                             'and submit ONLY the files that have passed validation?', 'n')
 
@@ -195,16 +160,18 @@ def validate_files(file_list, warnings, build_package, threads, config=None, pen
                 validation.uuid = validation.verify_uuid()
     # We are replacing a submission
     else:
-        if build_package and validation.e:
+        if will_submit and validation.e:
             logger.error('ERROR - At least some of the files failed validation. '
-                  'All files must pass validation in order to edit submission {}. Please fix these errors and try again.'.format(
+                         'All files must pass validation in order to edit submission {}. Please fix these errors and try again.'.format(
                 config.replace_submission))
-            sys.exit(1)
-        elif build_package and validation.data_structures_with_missing_rows and not config.force:
+            exit_error()
+        elif will_submit and validation.data_structures_with_missing_rows and not config.force:
             logger.warning('\nWARNING - Detected missing information in the following files: ')
 
-            for tuple in validation.data_structures_with_missing_rows:
-                logger.warning('\n{} - expected {} rows but found {}  '.format(tuple[0], tuple[1], tuple[2]))
+            for tuple_expected_actual in validation.data_structures_with_missing_rows:
+                logger.warning(
+                    '\n{} - expected {} rows but found {}  '.format(tuple_expected_actual[0], tuple_expected_actual[1],
+                                                                    tuple_expected_actual[2]))
             prompt = '\nIf you update your submission with these files, the missing data will be reflected in your data-expected numbers'
             prompt += '\nAre you sure you want to continue? <Yes/No>: '
             proceed = evaluate_yes_no_input(prompt, 'n')
@@ -214,22 +181,15 @@ def validate_files(file_list, warnings, build_package, threads, config=None, pen
     return validation.uuid, validation.associated_files_to_upload
 
 
-
 def build_package(uuid, associated_files_to_upload, config, pending_changes=None, original_uuids=None):
     if not config.title:
-        config.title = input('Enter title for dataset name:')
+        config.title = get_non_blank_input('Enter title for dataset name:', 'Title')
     if not config.description:
-        config.description = input('Enter description for the dataset submission:')
+        config.description = get_non_blank_input('Enter description for the dataset submission:', 'Description')
 
-    package = SubmissionPackage(uuid, associated_files_to_upload, config=config, allow_exit=True,
-                                pending_changes=pending_changes, original_uuids=original_uuids)
-    package.set_upload_destination(hide_input=False)
-    directories = config.directory_list
-    source_bucket = config.source_bucket
-    source_prefix = config.source_prefix
-    if associated_files_to_upload:
-        logger.info('\nSearching for associated files...')
-        package.file_search(directories, source_bucket, source_prefix, retry_allowed=True)
+    package = SubmissionPackage(uuid, associated_files_to_upload, config=config, pending_changes=pending_changes,
+                                original_uuids=original_uuids)
+
     logger.info('Building Package')
     package.build_package()
     logger.info('\n\nPackage Information:')
@@ -239,7 +199,8 @@ def build_package(uuid, associated_files_to_upload, config, pending_changes=None
     logger.info('expiration date: {}'.format(package.expiration_date))
     logger.info('\nPackage finished building.\n')
 
-    return [package.package_id, package.full_file_path]
+    return package
+
 
 def print_submission_complete_message(submission, replacement):
     if replacement:
@@ -248,11 +209,11 @@ def print_submission_complete_message(submission, replacement):
         print('\nYou have successfully completed uploading files for submission {} with status: {}'.format
               (submission.submission_id, submission.status))
 
-def submit_package(package_id, full_file_path, associated_files_to_upload, threads, batch,
+
+def submit_package(package_id, threads, batch,
                    config=None, original_submission_id=None):
     submission = Submission(package_id=package_id,
                             submission_id=original_submission_id,
-                            full_file_path=full_file_path,
                             thread_num=threads,
                             batch_size=batch,
                             allow_exit=True,
@@ -262,35 +223,32 @@ def submit_package(package_id, full_file_path, associated_files_to_upload, threa
         submission.replace_submission()
     else:
         submission.submit()
-    # see commit comment for commit #d2f4dad
-    # we need to trigger the GET /id endpoint to move the submission status to complete if necessary
     submission.check_status()
     if submission.submission_id:
         logger.info('Submission ID: {}'.format(str(submission.submission_id)))
-    if associated_files_to_upload:
+    if submission.status == Status.UPLOADING:
         logger.info('Preparing to upload associated files.')
-        submission.upload_associated_files(hide_progress=config.hideProgress)
+        submission.upload_associated_files()
+        submission.check_status()
     if submission.status != Status.UPLOADING:
         print_submission_complete_message(submission, replacement=True if original_submission_id else False)
 
 
 def retrieve_replacement_submission_params(config, submission_id):
-
     api = type('', (), {})()
     api.config = config
     auth = requests.auth.HTTPBasicAuth(config.username, config.password)
 
     try:
         response = get_request('/'.join([config.submission_api, submission_id, 'change-history']), auth=auth)
-    except Exception as e:
+    except requests.exceptions.HTTPError as e:
 
         if e.response.status_code == 403:
-            exit_error(message='You are not authorized to access submission {}. If you think this is a mistake, please contact NDA help desk'.format(
-                            submission_id))
+            exit_error(
+                message='You are not authorized to access submission {}. If you think this is a mistake, please contact NDA help desk'.format(
+                    submission_id))
         else:
             exit_error(message='There was a General Error communicating with the NDA server. Please try again later')
-
-    # TODO - check for 404 response
 
     # check to see if the submission was already replaced?
     if not response[0]['replacement_authorized']:
@@ -300,8 +258,9 @@ If you need to make further edits to this submission, please reach out the the N
                 .format(submission_id, response[0]['created_by'], response[0]['created_date'])
             exit_error(message=message)
         else:
-            exit_error(message='submission_id {} is not authorized to be replaced. Please contact the NDA help desk for approval to replace this submission'.format(
-                            submission_id))
+            exit_error(
+                message='submission_id {} is not authorized to be replaced. Please contact the NDA help desk for approval to replace this submission'.format(
+                    submission_id))
 
     response = get_request('/'.join([config.submission_api, submission_id]), auth=auth)
     if response is None:
@@ -313,7 +272,7 @@ If you need to make further edits to this submission, please reach out the the N
     config.collection_id = response['collection']['id']
 
     # get pending-changes for submission-id
-    response = get_request('/'.join([config.submission_api, submission_id, 'pending-changes']), auth=auth);
+    response = get_request('/'.join([config.submission_api, submission_id, 'pending-changes']), auth=auth)
     if response is None:
         exit_error(message='There was a General Error communicating with the NDA server. Please try again later')
 
@@ -323,13 +282,10 @@ If you need to make further edits to this submission, please reach out the the N
     original_uuids = {uuid for uuid in response['validation_uuids']}
     for change in response['pendingChanges']:
         validation_uuids = change['validationUuids']
-        associated_files = []
         manifest_files = []
         for uuid in validation_uuids:
             response = get_request('/'.join([config.validation_api, uuid]))
-            associated_files.extend(response['associated_file_paths'])
             manifest_files.extend(manifest['localFileName'] for manifest in response['manifests'])
-        change['associatedFiles'] = associated_files
         change['manifests'] = manifest_files
         pending_changes.append(change)
 
@@ -346,18 +302,18 @@ def check_args(args):
 
 
 def main():
-    # confirm most up to date version of nda-tools is installed
+    # confirm most up-to-date version of nda-tools is installed
     args = parse_args()
-    config = configure(args)
+    auth_req = True if args.buildPackage or args.resume or args.replace_submission or args.username else False
+    config = NDATools.init_and_create_configuration(args, NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER, auth_req=auth_req)
     pending_changes, original_uuids, original_submission_id = None, None, None
     check_args(args)
     if args.replace_submission:
         pending_changes, original_uuids, original_submission_id = retrieve_replacement_submission_params(config,
                                                                                                          args.replace_submission)
-
     if args.resume:
         submission_id = args.files[0]
-        # Need to check to see if i need to update this step!
+        # Need to check to see if I need to update this step!
         resume_submission(submission_id, batch=args.batch, config=config)
     else:
         w = False
@@ -366,7 +322,9 @@ def main():
             w = True
         if args.buildPackage:
             bp = True
-        validation_results = validate_files(args.files, w, bp, threads=args.workerThreads, config=config,
+        validation_results = validate_files(args.files, w, bp,
+                                            threads=args.workerThreads,
+                                            config=config,
                                             pending_changes=pending_changes,
                                             original_uuids=original_uuids)
         if validation_results is not None:
@@ -374,14 +332,15 @@ def main():
             associated_files_to_upload = validation_results[1]
             # If user requested to build a package
             if bp:
-                package_results = build_package(uuid, associated_files_to_upload, config=config,
-                                                pending_changes=pending_changes,
-                                                original_uuids=original_uuids)
-                package_id = package_results[0]
-                full_file_path = package_results[1]
-                submit_package(package_id=package_id, full_file_path=full_file_path,
-                               associated_files_to_upload=associated_files_to_upload,
-                               threads=args.workerThreads, batch=args.batch, config=config,
+                package = build_package(uuid,
+                                        associated_files_to_upload,
+                                        config=config,
+                                        pending_changes=pending_changes,
+                                        original_uuids=original_uuids)
+                submit_package(package_id=package.package_id,
+                               threads=args.workerThreads,
+                               batch=args.batch,
+                               config=config,
                                original_submission_id=original_submission_id)
 
 
