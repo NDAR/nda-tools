@@ -2,9 +2,11 @@ from __future__ import absolute_import, with_statement
 
 import concurrent
 import copy
+import datetime
 import math
 import multiprocessing
 import queue
+from pathlib import Path
 
 import requests.exceptions
 from boto3.s3.transfer import TransferConfig
@@ -12,7 +14,7 @@ from s3transfer.constants import GB
 from tqdm import tqdm
 
 from NDATools.Configuration import *
-from NDATools.MultiPartUploads import *
+from NDATools.Utils import get_request, put_request, DeserializeHandler, post_request, get_s3_client_with_config
 
 logger = logging.getLogger(__name__)
 

@@ -66,18 +66,25 @@ class HttpErrorHandlingStrategy():
     def print_and_exit(r):
         # handle json and plain-text errors
         message = None
-        try:
-            if 'content-type' in r.headers and 'json' in r.headers['Content-Type']:
+
+        if r.status_code == 503:
+            message = 'Service temporarily unavailable'
+        elif r.status_code == 401:
+            message = 'Error authenticating the endpoint: incorrect NDA username or password'
+        elif 'content-type' in r.headers and 'json' in r.headers['Content-Type']:
+            try:
                 message = r.json()
-        except (ValueError, json.JSONDecodeError):
+                if message.get('message', None):
+                    message = message.get('message')
+            except (ValueError, json.JSONDecodeError):
+                message = r.text
+        else:
             message = r.text
 
-        if r.status_code == 401:
-            # provide default message if one doesnt already exist
-            message = message or 'The NDA username or password is not recognized.'
+        if message is not None and len(str(message).strip()) > 0:
+            logger.error('\nAn unexpected error was encountered and the program could not continue. Error message from service was: \n%s' % message)
         else:
-            message = '\nAn unexpected error was encountered and the program could not continue. Error message from service was: \n%s' % message
-        logger.error(message)
+            logger.error('\nAn unexpected error was encountered and the program could not continue.\n')
         exit_error()
 
     @staticmethod

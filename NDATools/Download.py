@@ -1,15 +1,18 @@
 from __future__ import absolute_import, with_statement
 
 import copy
+import csv
 import gzip
+import multiprocessing
+import os.path
 import pathlib
 import platform
 import shutil
-import sys
 import tempfile
-import urllib.parse
 import uuid
+from queue import Queue
 from shutil import copyfile
+from threading import Thread
 
 import pandas as pd
 from boto3.s3.transfer import TransferConfig
@@ -18,68 +21,52 @@ from requests import HTTPError
 import NDATools
 from NDATools import Utils
 from NDATools.AltEndpointSSLAdapter import AltEndpointSSLAdapter
-
-IS_PY2 = sys.version_info < (3, 0)
-
-if IS_PY2:
-    from Queue import Queue
-    from io import open
-else:
-    from queue import Queue
-import csv
-from threading import Thread
-import multiprocessing
 from NDATools.Utils import *
-import requests
 
 logger = logging.getLogger(__name__)
 
-
-class Worker(Thread):
-    """ Thread executing tasks from a given tasks queue """
-
-    def __init__(self, tasks):
-        Thread.__init__(self)
-        self.tasks = tasks
-        self.daemon = True
-        self.start()
-
-    def run(self):
-        while True:
-            func, args, kargs = self.tasks.get()
-            try:
-                func(*args, **kargs)
-            except Exception as e:
-                # An exception happened in this thread
-                logger.info(str(e))
-                logger.info(get_traceback())
-
-            finally:
-                # Mark this task as done, whether an exception happened or not
-                self.tasks.task_done()
 
 
 class ThreadPool:
     """ Pool of threads consuming tasks from a queue """
 
+    class Worker(Thread):
+        """ Thread executing tasks from a given tasks queue """
+
+        def __init__(self, tasks):
+            Thread.__init__(self)
+            self.tasks = tasks
+            self.daemon = True
+            self.start()
+
+        def run(self):
+            while True:
+                func, args = self.tasks.get()
+                try:
+                    func(*args)
+                except Exception as e:
+                    # An exception happened in this thread
+                    logger.info(str(e))
+                    logger.info(get_traceback())
+                finally:
+                    # Mark this task as done, whether an exception happened or not
+                    self.tasks.task_done()
+
     def __init__(self, num_threads, queue_size=None):
         queue_size = queue_size or num_threads * 100
         self.tasks = Queue(queue_size)
         for _ in range(num_threads):
-            Worker(self.tasks)
-
-    def add_task(self, func, *args, **kargs):
-        """ Add a task to the queue """
-        self.tasks.put((func, args, kargs))
+            ThreadPool.Worker(self.tasks)
 
     def map(self, func, args_list):
         """ Add a list of tasks to the queue """
         for args in args_list:
-            self.add_task(func, args)
+            self.tasks.put((func, args))
 
     def wait_completion(self):
         """ Wait for completion of all the tasks in the queue """
         self.tasks.join()
+
 
 class DownloadRequest():
 
@@ -267,23 +254,42 @@ class Download(Protocol):
 
         file_ct =  df['download_alias'].unique().size
         file_sz = df['file_size'].sum()
+        tmp = {}
 
-        #remove files that have already been completed
-        completed_files = self.get_completed_files_in_download()
-        tmp = {int(f['package_file_id']):int(f['actual_file_size']) for f in completed_files}
+        # remove files that have already been completed
+        if self.download_directory:
+            tmp = self.get_completed_files_in_user_specified_dir(df)
+        if not self.download_directory:
+            completed_files = self.get_completed_files_in_download()
+            tmp = {int(f['package_file_id']): int(f['actual_file_size']) for f in completed_files}
+
         completed_file_sz = sum(tmp.values())
         completed_file_ids = set(tmp.keys())
         completed_file_ct = len(completed_file_ids)
         completed_files = tmp = None #remove large structures from memory
         skipping_message = ''
-        if completed_file_ct>0:
-            download_progress_report_path = os.path.join(self.package_metadata_directory,
-                                                         '.download-progress', self.download_job_uuid,
-                                                         'download-progress-report.csv')
 
-            skipping_message = 'Skipping {} files ({}) which have already been downloaded according to log file {}.\n'.format(completed_file_ct, Utils.human_size(completed_file_sz), download_progress_report_path)
+        if completed_file_ct > 0:
+            if self.download_directory:
+                skipping_message = 'Skipping {} files ({}) which have already been downloaded in {}\n'.format(
+                    completed_file_ct, Utils.human_size(completed_file_sz), self.download_directory)
+            else:
+                download_progress_report_path = os.path.join(self.package_metadata_directory,
+                                                             '.download-progress', self.download_job_uuid,
+                                                             'download-progress-report.csv')
+                skipping_message = 'Skipping {} files ({}) which have already been downloaded according to log file {}.\n'.format(
+                    completed_file_ct, Utils.human_size(completed_file_sz), download_progress_report_path)
             file_ct -= completed_file_ct
             file_sz -= completed_file_sz
+
+        if file_ct <= 0:
+            if self.regex_file_filter:
+                logger.info('No file is found to match the regex patter {}'.format(self.regex_file_filter))
+            else:
+                logger.info('All files have been downloaded')
+            logger.info('')
+            logger.info('Exiting Program...')
+            return
 
         message = '{}Beginning download of {}{} files ({}){} to {} using {} threads'.format(
             skipping_message,
@@ -350,11 +356,9 @@ class Download(Protocol):
             trailing_50_file_bytes.clear()
             trailing_50_timestamp[0] = datetime.datetime.now()
 
-        def download(file_id_to_cred_list):
-            package_file = file_id_to_cred_list[0]
-            cred = file_id_to_cred_list[1]
+        def download(package_file, temp_credentials=None):
             # check if  these exist, and if not, get and set:
-            download_record = self.download_from_s3link(package_file, cred, failed_s3_links_file=failed_s3_links_file)
+            download_record = self.download_from_s3link(package_file, temp_credentials, failed_s3_links_file=failed_s3_links_file)
             # dont add bytes if file-existed and didnt need to be downloaded
             if download_record.download_complete_time:
                 trailing_50_file_bytes.append(download_record.actual_file_size)
@@ -364,7 +368,7 @@ class Download(Protocol):
             if num_downloaded % 50 == 0:
                 print_download_progress_report(num_downloaded)
 
-            download_progress_file_writer_pool.add_task(write_to_download_progress_report_file, download_record)
+            download_progress_file_writer_pool.map(write_to_download_progress_report_file, [[download_record]])
 
         download_pool = ThreadPool(self.thread_num, self.thread_num*6)
         download_progress_file_writer_pool = ThreadPool(1, 1000)
@@ -375,12 +379,16 @@ class Download(Protocol):
                 download_request_count += additional_file_ct
                 logger.info('Adding {} files to download queue. Queue contains {} files\n'.format(additional_file_ct,
                                                                                                   download_request_count))
-                tmp_id_pkfiles = {f['package_file_id']:f for f in package_files}
-                file_id_to_cred_list = self.get_presigned_urls(list(tmp_id_pkfiles.keys()))
-
-                download_pool.map(download, [(tmp_id_pkfiles[k],v) for k,v in file_id_to_cred_list.items()])
+                pkfiles = {f['package_file_id']:f for f in package_files}
+                if self.custom_user_s3_endpoint:
+                    # we dont need presigned urls if the user is transferring to their own s3 bucket
+                    file_id_to_cred_list={f['package_file_id']:None for f in package_files}
+                else:
+                    file_id_to_cred_list = self.get_presigned_urls(list(pkfiles.keys()))
+                download_pool.map(download, [ [pkfiles[file_id], file_credentials] for file_id, file_credentials in file_id_to_cred_list.items()])
 
         download_pool.wait_completion()
+        download_progress_file_writer_pool.wait_completion()
         failed_s3_links_file.flush()
         failed_s3_links_file.close()
         download_progress_report.flush()
@@ -396,7 +404,12 @@ class Download(Protocol):
         logger.info('Finished processing all download requests @ {}.'.format(datetime.datetime.now()))
         logger.info('     Total download requests {}'
                     .format(download_request_count))
-        logger.info('     Total errors encountered: {}'.format(len(self.package_file_download_errors)))
+
+        download_error_count = len(self.package_file_download_errors)
+        logger.info('     Total errors encountered: {}'.format(download_error_count))
+
+        if download_error_count > 0:
+            logger.info('     Failed to download {} files. See {} for more details'.format(download_error_count, failed_s3_links_file.name))
 
         logger.info('')
         logger.info(' Exiting Program...')
@@ -610,14 +623,14 @@ class Download(Protocol):
     def generate_download_batch_file_ids(self, completed_file_ids, df):
         batch = []
         size = 0
-        for _, row  in df.iterrows():
+        for _, row in df.iterrows():
             if row['package_file_id'] not in completed_file_ids:
                 batch.append(row)
-                size+=1
-            if size % self.default_download_batch_size == 0:
-                yield batch
-                batch = []
-                size = 0
+                size += 1
+                if size % self.default_download_batch_size == 0:
+                    yield batch
+                    batch = []
+                    size = 0
         yield batch
 
     def find_matching_download_job(self, download_job_manifest_path):
@@ -1044,6 +1057,26 @@ class Download(Protocol):
                 file_reader = csv.DictReader(csvfile)
                 files = [f for f in file_reader if bool(f['exists'])]
         return files
+
+    def get_completed_files_in_user_specified_dir(self, df):
+        downloaded_files = {}
+
+        if not os.path.exists(self.download_directory):
+            os.mkdir(self.download_directory)
+        if len(os.listdir(self.download_directory)) == 0:
+            return downloaded_files
+
+        for (root, dir, file) in os.walk(self.download_directory):
+            for f in file:
+                downloaded_file_path = os.path.join(root, f)
+                if '.partial' in downloaded_file_path:
+                    os.remove(downloaded_file_path)
+                else:
+                    for row in df.index:
+                        if os.path.normpath(df['download_alias'][row]) == os.path.normpath(downloaded_file_path[len(self.download_directory) + 1:]):
+                            downloaded_files[df['package_file_id'][row]] = os.path.getsize(downloaded_file_path)
+                            break
+        return downloaded_files
 
     def get_all_files_in_package(self):
         df = pd.read_csv(self.metadata_file_path, header=0)

@@ -135,6 +135,7 @@ def validate_files(file_list, warnings, will_submit, threads, config=None, pendi
     # Test if no files passed validation, exit
     if not any(map(lambda x: not validation.uuid_dict[x]['errors'], validation.uuid_dict)):
         logger.info('No files passed validation, please correct any errors and validate again.')
+        validation.output_validation_error_messages()
         sys.exit(1)
     # If some files passed validation, show files with and without errors
     else:
@@ -147,6 +148,7 @@ def validate_files(file_list, warnings, will_submit, threads, config=None, pendi
             for uuid in validation.uuid_dict:
                 if validation.uuid_dict[uuid]['errors']:
                     logger.info('UUID {}: {}'.format(uuid, validation.uuid_dict[uuid]['file']))
+                    validation.output_validation_error_messages()
     # If some files had errors, give option to submit just the files that passed
     if not config.replace_submission:
         # If some files had errors, give option to submit just the files that passed
@@ -295,8 +297,8 @@ If you need to make further edits to this submission, please reach out the the N
 def check_args(args):
     if args.replace_submission:
         if args.title or args.description or args.collectionID:
-            message = 'Neither title, description nor collection_id arguments can be specified if' \
-                      ' replacing data for a submission (using the -rs flag). Exiting...'
+            message = 'Title, description, and collection ID are not allowed when replacing a submission' \
+                        ' using -rs flag. Please remove -t, -d and -c when using -rs. Exiting...'
             logger.error(message)
             exit(1)
 

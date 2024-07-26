@@ -274,6 +274,14 @@ class Validation:
             csvfile.close()
             return os.path.abspath(new_path)
 
+    def output_validation_error_messages(self):
+        for (response, file) in self.responses:
+            for key, value in (response['errors'].items()):
+                logger.info('\nErrors found in {}:'.format(file))
+                for i in value:
+                    if 'message' in i:
+                        logger.info('\r\t{}'.format(value[0].get('message')))
+
     def verify_uuid(self):
         uuid_list = []
         for uuid in self.uuid_dict:
@@ -433,7 +441,7 @@ class Validation:
                     self.shutdown_flag.set()
                     break
                 try:
-                    file = open(file_name, 'r')
+                    file = open(file_name, 'r', encoding='utf-8')
                 except IOError:
                     if self.progress_bar:
                         self.progress_bar.close()
@@ -441,7 +449,7 @@ class Validation:
                     logger.error(message)
                     exit_error()
 
-                data = file.read()
+                data = file.read().encode('utf-8')
 
                 response = post_request(self.api_scope, data, timeout=self.validation_timeout,
                                         headers={'content-type': 'text/csv'}, auth=self.auth)
