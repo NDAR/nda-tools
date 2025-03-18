@@ -11,6 +11,12 @@ from NDATools.clientscripts.downloadcmd import parse_args as download_parse_args
 from NDATools.clientscripts.vtcmd import parse_args as validation_parse_args
 
 
+# prevent check_version from running in tests when releasing to prod
+@pytest.fixture(autouse=True)
+def no_check_version(monkeypatch):
+    monkeypatch.setattr(NDATools, "check_version", lambda: None)
+
+
 # prevent tests from making any real http requests
 @pytest.fixture(autouse=True)
 def no_requests(monkeypatch):
