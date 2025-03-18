@@ -6,10 +6,9 @@ import pathlib
 import shutil
 import sys
 
-__version__ = '0.3.0'
+__version__ = '0.4.0'
 
 from pkg_resources import resource_filename
-
 
 pypi_version = None
 initialization_complete = False
@@ -124,7 +123,7 @@ def prerun_checks_and_setup():
     create_nda_folders()
 
 
-def init_and_create_configuration(args, logs_folder , auth_req=True):
+def init_and_create_configuration(args, logs_folder, auth_req=True):
     from NDATools.Configuration import ClientConfiguration, LoggingConfiguration
     prerun_checks_and_setup()
     LoggingConfiguration.load_config(logs_folder, args.verbose, args.log_dir)

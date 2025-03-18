@@ -1,0 +1,20 @@
+[
+    {
+        "submission_status": "Upload Completed",
+        "dataset_title": "testing",
+        "dataset_description": "testing",
+        "dataset_created_date": "2025-01-21T10:37:10.334-05:00",
+        "dataset_modified_date": null,
+        "links": [
+            {
+                "rel": "self",
+                "href": "https://revengers.nimhda.org/api/submission/65892"
+            }
+        ],
+        "submission_id": "56066",
+        "collection": {
+            "id": "17",
+            "title": "Test Collection 1"
+        }
+    }
+]

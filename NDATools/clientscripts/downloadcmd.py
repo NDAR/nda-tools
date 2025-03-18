@@ -1,14 +1,12 @@
-from __future__ import absolute_import, print_function, with_statement
-
+import argparse
 import sys
 
-if sys.version_info[0] < 3:
-    input = raw_input
-import argparse
-from NDATools.Download import Download
 from NDATools.Configuration import *
+from NDATools.Download import Download
 
 logger = logging.getLogger(__name__)
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description='This application allows you to download files from an NDA package. Tutorials for creating packages'
@@ -28,8 +26,8 @@ def parse_args():
     parser._action_groups.append(optional)
 
     required.add_argument('-dp', '--package', required=True, metavar='<package-id>', type=int, action='store',
-                        help='The package-id containing the files you wish to download. If no other command-line '
-                             'options are provided, the program will download all files from the specified package.')
+                          help='The package-id containing the files you wish to download. If no other command-line '
+                               'options are provided, the program will download all files from the specified package.')
 
     parser.add_argument('paths', metavar='<S3_path_list>', type=str, nargs='*', action='store',
                         help='Opional. When provided, the program will download only the specified files from the package.'
@@ -49,7 +47,6 @@ and always ends in a 2 digit number. (For example, see the data-structure page f
 
     parser.add_argument('-u', '--username', metavar='<username>', type=str.lower, action='store',
                         help='NDA username')
-
 
     parser.add_argument('-d', '--directory', metavar='<download_directory>', type=str, nargs=1, action='store',
                         help='Enter an alternate full directory path where you would like your files to be saved. The default is ~/NDA/nda-tools/<package-id>')
@@ -172,7 +169,8 @@ def main():
         raise Exception(
             'Invalid argument for -s3 option :{}. Argument must start with "s3://"'.format(args.s3_destination))
     if sys.version_info < (3, 5):
-        logger.error('ERROR: "--verify" only works with python 3.5 or later. Please upgrade Python in order to continue')
+        logger.error(
+            'ERROR: "--verify" only works with python 3.5 or later. Please upgrade Python in order to continue')
         exit_error()
 
     s3Download = Download(config, args)

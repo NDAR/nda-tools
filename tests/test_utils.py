@@ -1,10 +1,10 @@
 import logging
 import os
-
-from NDATools.Utils import parse_local_files, sanitize_file_path, check_read_permissions, sanitize_windows_download_filename
 from unittest import TestCase
-from mock import patch
-import mock
+from unittest.mock import patch, mock_open
+
+from NDATools.Utils import parse_local_files, sanitize_file_path, check_read_permissions, \
+    sanitize_windows_download_filename
 
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s:%(levelname)s:%(message)s")
 logger = logging.getLogger(__name__)
@@ -27,7 +27,6 @@ class TestUtils(TestCase):
     @patch('os.path.isfile')
     @patch('NDATools.Utils.check_read_permissions')
     def test_parse_local_files(self, mock_file_size, mock_isfile, mock_check_read_permissions):
-
         mock_file_size.return_value = 1
         mock_isfile.return_value = True
         mock_check_read_permissions.return_value = True
@@ -75,7 +74,7 @@ class TestUtils(TestCase):
         self.assertEqual(len(file_list), 0)
         self.assertEqual(len(file_size_full_path_dict), 6)
 
-    @patch('builtins.open', mock.mock_open(read_data=''))
+    @patch('builtins.open', mock_open(read_data=''))
     def test_check_read_permissions(self):
         test_file = os.path.join(os.path.expanduser('~'), 'NDATools\\clientscripts\\config\\settings.cfg')
         self.assertTrue(check_read_permissions(test_file))

@@ -27,3 +27,6 @@ failed_s3_links_file_*
 .project
 .pydevproject
 .venv_*/
+
+# python converage data
+.coverage

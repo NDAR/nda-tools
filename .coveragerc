@@ -1,0 +1,6 @@
+[run]
+source = NDATools
+
+[report]
+omit = tests/**/*.py
+fail_under=51

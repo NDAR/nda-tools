@@ -1,0 +1,26 @@
+[
+    {
+        "links": [],
+        "id": "1119350079",
+        "file_type": "Submission Associated File",
+        "file_user_path": "README2",
+        "file_remote_path": "s3://nda-central-dev/collection-17/submission-65892/associated-files/README2",
+        "status": "Complete",
+        "size": 2074,
+        "md5sum": "None",
+        "created_date": "2025-01-21T10:37:11.038-05:00",
+        "modified_date": "2025-01-21T10:40:06.000-05:00"
+    },
+    {
+        "links": [],
+        "id": "1119350080",
+        "file_type": "Submission Associated File",
+        "file_user_path": "dataset_description.json",
+        "file_remote_path": "s3://nda-central-dev/collection-17/submission-65892/associated-files/dataset_description.json",
+        "status": "Uploading",
+        "size": 3264,
+        "md5sum": "None",
+        "created_date": "2025-01-21T10:37:11.038-05:00",
+        "modified_date": "2025-01-21T10:40:06.000-05:00"
+    }
+]

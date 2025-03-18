@@ -1,9 +1,8 @@
-from __future__ import absolute_import, with_statement
-
 import csv
 import multiprocessing
 import queue
 
+from tabulate import tabulate
 from tqdm import tqdm
 
 from NDATools.Configuration import *
@@ -275,12 +274,19 @@ class Validation:
             return os.path.abspath(new_path)
 
     def output_validation_error_messages(self):
+        table_list = []
         for (response, file) in self.responses:
+            logger.info('\nErrors found in {}:'.format(file))
+            rows = []
             for key, value in (response['errors'].items()):
-                logger.info('\nErrors found in {}:'.format(file))
                 for i in value:
-                    if 'message' in i:
-                        logger.info('\r\t{}'.format(value[0].get('message')))
+                    rows.append([i.get('recordNumber'), i.get('columnName'), i.get('message')])
+            if rows:
+                logger.info('')
+                table = tabulate(rows, headers=['Row', 'Column', 'Message'])
+                table_list.append(table)
+                logger.info(table)
+        return table_list
 
     def verify_uuid(self):
         uuid_list = []
@@ -349,7 +355,7 @@ class Validation:
                             no_manifest.discard(validation_manifest.local_file_name)
                             uploaded_count += 1
                             sys.stdout.write(
-                                '\rUploaded manifest file {} of {}'.format(uploaded_count, files_to_upload))
+                                '\rUploaded manifest file {} of {}\n'.format(uploaded_count, files_to_upload))
                             sys.stdout.flush()
                             break
                         except IOError:
@@ -432,6 +438,13 @@ class Validation:
         def get_protocol(cls):
             return cls.CSV
 
+        def _get_validation(self, validation_id):
+            return get_request("/".join([self.api, validation_id]), auth=self.auth)
+
+        def _create_validation(self, data):
+            return post_request(self.api_scope, data, timeout=self.validation_timeout,
+                                headers={'content-type': 'text/csv'}, auth=self.auth)
+
         def run(self):
             while True and not self.shutdown_flag.is_set():
                 polling = 0
@@ -449,16 +462,12 @@ class Validation:
                     logger.error(message)
                     exit_error()
 
-                data = file.read().encode('utf-8')
-
-                response = post_request(self.api_scope, data, timeout=self.validation_timeout,
-                                        headers={'content-type': 'text/csv'}, auth=self.auth)
+                response = self._create_validation(file.read().encode('utf-8'))
                 while response and not response['done']:
-                    response = get_request("/".join([self.api, response['id']]), auth=self.auth)
+                    response = self._get_validation(response['id'])
                     time.sleep(polling)
                     polling += 1
                 if response:
-                    response = get_request("/".join([self.api, response['id']]), auth=self.auth)
                     self.result_queue.put((response, file_name))
                     if self.progress_bar:
                         self.progress_bar.update(n=1)

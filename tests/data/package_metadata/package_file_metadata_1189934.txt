@@ -1,0 +1,8 @@
+"PACKAGE_FILE_ID","NDA_S3_URL","FILE_SIZE","DOWNLOAD_ALIAS","SHORT_NAME"
+"10631436790","s3://gpop-stage/ndar_data/QueryPackages/REVENGERS/773981645558:ndar_administrator/Package_1189934/image03.txt","9616","image03.txt",""
+"10631436788","s3://amp-scz-dev.nda.nih.gov/collection-1860/submission-65833/image1.png","1","image03/image1.png","image03"
+"10631436789","s3://gpop-stage/ndar_data/QueryPackages/REVENGERS/773981645558:ndar_administrator/Package_1189934/ndar_subject01.txt","15641","ndar_subject01.txt",""
+"10631436791","s3://gpop-stage/ndar_data/QueryPackages/REVENGERS/773981645558:ndar_administrator/Package_1189934/package_file_metadata_1189934.txt.gz","0","package_file_metadata_1189934.txt.gz",""
+"10631436792","s3://gpop-stage/ndar_data/QueryPackages/REVENGERS/773981645558:ndar_administrator/Package_1189934/package_info.txt","140","package_info.txt",""
+"10631436793","s3://gpop-stage/ndar_data/QueryPackages/REVENGERS/773981645558:ndar_administrator/Package_1189934/dataset_collection.txt","276","dataset_collection.txt",""
+"10631436794","s3://gpop-stage/ndar_data/QueryPackages/REVENGERS/README.pdf","11000","README.pdf",""

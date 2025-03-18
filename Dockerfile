@@ -20,6 +20,7 @@ COPY . .
 
 # Install dependencies and build the package
 RUN pip3 install wheel requests 
+RUN pytest
 RUN python setup.py sdist
 
 # Install Twine

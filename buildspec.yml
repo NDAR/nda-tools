@@ -6,13 +6,16 @@ phases:
       python: 3.8
 
   build:
+    on-failure: ABORT
     commands:
       - pip install --upgrade pip
-      - pip install setuptools wheel twine
-      - python setup.py sdist bdist_wheel
+      - pip install setuptools wheel twine build
+      - pip install keyrings.alt
+      - pip install -e '.[test]'
+      - coverage run -m pytest && coverage report -m
+      - python -m build
       - twine upload $PYTHON_ENV dist/* -u $PYPI_USER -p $TESTPYPI_PASSWORD
       - $GITSCRIPT
-
   post_build:
     commands:
       - echo $CODEBUILD_RESOLVED_SOURCE_VERSION

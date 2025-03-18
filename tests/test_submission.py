@@ -4,120 +4,88 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from NDATools import Submission, Utils
-from NDATools.Submission import Status
+from NDATools import Submission
 
 
-class TestSubmission():
+@pytest.fixture
+def config(shared_datadir, validation_config_factory):
+    file_path = (shared_datadir / 'validation/file.csv')
+    test_args = [str(file_path)]
+    _, config = validation_config_factory(test_args)
+    config.JSON = True
+    return config
 
-    @pytest.fixture
-    def api_endpoint(self):
-        def fix_factory(*args, **kwargs):
-            api_response = args[0]
-            def __api_result(*args, **kwargs):
-                return api_response
-            return __api_result
-        return fix_factory
 
-    @pytest.fixture
-    def config(self, shared_datadir, validation_config_factory):
-        file_path = (shared_datadir / 'validation/file.csv')
-        test_args = [str(file_path)]
-        _, config = validation_config_factory(test_args)
-        config.JSON = True
-        return config
+@pytest.fixture
+def submission_with_files(load_from_file):
+    submission_resource = json.loads(load_from_file('submission/api_response/create_submission_response.json'))
+    creds_resource = json.loads(load_from_file('submission/api_response/batch_get_temp_creds.json'))
+    file_listing = json.loads(load_from_file('submission/api_response/get_file_listing.json'))
+    submission_by_submission_pkg = json.loads(load_from_file('submission/api_response/get_submission_by_sub_pkg.json'))
 
-    @pytest.fixture
-    def submission_with_files(self, load_from_file):
-        files_resource = json.loads(load_from_file('submission/api_response/get_files_response.json'))
-        submission_resource =  json.loads(load_from_file('submission/api_response/create_submission_response.json'))
-        creds_resource =  json.loads(load_from_file('submission/api_response/batch_get_temp_creds.json'))
-        return (submission_resource, files_resource, creds_resource)
+    return submission_resource, creds_resource, file_listing, submission_by_submission_pkg
 
-    @pytest.fixture
-    def batch_update_status(self, load_from_file):
-        return json.loads(load_from_file('submission/api_response/batch_update_status_response.json'))
 
-    def test_resume_submission(self, monkeypatch, config, submission_with_files, api_endpoint, tmpdir, batch_update_status):
-        submission_resource, files_resource, creds_resource = submission_with_files
-        file_key = Utils.sanitize_file_path(list(filter(lambda x: x['file_type']=='Submission Associated File', files_resource))[0]['file_user_path'])
-        fake_file_size = 10
-        fake_abs_path = str(tmpdir/file_key)
-        with monkeypatch.context() as m:
-            mock_status = MagicMock()
-            mock_get_creds = MagicMock(return_value =creds_resource['credentials'])
-            mock_batch_update = MagicMock(return_value =batch_update_status)
-            mock_abort_previous_uploads = MagicMock()
-            mock_upload_files = MagicMock()
-            m.setattr(Submission.Submission, 'check_status', mock_status)
-            m.setattr(Submission.Submission, 'get_multipart_credentials', mock_get_creds)
-            m.setattr(Submission.Submission, 'abort_previous_upload_attempts', mock_abort_previous_uploads)
-            m.setattr(Submission.Submission, 'batch_update_status', mock_batch_update['errors'])
-            m.setattr(Submission.Submission, 'upload_associated_files', mock_upload_files)
-            m.setattr(Submission, 'post_request', api_endpoint(submission_resource))
-            m.setattr(Submission, 'get_request', api_endpoint(files_resource))
-            def mock_complicated_search_file_logic(*args, **kwargs):
-                submission.full_file_path = { file_key: (fake_abs_path, fake_file_size)}
-                args[1].clear()
-                return
-            mock_search_file_sys = MagicMock(wraps=mock_complicated_search_file_logic)
-            m.setattr(Submission, 'parse_local_files',mock_search_file_sys)
+@pytest.fixture
+def batch_update_status(load_from_file):
+    return json.loads(load_from_file('submission/api_response/batch_update_status_response.json'))
 
-            submission = Submission.Submission(submission_id=submission_resource['submission_id'],
-                                               full_file_path={},
-                                               thread_num=1,
-                                               batch_size=20,
-                                               allow_exit=True,
-                                               config=config)
-            submission.status = Status.UPLOADING
-            submission.directory_list = [str(tmpdir)]
-            submission.resume_submission()
 
-            assert mock_status.call_count == 2
-            assert mock_upload_files.call_count == 1
-            assert mock_get_creds.call_count == 1
-            assert mock_abort_previous_uploads.call_count ==1 
-            assert submission.get_files()==files_resource
+@pytest.fixture
+def new_submission(monkeypatch, config, submission_with_files, tmpdir):
+    submission_resource, creds_resource, file_listing, submission_by_submission_pkg = submission_with_files
+    submission = Submission.Submission(package_id=str(str(uuid.uuid4())),
+                                       thread_num=1,
+                                       batch_size=20,
+                                       allow_exit=True,
+                                       config=config)
+    # monkeypatch some of the methods that make API calls
+    monkeypatch.setattr(submission, 'get_multipart_credentials', MagicMock(return_value=creds_resource['credentials']))
+    monkeypatch.setattr(submission, '_create_submission', MagicMock(return_value={'status': 'success'}))
+    monkeypatch.setattr(submission, 'query_submissions_by_package_id',
+                        MagicMock(return_value=submission_by_submission_pkg))
+    monkeypatch.setattr(submission, '_get_submission_by_id', MagicMock(return_value=submission_resource))
+    submission.directory_list = [str(tmpdir)]
+    return submission
 
-    def test_create_submission_success(self, monkeypatch, config, submission_with_files, api_endpoint):
-        submission_resource, files_resource, _ = submission_with_files
 
-        with monkeypatch.context() as m:
-            m.setattr(Submission, 'post_request', api_endpoint(submission_resource))
-            m.setattr(Submission, 'get_request', api_endpoint(files_resource))
-            package_id = uuid.uuid4()
+@pytest.fixture
+def uploading_submission(monkeypatch, new_submission, submission_with_files, batch_update_status):
+    submission_resource, creds_resource, file_listing, _ = submission_with_files
+    mock_batch_update = MagicMock(return_value=batch_update_status)
+    monkeypatch.setattr(new_submission, 'get_multipart_credentials',
+                        MagicMock(return_value=creds_resource['credentials']))
+    monkeypatch.setattr(new_submission, 'batch_update_status', mock_batch_update['errors'])
+    monkeypatch.setattr(new_submission, 'get_upload_progress', MagicMock(return_value=(2, 1)))
+    monkeypatch.setattr(new_submission, 'get_files_from_page', MagicMock(return_vaule=file_listing))
+    monkeypatch.setattr(new_submission, 'check_status', MagicMock())
+    monkeypatch.setattr(new_submission, 'status', Submission.Status.UPLOADING)
+    return new_submission
 
-            submission = Submission.Submission(package_id=str(package_id),
-                                                         full_file_path={},
-                                                         thread_num=1,
-                                                         batch_size=20,
-                                                         allow_exit=True,
-                                                         config=config)
-            submission.submit()
 
-            assert submission.submission_id == submission_resource['submission_id']
-            assert submission.status == submission_resource['submission_status']
-            assert submission.get_files()==files_resource
+def test_resume_submission(uploading_submission):
+    """ Test that calling resume_submission calls expected methods in Submission """
+    uploading_submission.resume_submission()
+    assert uploading_submission.check_status.call_count == 2
+    assert uploading_submission.get_multipart_credentials.call_count == 1
+    assert uploading_submission.get_upload_progress.call_count == 1
+    assert uploading_submission.get_files_from_page.call_count == 1
 
-    def test_replace_submission(self, monkeypatch, config, submission_with_files, api_endpoint):
 
-        submission_resource, files_resource, _ = submission_with_files
+def test_create_submission_success(new_submission):
+    """ Test that calling submit causes submission status to change to complete if no unexpected errors are returned from api"""
+    new_submission.submit()
+    assert new_submission.submission_id is not None
+    assert new_submission.status == 'Upload Completed'
+    assert new_submission.query_submissions_by_package_id.call_count == 1
+    assert new_submission._create_submission.call_count == 1
+    assert new_submission.query_submissions_by_package_id.call_count == 1
 
-        with monkeypatch.context() as m:
-            m.setattr(Submission, 'put_request', api_endpoint(submission_resource))
-            m.setattr(Submission, 'get_request', api_endpoint(files_resource))
-            package_id = uuid.uuid4()
 
-            submission = Submission.Submission(submission_id=submission_resource['submission_id'],
-                                               package_id=str(package_id),
-                                               full_file_path={},
-                                               thread_num=1,
-                                               batch_size=20,
-                                               allow_exit=True,
-                                               config=config)
-            submission.replace_submission()
-
-            assert submission.submission_id == submission_resource['submission_id']
-            assert submission.status == submission_resource['submission_status']
-            assert submission.get_files()==files_resource
-
+def test_replace_submission(monkeypatch, uploading_submission):
+    """ Test that calling replace_submission calls expected methods in Submission """
+    monkeypatch.setattr(uploading_submission, 'get_submission_versions', MagicMock(side_effect=[[1], [1, 2]]))
+    monkeypatch.setattr(uploading_submission, '_replace_submission', MagicMock())
+    uploading_submission.replace_submission()
+    assert uploading_submission.get_submission_versions.call_count == 2
+    assert uploading_submission._replace_submission.call_count == 1

@@ -1,0 +1,1 @@
+{"errors": {"invalidRange": [{"recordNumber": 1, "columnName": "sex", "message": "Data fields must match the value range fields. Please note that texts are case-sensitive."}]}}

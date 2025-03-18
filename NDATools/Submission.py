@@ -1,5 +1,3 @@
-from __future__ import absolute_import, with_statement
-
 import concurrent
 import copy
 import datetime
@@ -14,7 +12,9 @@ from s3transfer.constants import GB
 from tqdm import tqdm
 
 from NDATools.Configuration import *
-from NDATools.Utils import get_request, put_request, DeserializeHandler, post_request, get_s3_client_with_config
+from NDATools.Utils import deconstruct_s3_url
+from NDATools.Utils import get_request, put_request, DeserializeHandler, post_request, get_s3_client_with_config, \
+    collect_directory_list
 
 logger = logging.getLogger(__name__)
 
@@ -96,11 +96,14 @@ class Submission:
     def get_submission_versions(self):
         return get_request("/".join([self.api, self.submission_id, 'change-history']), auth=self.auth)
 
-    def replace_submission(self):
-        version_count = len(self.get_submission_versions())
+    def _replace_submission(self):
         put_request(
             "/".join([self.api, self.submission_id]) + "?submissionPackageUuid={}&async=true".format(self.package_id),
             auth=self.auth, deserialize_handler=DeserializeHandler.none)
+
+    def replace_submission(self):
+        version_count = len(self.get_submission_versions())
+        self._replace_submission()
 
         # poll the versions endpoint until a new one is created or until we timeout
         end_time = datetime.timedelta(seconds=self.config.validation_timeout) + datetime.datetime.now()
@@ -118,9 +121,12 @@ class Submission:
     def query_submissions_by_package_id(self, package_id):
         return get_request(f"{self.api}?packageUuid={package_id}", auth=self.auth)
 
-    def submit(self):
+    def _create_submission(self):
         post_request("/".join([self.api, self.package_id]) + "?async=true", auth=self.auth,
                      deserialize_handler=DeserializeHandler.none)
+
+    def submit(self):
+        self._create_submission()
         # poll the versions endpoint until a new one is created or until we timeout
         end_time = datetime.timedelta(seconds=self.config.validation_timeout) + datetime.datetime.now()
         while True:
@@ -134,9 +140,12 @@ class Submission:
                 sub_id = response[0]['submission_id']
                 break
             time.sleep(10)
-        response = get_request("/".join([self.api, sub_id]), auth=self.auth)
+        response = self._get_submission_by_id(sub_id)
         self.status = response['submission_status']
         self.submission_id = response['submission_id']
+
+    def _get_submission_by_id(self, sub_id):
+        return get_request("/".join([self.api, sub_id]), auth=self.auth)
 
     def check_status(self):
         response = get_request("/".join([self.api, self.submission_id]), auth=self.auth)
@@ -256,7 +265,7 @@ class Submission:
                             file_not_found_count += 1
                             continue
                         else:
-                            bucket, key = Utils.deconstruct_s3_url(file['file_remote_path'])
+                            bucket, key = deconstruct_s3_url(file['file_remote_path'])
                             creds = id_to_credential[int(file['id'])]
                             access_key, secret_key, session_token = creds['access_key'], creds['secret_key'], creds[
                                 'session_token']
@@ -289,7 +298,7 @@ class Submission:
                     logger.error(file)
                 if file_not_found_count > 20:
                     logger.error(f'and {file_not_found_count - 20} more files.')
-                self.config.directory_list = Utils.collect_directory_list()
+                self.config.directory_list = collect_directory_list()
                 self.upload_associated_files(upload_progress, files_to_upload_count)
             else:
                 logger.error(f'There were errors uploading files. \r\n'

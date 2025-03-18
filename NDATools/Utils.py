@@ -1,5 +1,3 @@
-from __future__ import absolute_import, with_statement
-
 import datetime
 import functools
 import json
@@ -13,26 +11,14 @@ import time
 import traceback
 import urllib.parse
 from pathlib import Path
+from urllib.parse import urlparse
 
 import boto3
 import requests
-import requests.packages.urllib3.util
+from botocore.exceptions import ClientError
 from requests.adapters import HTTPAdapter, Retry
 
-IS_PY2 = sys.version_info < (3, 0)
-
-if IS_PY2:
-    from io import open
-    from urlparse import urlparse
-else:
-    from urllib.parse import urlparse
-
 logger = logging.getLogger(__name__)
-
-if sys.version_info[0] < 3:
-    input = raw_input
-else:
-    pass
 
 
 class Protocol(object):
@@ -82,7 +68,8 @@ class HttpErrorHandlingStrategy():
             message = r.text
 
         if message is not None and len(str(message).strip()) > 0:
-            logger.error('\nAn unexpected error was encountered and the program could not continue. Error message from service was: \n%s' % message)
+            logger.error(
+                '\nAn unexpected error was encountered and the program could not continue. Error message from service was: \n%s' % message)
         else:
             logger.error('\nAn unexpected error was encountered and the program could not continue.\n')
         exit_error()
@@ -360,11 +347,12 @@ def collect_directory_list():
         directories = list(map(lambda x: Path(x.strip()), response))
         if all(map(lambda x: os.path.isdir(x), directories)):
             return list(map(lambda x: x.resolve(), directories))
-        else: 
+        else:
             not_existent = list(filter(lambda x: not os.path.isdir(x), directories))
             logger.error(f"The following directories cannot be found:\n")
             for directory in not_existent:
                 logger.error(f"\t{directory.resolve()}")
+
 
 def get_non_blank_input(prompt, input_name):
     while True:
@@ -373,3 +361,21 @@ def get_non_blank_input(prompt, input_name):
             return user_input
         else:
             print('{} cannot be blank. Please try again'.format(input_name))
+
+
+def get_object(s3_url, /, access_key_id, secret_access_key, session_token):
+    # split the s3_url to get a bucket and key
+    bucket, key = s3_url.replace("s3://", "").split("/", 1)
+    # use the boto3 client to get the results and display the contents
+    try:
+        result = boto3.client(
+            's3',
+            aws_access_key_id=access_key_id,
+            aws_secret_access_key=secret_access_key,
+            aws_session_token=session_token
+        ).get_object(Bucket=bucket, Key=key)
+        # print(f"{key}: {result['Body'].read(1024).decode('utf-8')}")
+        return result['Body'].read()
+    except ClientError as e:
+        print(f"An error occurred: {e}")
+        exit(1)

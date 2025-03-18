@@ -1,12 +1,3 @@
-from __future__ import absolute_import, with_statement
-
-import sys
-
-import requests.packages.urllib3.util
-
-if sys.version_info[0] < 3:
-    input = raw_input
-import requests.packages.urllib3.util
 from NDATools.Configuration import *
 from NDATools.Utils import *
 
@@ -14,18 +5,16 @@ logger = logging.getLogger(__name__)
 
 
 class SubmissionPackage:
-    def __init__(self, uuid, associated_files, config, pending_changes=None, original_uuids=None):
+    def __init__(self, uuid, config, pending_changes=None, original_uuids=None):
         self.config = config
         self.api = self.config.submission_package_api
         self.validationtool_api = self.config.validationtool_api
         self.uuid = uuid
-        self.associated_files = associated_files
         self.username = self.config.username
         self.password = self.config.password
         self.dataset_name = self.config.title
         self.dataset_description = self.config.description
         self.package_info = {}
-        self.download_links = []
         self.package_id = None
         self.package_folder = None
         self.auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
@@ -140,13 +129,7 @@ class SubmissionPackage:
             while response['package_info']['status'] == Status.PROCESSING:
                 time.sleep(1.1)
                 response = get_request("/".join([self.api, self.package_id]), auth=self.auth)
-            if response['package_info']['status'] == Status.COMPLETE:
-                for f in [f for f in response['files']
-                          if f['type'] in ('Submission Memento', 'Submission Data Package')]:
-                    for key, value in f['_links'].items():
-                        for k, v in value.items():
-                            self.download_links.append((v, "/".join(f['path'].split('/')[4:])))
-            else:
+            if response['package_info']['status'] != Status.COMPLETE:
                 message = 'There was an error in building your package.'
                 if response['package_info']['status'] == Status.SYSERROR:
                     message = response['errors']['system'][0]['message']

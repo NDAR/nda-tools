@@ -1,13 +1,17 @@
 import argparse
+import random
 import sys
 
 import requests.exceptions
 
 from NDATools.BuildPackage import SubmissionPackage
 from NDATools.Configuration import *
+from NDATools.NDA import NDA
 from NDATools.Submission import Submission
-from NDATools.Utils import evaluate_yes_no_input, exit_error, get_request, get_non_blank_input
+from NDATools.Utils import evaluate_yes_no_input, get_request, get_non_blank_input
 from NDATools.Validation import Validation
+from NDATools.upload.validation.api import ValidationResponse
+from NDATools.upload.validation.io import UserIO
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +121,16 @@ def resume_submission(sub_id, batch, config=None):
         print_submission_complete_message(submission, False)
 
 
-def validate_files(file_list, warnings, will_submit, threads, config=None, pending_changes=None, original_uuids=None):
+def validate_v2(file_list, config, show_warnings: bool) -> [ValidationResponse]:
+    nda = NDA(config)  # only object to contain urls
+    io = UserIO(is_json=config.JSON, skip_prompt=config.force)
+
+    results = nda.validate_files(file_list)
+    io.run_validation_step_io(results, show_warnings)
+    return results
+
+
+def validate_v1(file_list, warnings, will_submit, threads, config=None, pending_changes=None, original_uuids=None):
     validation = Validation(file_list, config=config, hide_progress=config.hideProgress, thread_num=threads,
                             allow_exit=True, pending_changes=pending_changes, original_uuids=original_uuids)
     logger.info('\nValidating files...')
@@ -183,13 +196,36 @@ def validate_files(file_list, warnings, will_submit, threads, config=None, pendi
     return validation.uuid, validation.associated_files_to_upload
 
 
-def build_package(uuid, associated_files_to_upload, config, pending_changes=None, original_uuids=None):
+def validate(args, config, pending_changes, original_uuids):
+    api_config = get_request(f'{config.validation_api}/config')
+    percent = api_config['v2Routing']['percent']
+    logger.debug('v2_routing percent: {}'.format(percent))
+    # route X% of traffic to the new validation API
+    v2_api = random.randint(1, 100) <= (percent * 100)
+
+    if v2_api:
+        logger.debug('Using the new validation API.')
+        if not config.is_authenticated():
+            config.read_user_credentials(True)
+        validation_results = validate_v2(args.files, config, args.warning)
+        return [r.uuid for r in validation_results]
+    else:
+        logger.debug('Using the old validation API.')
+        validation_results = validate_v1(args.files, args.warning, args.buildPackage,
+                                         threads=args.workerThreads,
+                                         config=config,
+                                         pending_changes=pending_changes,
+                                         original_uuids=original_uuids)
+        return validation_results[0]
+
+
+def build_package(uuid, config, pending_changes=None, original_uuids=None):
     if not config.title:
         config.title = get_non_blank_input('Enter title for dataset name:', 'Title')
     if not config.description:
         config.description = get_non_blank_input('Enter description for the dataset submission:', 'Description')
 
-    package = SubmissionPackage(uuid, associated_files_to_upload, config=config, pending_changes=pending_changes,
+    package = SubmissionPackage(uuid, config=config, pending_changes=pending_changes,
                                 original_uuids=original_uuids)
 
     logger.info('Building Package')
@@ -298,7 +334,7 @@ def check_args(args):
     if args.replace_submission:
         if args.title or args.description or args.collectionID:
             message = 'Title, description, and collection ID are not allowed when replacing a submission' \
-                        ' using -rs flag. Please remove -t, -d and -c when using -rs. Exiting...'
+                      ' using -rs flag. Please remove -t, -d and -c when using -rs. Exiting...'
             logger.error(message)
             exit(1)
 
@@ -318,32 +354,19 @@ def main():
         # Need to check to see if I need to update this step!
         resume_submission(submission_id, batch=args.batch, config=config)
     else:
-        w = False
-        bp = False
-        if args.warning:
-            w = True
+
+        uuid = validate(args, config, pending_changes, original_uuids)
+        # If user requested to build a package
         if args.buildPackage:
-            bp = True
-        validation_results = validate_files(args.files, w, bp,
-                                            threads=args.workerThreads,
-                                            config=config,
-                                            pending_changes=pending_changes,
-                                            original_uuids=original_uuids)
-        if validation_results is not None:
-            uuid = validation_results[0]
-            associated_files_to_upload = validation_results[1]
-            # If user requested to build a package
-            if bp:
-                package = build_package(uuid,
-                                        associated_files_to_upload,
-                                        config=config,
-                                        pending_changes=pending_changes,
-                                        original_uuids=original_uuids)
-                submit_package(package_id=package.package_id,
-                               threads=args.workerThreads,
-                               batch=args.batch,
-                               config=config,
-                               original_submission_id=original_submission_id)
+            package = build_package(uuid,
+                                    config=config,
+                                    pending_changes=pending_changes,
+                                    original_uuids=original_uuids)
+            submit_package(package_id=package.package_id,
+                           threads=args.workerThreads,
+                           batch=args.batch,
+                           config=config,
+                           original_submission_id=original_submission_id)
 
 
 if __name__ == "__main__":

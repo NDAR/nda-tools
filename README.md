@@ -1,125 +1,157 @@
 # nda-tools
 
-To submit data to the National Institute of Mental Health Data Archives (NDA),
-users must validate their data to ensure it complies with the required format.
-This is done by using the NDA Validation and Upload tool.
-Additionally, users can package and download data from NDA as well.
-If the associated data is downloaded from S3, temporary federated AWS tokens are required.
-A Python package and command line clients have been developed to allow users to programmatically
-validate, package, submit, and/or download data. [Validation](https://nda.nih.gov/api/validation/docs/swagger-ui/index.html#!),
-[Submission Package](https://nda.nih.gov/api/submission-package/docs/swagger-ui.html#!), and
-[Data Submission](https://nda.nih.gov/api/submission/docs/swagger-ui/index.html#!) web services.
+`nda-tools` is a Python-based command-line client designed for submitting data into and downloading data from the National Institute of Mental Health Data Archive (NDA).  It enables users to programmatically **validate, package, submit, and download data** while ensuring compliance with NDA’s required formats, leveraging the [Validation](https://nda.nih.gov/api/validation/docs/swagger-ui/index.html#!), [Submission Package](https://nda.nih.gov/api/submission-package/docs/swagger-ui.html#!), and [Data Submission](https://nda.nih.gov/api/submission/docs/swagger-ui/index.html#!) web services. 
 
-## Getting Started
 
-### Installing Python
+To use nda-tools, you must first have an NDA account with the necessary permissions for data submission or access.
 
-The user will need a Python distribution to use the client. Run the following from a terminal/command prompt to determine if Python is already installed:
+#### Getting Started
+1) [Create an NDA account](https://nda.nih.gov/nda/creating-an-nda-account), if you haven't already.
+2) [Set up and install `nda-tools`.](#how-to-set-up-nda-tools)
+2) [Run commands to submit or download data.](#youre-ready)
+
+
+## [How to set up nda-tools](#how-to-set-up-nda-tools)
+To start, open your machine's Command Prompt, Windows Terminal, or command line tool of your choice.
+
+1) [Install Python 3.](#step-1-install-python-3)
+2) [Install Pip.](#step-2-install-pip)
+3) [Install nda-tools.](#step-3-install-nda-tools)
+4) [Authenticate with nda-tools.](#step-4-authenticate-with-nda-tools)
+
+
+### [Step 1: Install Python 3](#step-1-install-python-3)
+
+nda-tools requires Python 3. Check if Python 3 is already installed:
 
 ```
-python3 --version
+python --version
 ```
+
+- If this returns Python 3.x.x, you're good to go. 
+
+  ![Python Version Number Returned](https://s3.amazonaws.com/nda.nih.gov/cms/prod/python-installed.PNG)
+- Python offers 2 kinds of distributions: version 2.x.x and version 3.x.x. If you have multiple versions of Python installed, `python --version` might return Python 2.x.x. You can run `python3 --version` to verify Python 3 exists on your machine.
+
+**Notes:**
+- If Python cannot be found, download Python 3 from [Python.org](https://www.python.org/downloads/) and follow the installation prompts. **Tip:** Select "Add python.exe to PATH" if the option is available during installation.
+
+  <img src="https://s3.amazonaws.com/nda.nih.gov/cms/prod/python-install-step1.png" alt="Add python.exe to PATH" style="width:60%; height:auto;">
+
+
+- If you don't own your machine, please contact your IT department to request administrative rights, root, or sudo privileges to install python.
+
+- Windows Users: If `python --version` doesn't work after installation, you may need to add [Python to PATH](https://realpython.com/add-python-to-path/).
+
+### [Step 2: Install pip](#step-2-install-pip)
+
+pip (Python’s package manager) is required to install nda-tools. Check if it's installed:
+```
+pip --version
+```
+- If you have both Python 2.x.x and 3.x.x on your machine, `pip --version` returns pip installed in Python 2, run `pip3 --version` to verify pip exists in Python 3.
+
+**Notes:**
+- If installed, it should return the version information. 
+![Python and Pip Installed](https://s3.amazonaws.com/nda.nih.gov/cms/prod/python-pip-installed.png)
+
+
+- If not, follow the [pip installation guide](https://pip.pypa.io/en/stable/installation/).
+- If pip is not recognized, run `python get-pip.py –user` to troubleshoot the error and check the version of pip installed on your machine.
+
+
+### [Step 3: Install nda-tools](#step-3-install-nda-tools)
+
+#### Ensure you have Python and pip installed.  Run this command to install nda-tools:
+```
+pip install nda-tools
+```
+- Run `pip3 install nda-tools` if you have Python 2.x.x and 3.x.x on your machine.
+- Installation is complete when you see "Successfully installed" and can enter a new command. If updates are needed, follow the provided command.
+
+  ![nda-tools Installed](https://s3.amazonaws.com/nda.nih.gov/cms/prod/nda-tools-installed.png)
+
+#### Verify Installation by running:
+```
+vtcmd -h
+```
+ -  If you receive an `ModuleNotFoundError: No module named 'pkg_resources'` error when running the above command, try the following command, and then try again.
+    ```
+    python -m pip install setuptools
+    ```
+
+- A successful installation will return the nda-tools version.
+
 
 **Notes:**
 
-- If Python has already been installed, users should see version information. If not, you will need to download and install it from [Python.org](https://www.python.org/).
-- The user may need administrative rights, root, or sudo privileges to install a Python distribution.
-- Python may be installed but not available on the system path. Please consult Python installation and usage documentation: [Python3](https://docs.python.org/3/using/)
-
-### Installing pip
-
-Since Python 3.4, pip is included by default with the Python binary. You can check the version with:
-
-```
-pip3 --version
-```
-
-If pip is installed, then you should see version information. If not, you should install pip. First, download it from [https://bootstrap.pypa.io/get-pip.py](https://bootstrap.pypa.io/get-pip.py), then run the following to install for your user.
-
-```
-python3 get-pip.py --user
-```
-
-**Notes:**
-
-- Pip may be installed but not available on the system path. Please consult Python installation and usage documentation.
-
-### Installing the client
-
-These instructions will help you get setup to run the client.
-
-Simply enter the following command into your terminal or command prompt to install nda-tools:
-
-`pip install nda-tools`
-
-This will automatically install the nda-tools package, including the command line scripts and required packages.
-
-**Notes:**
-
-- If the nda-tools needs special permission try:
+- If the nda-tools needs special permission, try the following command:
   - `pip install nda-tools --user`
-- If multiple versions of python or pip exists on the operation machine, the command prompt will not recognize the nda-tools script. Try the following command instead:
+- If multiple Python or pip versions exists on your your machine, try the following command instead:
   - `python -m NDATools.clientscripts.[NDAtoolcommand]`
-- If a deprecated version of the tool is already installed, it'll prompt the user to upgrade. To update, follow the prompt command.
 
-### Credentials
+### [Step 4: Authenticate with nda-tools](#step-4-authenticate-with-nda-tools)
+#### 1) Set up keyring (Credential Storage)
+Keyring is a Python package that leverages the operating system's credential manager to securely store and retrieve your NDA login credentials. More details on [Keyring Documentation](https://pypi.org/project/keyring/).
 
-While not needed solely for validation, if you want to create a package and submit your data to the NDA, you must have an active account with us.
-This can be requested from the [NDA website](https://nda.nih.gov/user/dashboard/profile.html).
-You can read more about what is needed for contributing data into the NDA [here](https://nda.nih.gov/contribute/contribute-data.html).
+First, check if it's installed:
+```
+pip show keyring
+```
+If keyring version information is returned, then it already exists.
 
-#### Keyring
+<img src="https://s3.amazonaws.com/nda.nih.gov/cms/prod/keyring-installed.png" alt="Keyring Installed" style="width:60%; height:auto;">
 
-Keyring is a Python package that leverages the operating system's credential manager to securely store and retrieve user credentials.
+If not, install it:
+```
+pip install keyring
+``` 
 
-##### Updating Stored Passwords with keyring
+#### For Linux Users
 
-###### All Operating Systems
+- You may need to install a backend implementation of keyring.
+- If there is no backend set up for keyring, try: `pip install secretstorage --upgrade keyrings.alt`
 
-For users of any operating system, the password can be updated with:
+- For Ubuntu users, try: `apt-get install -y gnome-keyring`
 
-`keyring.set_password('nda-tools', USERNAME, NEW_PASSWORD)`
 
-###### Mac / Windows
+#### 2) Enter your NDA Credentials
+On first use, you'll be prompted for your NDA account username and password (*not your eRA Commons or Login.gov credentials*).
+- Find your NDA username by logging into [NDA Profile](https://nda.nih.gov/user/dashboard/profile). 
+- To reset your password, click **UPDATE PASSWORD** on your NDA Profile.
+  <img src="https://s3.amazonaws.com/nda.nih.gov/cms/prod/nda-profile.png" alt="NDA Profile" style="width:80%; height:auto;">
 
-Mac and Windows users may use Keychain and Credentials Manager, respectively, to update their passwords.
 
-To update your password with keyring, run:
 
-- `keyring.set_password('nda-tools', 'YOUR_USERNAME', 'NEW_PASSWORD')`,
+If you're **not** prompted,  manually store your credentials by running:
+  ```
+  keyring.set_password('nda-tools', 'your-username', 'your-password')
+  ```
 
-replacing _YOUR_USERNAME_ and _NEW_PASSWORD_ with your NDA username and new password. You can read more from
-the [Keyring Documentation](https://pypi.org/project/keyring/).
+After the first login, your credentials will be saved in keyring and automatically used for future nda-tools sessions.
 
-_If you do not have any entries stored via keyring,_ you will be prompted to enter the password.
-If authentication is successful, nda-tools will store your password via keyring.
-Subsequent usage of nda-tools will retrieve the password automatically and securely from keyring.
+#### Updating Stored Passwords with keyring (If needed)
+If your NDA account password has changed since your last usage of nda-tools, you can update the password in keyring by running the following command:
+  ```
+  python -c "import keyring; keyring.set_password('nda-tools', 'your_username_here', 'your_password_here')"
+  ```
 
-###### Linux
+## [You're ready!](#youre-ready)
+Once you have python, pip, and nda-tools installed, and have entered your NDA credentials, you're ready to use the tool.
 
-Linux users may need to install a backend implementation of keyring since they may not have a native credentials manager such as those included with the Mac and Windows operating systems.
-If the keyring backend is missing, nda-tools will print the following message:
+- View  **upload / data submission** options:
+  ```
+  vtcmd -h
+  ```
 
-`If there is no backend set up for keyring, you may try pip install secretstorage --upgrade keyrings.alt`
+- View  **download** options:
+  ```
+  downloadcmd -h
+  ```
 
-For Ubuntu users,
-
-`apt-get install -y gnome-keyring`
-
-##### You are Now Ready to Run the Client.
-
-Please note that if you encounter SSL errors when running the client, you may need to re-run pip installation of requests, with pip install
-`pip install requests[secure]` which will install some additional packages with more support for SSL connections.
-
-## Using the Client
-
-To view options available for the Validation Tool Python client, enter the following command:
-
-`vtcmd -h`
-
-or to view options available for the Download Python client, enter:
-
-`downloadcmd -h`
+**Notes:**
+- If you encounter SSL errors when running the client, re-run pip installation of requests by running 
+`pip install requests[secure]` which installs  additional packages with more support for SSL connections.
 
 ### Configuring the Client
 
