@@ -206,10 +206,10 @@ class Submission:
         def to_payload(file):
             payload = {
                 "id": file['id'],
-                "md5sum": "None",
                 "status": status,
-                "size": file['size'] if 'size' in file else 0
             }
+            if 'size' in file:
+                payload["size"] = file['size']
             return payload
 
         list_data = list(map(to_payload, files))
@@ -232,7 +232,10 @@ class Submission:
         s3.upload_file(file_name, bucket, key, Config=transfer_config)
         return local_associated_file
 
-    def upload_associated_files(self, upload_progress=None, files_to_upload_count=None):
+    def upload_associated_files(self,
+                                upload_progress=None,
+                                files_to_upload_count=None,
+                                check_uploaded_not_complete=False):
         batch_size = 50
         multipart_threshold = 5 * GB
 
@@ -251,6 +254,10 @@ class Submission:
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.thread_num) as executor:
             for batch_number, submission_file_batch in enumerate(
                     self.get_files_iterator(files_to_upload_count, page_size=batch_size, exclude_uploaded=True)):
+
+                if check_uploaded_not_complete:
+                    submission_file_batch = self.check_uploaded_not_complete(submission_file_batch)
+
                 # get credentials for this batch of files
                 credentials_list = self.get_multipart_credentials(list([f['id'] for f in submission_file_batch]))
                 id_to_credential = {int(cred['submissionFileId']): cred for cred in credentials_list}
@@ -299,7 +306,7 @@ class Submission:
                 if file_not_found_count > 20:
                     logger.error(f'and {file_not_found_count - 20} more files.')
                 self.config.directory_list = collect_directory_list()
-                self.upload_associated_files(upload_progress, files_to_upload_count)
+                self.upload_associated_files(upload_progress, files_to_upload_count, check_uploaded_not_complete)
             else:
                 logger.error(f'There were errors uploading files. \r\n'
                              f'Please try resuming the submission by running vtcmd -r {self.submission_id}\r\n'
@@ -312,5 +319,19 @@ class Submission:
         self.check_status()
 
         if self.status == Status.UPLOADING:
-            self.upload_associated_files()
+            self.upload_associated_files(check_uploaded_not_complete=True)
             self.check_status()
+
+    def check_uploaded_not_complete(self, files):
+        """This method checks whether any files in the batch were already uploaded to s3 (during previous vtcmd run) but not marked as complete. rev-1389"""
+        # update payload to remove file-size
+        files_no_size = [{'id': f['id']} for f in files]
+        errors = self.batch_update_status(files_no_size, Status.COMPLETE)
+        error_file_ids = {int(error['submissionFileId']) for error in errors}
+        success_file_ids = {int(f['id']) for f in files if int(f['id']) not in error_file_ids}
+        if success_file_ids:
+            logger.debug(
+                f'{len(success_file_ids)} files that were already uploaded have been marked as completed in NDA')
+        # only return files if they appear in the list of errors here....if there was no error, then the file was
+        # already uploaded to s3 and the status is now Complete in NDA
+        return [f for f in files if int(f['id']) in error_file_ids]
