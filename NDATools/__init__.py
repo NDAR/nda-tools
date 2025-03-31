@@ -6,7 +6,7 @@ import pathlib
 import shutil
 import sys
 
-__version__ = '0.4.0'
+__version__ = '0.5.0.dev1'
 
 from pkg_resources import resource_filename
 
