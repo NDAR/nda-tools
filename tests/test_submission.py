@@ -1,10 +1,12 @@
 import json
 import uuid
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
 from NDATools import Submission
+from NDATools.Submission import LocalAssociatedFile
 
 
 @pytest.fixture
@@ -32,7 +34,7 @@ def batch_update_status(load_from_file):
 
 
 @pytest.fixture
-def new_submission(monkeypatch, config, submission_with_files, tmpdir):
+def new_submission(monkeypatch, config, submission_with_files, tmpdir, s3_mock):
     submission_resource, creds_resource, file_listing, submission_by_submission_pkg = submission_with_files
     submission = Submission.Submission(package_id=str(str(uuid.uuid4())),
                                        thread_num=1,
@@ -45,6 +47,10 @@ def new_submission(monkeypatch, config, submission_with_files, tmpdir):
     monkeypatch.setattr(submission, 'query_submissions_by_package_id',
                         MagicMock(return_value=submission_by_submission_pkg))
     monkeypatch.setattr(submission, '_get_submission_by_id', MagicMock(return_value=submission_resource))
+    monkeypatch.setattr(submission, 'check_uploaded_not_complete', MagicMock(return_value=submission_resource))
+    monkeypatch.setattr(Submission, 'to_local_associated_file', MagicMock(
+        side_effect=lambda x, y: LocalAssociatedFile(Path(x['file_user_path']), 0, x['file_user_path'], x)))
+    monkeypatch.setattr(Submission, 'get_s3_client_with_config', MagicMock(return_value=s3_mock))
     submission.directory_list = [str(tmpdir)]
     return submission
 
@@ -57,22 +63,33 @@ def uploading_submission(monkeypatch, new_submission, submission_with_files, bat
                         MagicMock(return_value=creds_resource['credentials']))
     monkeypatch.setattr(new_submission, 'batch_update_status', mock_batch_update['errors'])
     monkeypatch.setattr(new_submission, 'get_upload_progress', MagicMock(return_value=(2, 1)))
-    monkeypatch.setattr(new_submission, 'get_files_from_page', MagicMock(return_vaule=file_listing))
+    monkeypatch.setattr(new_submission, 'get_files_from_page', MagicMock(return_value=file_listing))
     monkeypatch.setattr(new_submission, 'check_status', MagicMock())
+    monkeypatch.setattr(new_submission, 'check_uploaded_not_complete', MagicMock(side_effect=lambda x: x))
     monkeypatch.setattr(new_submission, 'status', Submission.Status.UPLOADING)
     return new_submission
 
 
-def test_resume_submission(uploading_submission):
+def test_resume_submission(uploading_submission, s3_mock):
     """ Test that calling resume_submission calls expected methods in Submission """
     uploading_submission.resume_submission()
     assert uploading_submission.check_status.call_count == 2
     assert uploading_submission.get_multipart_credentials.call_count == 1
     assert uploading_submission.get_upload_progress.call_count == 1
     assert uploading_submission.get_files_from_page.call_count == 1
+    assert uploading_submission.check_uploaded_not_complete.call_count == 1
+    assert s3_mock.upload_file.call_count == 2  # one for each file
+
+    # when check_uploaded_not_complete returns None, that the file upload is skipped
+    uploading_submission.check_uploaded_not_complete.reset_mock()
+    s3_mock.reset_mock()
+    uploading_submission.check_uploaded_not_complete.side_effect = lambda x: []
+    uploading_submission.resume_submission()
+    assert uploading_submission.check_uploaded_not_complete.call_count == 1
+    assert s3_mock.upload_file.call_count == 0  # No files were actually uploaded, because they were already in s3
 
 
-def test_create_submission_success(new_submission):
+def test_create_submission_success(new_submission, s3_mock):
     """ Test that calling submit causes submission status to change to complete if no unexpected errors are returned from api"""
     new_submission.submit()
     assert new_submission.submission_id is not None
@@ -80,6 +97,7 @@ def test_create_submission_success(new_submission):
     assert new_submission.query_submissions_by_package_id.call_count == 1
     assert new_submission._create_submission.call_count == 1
     assert new_submission.query_submissions_by_package_id.call_count == 1
+    assert new_submission.check_uploaded_not_complete.call_count == 0
 
 
 def test_replace_submission(monkeypatch, uploading_submission):

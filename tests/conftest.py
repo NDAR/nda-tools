@@ -98,3 +98,8 @@ def logger_mock(monkeypatch):
     logger.error = MockLogger()
     logger.debug = MockLogger()
     return logger
+
+
+@pytest.fixture
+def s3_mock(monkeypatch):
+    return MagicMock()
