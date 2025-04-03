@@ -2,9 +2,12 @@ import logging
 import os
 from unittest import TestCase
 from unittest.mock import patch, mock_open
+from urllib.parse import quote
+
+import pytest
 
 from NDATools.Utils import parse_local_files, sanitize_file_path, check_read_permissions, \
-    sanitize_windows_download_filename
+    sanitize_windows_download_filename, deconstruct_s3_url
 
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s:%(levelname)s:%(message)s")
 logger = logging.getLogger(__name__)
@@ -84,3 +87,23 @@ class TestUtils(TestCase):
         mock_file.side_effect = IOError()
         test_file = os.path.join(os.path.expanduser('~'), 'NDATools\\clientscripts\\config\\settings.cfg')
         self.assertFalse(check_read_permissions(test_file))
+
+
+@pytest.mark.parametrize('bucket,key', [
+    ('nda-central', 'collection-1860/submission-12345/dog.png'),
+    ('nda-central', 'collection-1860/submission-12345/folder with space/dog.png'),
+    ('nda-central', 'collection-1860/submission-12345/folder with space and special %/dog.png')
+])
+def test_deconstruct_s3_url(bucket, key):
+    """Verify presigned urls and s3 urls are correctly deconstructed"""
+    b, k = deconstruct_s3_url(f's3://{bucket}/{key}')
+    assert b == bucket
+    assert k == key
+    url = f'https://s3.amazonaws.com/' + quote(f'{bucket}/{key}')
+    b, k = deconstruct_s3_url(url)
+    assert b == bucket
+    assert k == key
+    url = f'https://{bucket}.s3.amazonaws.com/' + quote(key)
+    b, k = deconstruct_s3_url(url)
+    assert b == bucket
+    assert k == key

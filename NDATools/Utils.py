@@ -11,7 +11,7 @@ import time
 import traceback
 import urllib.parse
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, unquote
 
 import boto3
 import requests
@@ -224,10 +224,10 @@ def deconstruct_s3_url(url):
         if tmp.hostname == 's3.amazonaws.com':
             bucket = tmp.path.split('/')[1]
             path = '/'.join(tmp.path.split('/')[2:])
-            path = '/' + path
+            path = unquote('/' + path)
         else:
             bucket = tmp.hostname.replace('.s3.amazonaws.com', '')
-            path = tmp.path
+            path = unquote(tmp.path)
     else:
         raise Exception('Invalid URL passed to deconstruct_s3_url method: {}'.format(url))
 
