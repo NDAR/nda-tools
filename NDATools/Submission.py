@@ -4,6 +4,7 @@ import datetime
 import math
 import multiprocessing
 import queue
+import traceback
 from pathlib import Path
 
 import requests.exceptions
@@ -288,7 +289,9 @@ class Submission:
                         local_associated_file = future.result()
                         completed_files_batch.append(local_associated_file.to_api_resource())
                         upload_progress.update(1)
-                    except Exception:
+                    except Exception as e:
+                        logger.error(f'Encountered exception while transferring some files to s3: {e}')
+                        traceback.print_exc()
                         errors_uploading_files = True
                         pass
                 if completed_files_batch:
