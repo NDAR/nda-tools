@@ -63,9 +63,6 @@ class ClientConfiguration:
         self.datadictionary_api = self.config.get("Endpoints", "datadictionary")
         self.collection_api = self.config.get("Endpoints", "collection")
         self.user_api = self.config.get("Endpoints", "user")
-        self.aws_access_key = self.config.get("User", "access_key")
-        self.aws_secret_key = self.config.get("User", "secret_key")
-        self.aws_session_token = self.config.get('User', 'session_token')
         self.username = self.config.get("User", "username").lower()
 
         # options that appear in both vtcmd and downloadcmd
@@ -80,15 +77,11 @@ class ClientConfiguration:
 
         is_vtcmd = 'collectionID' in args
         if is_vtcmd:
-            self.aws_access_key = args.accessKey
-            self.aws_secret_key = args.secretKey
             self.hideProgress = args.hideProgress
             self.force = True if args.force else False
             self.collection_id = args.collectionID
             self.directory_list = args.listDir
             self.manifest_path = args.manifestPath
-            self.source_bucket = args.s3Bucket
-            self.source_prefix = args.s3Prefix
             self.validation_timeout = args.validation_timeout
             self.title = args.title
             self.description = args.description
@@ -185,19 +178,6 @@ class ClientConfiguration:
                 self._get_password()
             self._try_save_password_keyring()
 
-        # Only ask for access-key/secret-key when needed (which is only when a user is creating a submission
-        # and the files are stored in a s3 bucket)
-        if hasattr(self, 'source_bucket') and self.source_bucket:
-            self.read_aws_credentials()
-
-    def read_aws_credentials(self):
-        if not self.aws_access_key:
-            self.aws_access_key = getpass.getpass(
-                "Enter your aws_access_key (must have read access to the %s bucket): " % self.source_bucket)
-
-        if not self.aws_secret_key:
-            self.aws_secret_key = getpass.getpass('Enter your aws_secret_key:')
-
     def is_valid_nda_credentials(self):
         try:
             # will raise HTTP error 401 if invalid creds
@@ -219,4 +199,3 @@ class ClientConfiguration:
                 logger.error('\nSystemError while checking credentials for user %s', self.username)
                 logger.error('\nPlease contact NDAHelp@mail.nih.gov for help in resolving this error')
                 exit_error()
-

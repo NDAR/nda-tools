@@ -38,12 +38,6 @@ def parse_args():
     parser.add_argument('-m', '--manifestPath', metavar='<arg>', type=str, nargs='+', action='store',
                         help='Specifies the directories in which the manifest files are located')
 
-    parser.add_argument('-s3', '--s3Bucket', metavar='<arg>', type=str, action='store',
-                        help='Specifies the s3 bucket in which the associated files are files located.')
-
-    parser.add_argument('-pre', '--s3Prefix', metavar='<arg>', type=str, action='store',
-                        help='Specifies the s3 prefix in which the associated files are files located.')
-
     parser.add_argument('-w', '--warning', action='store_true',
                         help='Returns validation warnings for list of files')
 
@@ -61,12 +55,6 @@ def parse_args():
 
     parser.add_argument('-u', '--username', metavar='<arg>', type=str.lower, action='store',
                         help='NDA username')
-
-    parser.add_argument('--accessKey', metavar='<arg>', type=str, action='store',
-                        help='AWS access key')
-
-    parser.add_argument('--secretKey', metavar='<arg>', type=str, action='store',
-                        help='AWS secret key')
 
     parser.add_argument('-s', '--scope', metavar='<arg>', type=str, action='store',
                         help='Flag whether to validate using a custom scope. Must enter a custom scope')
@@ -314,7 +302,7 @@ If you need to make further edits to this submission, please reach out the the N
     if response is None:
         exit_error(message='There was a General Error communicating with the NDA server. Please try again later')
 
-    # get list of associated-files that have already been uplaoded for pending changes
+    # get list of associated-files that have already been uploaded for pending changes
     pending_changes = []
     original_submission_id = submission_id
     original_uuids = {uuid for uuid in response['validation_uuids']}
