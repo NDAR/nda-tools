@@ -161,14 +161,9 @@ class Submission:
         batched_ids = [file_ids[i:i + self.batch_size] for i in range(0, len(file_ids), self.batch_size)]
 
         for ids in batched_ids:
-            query_params = ''
-            if self.config.source_bucket is not None:
-                query_params = '?s3SourceBucket={}'.format(self.config.source_bucket)
-                query_params += '&s3Prefix={}'.format(
-                    self.config.source_prefix) if self.config.source_prefix is not None else ''
             credentials_list = post_request("/".join(
-                [self.api, self.submission_id, 'files/batchMultipartUploadCredentials']) + query_params,
-                                            payload=json.dumps(ids), auth=self.auth)
+                [self.api, self.submission_id, 'files/batchMultipartUploadCredentials']),
+                payload=json.dumps(ids), auth=self.auth)
             all_credentials = all_credentials + credentials_list['credentials']
 
         return all_credentials
