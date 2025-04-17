@@ -170,7 +170,7 @@ def sanitize_windows_download_filename(filepath):
 
     if any(char in path for char in forbidden_windows_chars):
         for char in forbidden_windows_chars:
-            filepath = os.path.join(drive, str(filepath).replace(char, urllib.parse.quote(char)))
+            filepath = os.path.join(str(filepath).replace(char, urllib.parse.quote(char)))
     return filepath
 
 
@@ -341,9 +341,8 @@ def get_s3_resource(aws_access_key, aws_secret_key, aws_session_token, s3_config
 
 def collect_directory_list():
     while True:
-        retry = input('Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
-                      '<bucket name> to locate your associated files:')
-        response = retry.split(' ')
+        retry = input('\nPlease specify the immediate parent directory of the associated file paths specified in the csv, then press Enter. Separate multiple directories by a comma: ')
+        response = retry.split(',')
         directories = list(map(lambda x: Path(x.strip()), response))
         if all(map(lambda x: os.path.isdir(x), directories)):
             return list(map(lambda x: x.resolve(), directories))

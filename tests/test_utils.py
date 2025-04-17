@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 from unittest import TestCase
 from unittest.mock import patch, mock_open
 from urllib.parse import quote
@@ -7,7 +8,7 @@ from urllib.parse import quote
 import pytest
 
 from NDATools.Utils import parse_local_files, sanitize_file_path, check_read_permissions, \
-    sanitize_windows_download_filename, deconstruct_s3_url
+    sanitize_windows_download_filename, deconstruct_s3_url, collect_directory_list
 
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s:%(levelname)s:%(message)s")
 logger = logging.getLogger(__name__)
@@ -87,6 +88,30 @@ class TestUtils(TestCase):
         mock_file.side_effect = IOError()
         test_file = os.path.join(os.path.expanduser('~'), 'NDATools\\clientscripts\\config\\settings.cfg')
         self.assertFalse(check_read_permissions(test_file))
+
+    @patch('os.path.isdir', side_effect=[True, True])
+    @patch('builtins.input', return_value=f"{Path.cwd()}\\data\\api_responses,{Path.cwd()}\\data\\validation")
+    def test_collect_directory_list_has_multiple_dir(self, mock_input, mock_isdir):
+        directories = collect_directory_list()
+        self.assertEquals(2, len(directories))
+        self.assertTrue(Path(f"{Path.cwd()}\\data\\api_responses") in directories)
+        self.assertTrue(Path(f"{Path.cwd()}\\data\\validation") in directories)
+
+    @patch('os.path.isdir', return_value=True)
+    @patch('builtins.input', return_value=f"{Path.cwd()}\\data\\api_responses")
+    def test_collect_directory_list(self, mock_input, mock_isdir):
+        directories = collect_directory_list()
+        self.assertEquals(1, len(directories))
+        self.assertTrue(Path(f"{Path.cwd()}\\data\\api_responses") in directories)
+
+    @patch('os.path.isdir', side_effect=[False, True])
+    @patch('builtins.input', side_effect=["invalid/path", f"{Path.cwd()}\\data\\api_responses"])
+    def test_collect_directory_list_retry(self, mock_input, mock_isdir):
+        directories = collect_directory_list()
+        self.assertEquals(1, len(directories))
+        self.assertTrue(Path(f"{Path.cwd()}\\data\\api_responses") in directories)
+
+
 
 
 @pytest.mark.parametrize('bucket,key', [
