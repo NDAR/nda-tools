@@ -93,7 +93,7 @@ class TestUtils(TestCase):
     @patch('builtins.input', return_value=f"{Path.cwd()}\\data\\api_responses,{Path.cwd()}\\data\\validation")
     def test_collect_directory_list_has_multiple_dir(self, mock_input, mock_isdir):
         directories = collect_directory_list()
-        self.assertEquals(2, len(directories))
+        self.assertEqual(2, len(directories))
         self.assertTrue(Path(f"{Path.cwd()}\\data\\api_responses") in directories)
         self.assertTrue(Path(f"{Path.cwd()}\\data\\validation") in directories)
 
@@ -101,14 +101,14 @@ class TestUtils(TestCase):
     @patch('builtins.input', return_value=f"{Path.cwd()}\\data\\api_responses")
     def test_collect_directory_list(self, mock_input, mock_isdir):
         directories = collect_directory_list()
-        self.assertEquals(1, len(directories))
+        self.assertEqual(1, len(directories))
         self.assertTrue(Path(f"{Path.cwd()}\\data\\api_responses") in directories)
 
     @patch('os.path.isdir', side_effect=[False, True])
     @patch('builtins.input', side_effect=["invalid/path", f"{Path.cwd()}\\data\\api_responses"])
     def test_collect_directory_list_retry(self, mock_input, mock_isdir):
         directories = collect_directory_list()
-        self.assertEquals(1, len(directories))
+        self.assertEqual(1, len(directories))
         self.assertTrue(Path(f"{Path.cwd()}\\data\\api_responses") in directories)
 
 

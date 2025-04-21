@@ -276,14 +276,14 @@ class Download(Protocol):
 
         if completed_file_ct > 0:
             if self.download_directory:
-                skipping_message = 'Skipping {} files ({}) which have already been downloaded in {}\n'.format(
-                    completed_file_ct, human_size(completed_file_sz), self.download_directory)
+                skipping_message = 'Skipping {} files which have already been downloaded in {}\n'.format(
+                    completed_file_ct, self.download_directory)
             else:
                 download_progress_report_path = os.path.join(self.package_metadata_directory,
                                                              '.download-progress', self.download_job_uuid,
                                                              'download-progress-report.csv')
-                skipping_message = 'Skipping {} files ({}) which have already been downloaded according to log file {}.\n'.format(
-                    completed_file_ct, human_size(completed_file_sz), download_progress_report_path)
+                skipping_message = 'Skipping {} files which have already been downloaded according to log file {}.\n'.format(
+                    completed_file_ct, download_progress_report_path)
             file_ct_remaining = file_ct_all - completed_file_ct
             file_sz -= completed_file_sz
 
@@ -300,11 +300,10 @@ class Download(Protocol):
             logger.info('Exiting Program...')
             return
 
-        message = '{}Beginning download of {}{} files ({}){} to {} using {} threads'.format(
+        message = '{}Beginning download of {}{} files{} to {} using {} threads'.format(
             skipping_message,
             'the remaining ' if skipping_message else '',
-            file_ct_all,
-            human_size(file_sz),
+            file_ct_remaining if skipping_message else file_ct_all,
             f' matching {self.regex_file_filter}' if self.regex_file_filter else '',
             self.custom_user_s3_endpoint or self.download_directory,
             self.thread_num)

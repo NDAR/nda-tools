@@ -45,7 +45,7 @@ def parse_args():
                         help='Flag whether to construct the submission package')
 
     parser.add_argument('-c', '--collectionID', metavar='<arg>', type=int, action='store',
-                        help='The NDA collection ID')
+                        help='The integer part of an NDA collection ID, i.e., for collection C1234, enter 1234')
 
     parser.add_argument('-d', '--description', metavar='<arg>', type=str, action='store',
                         help='The description of the submission')

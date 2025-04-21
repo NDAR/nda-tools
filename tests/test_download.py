@@ -111,7 +111,7 @@ def test_invalid_regex(download_mock, logger_mock):
     ds_download.download_local.assert_not_called()
 
 
-def test_download_with_some_completed_files(download_mock, logger_mock, tmp_path, shared_datadir):
+def test_download_with_all_completed_files(download_mock, logger_mock, tmp_path, shared_datadir):
     """ Test that the program uses the files in .download-progress to check for already completed files"""
     ds_download = download_mock(args=['-dp', '1189934'])
     job_uuid = '346886af-9c50-4aaf-ace3-db22c3b3a4c9'  # needs to match the uuid in the manifest
@@ -131,3 +131,23 @@ def test_download_with_some_completed_files(download_mock, logger_mock, tmp_path
     logger_mock.info.assert_any_call_contains('All files have been downloaded')
     ds_download.download_local.assert_not_called()
     assert not logger_mock.info.any_call_contains('Beginning download')
+
+def test_download_with_some_completed_files(download_mock, logger_mock, tmp_path, shared_datadir):
+    """ Test that the program uses the files in .download-progress to check for already completed files"""
+    ds_download = download_mock(args=['-dp', '1189934'])
+    job_uuid = '346886af-9c50-4aaf-ace3-db22c3b3a4c9'  # needs to match the uuid in the manifest
+
+    manifest = shared_datadir / 'download-progress' / 'download-job-manifest.csv'
+    report = shared_datadir / 'download-progress' / 'download-progress-report-incomplete.csv'
+    # copy the above files to the expected path so the program finds and uses them
+    shutil.copy(manifest,
+                os.path.join(ds_download.download_directory, '.download-progress', 'download-job-manifest.csv'))
+    os.mkdir(os.path.join(ds_download.download_directory, '.download-progress', job_uuid))
+    shutil.copy(report,
+                os.path.join(ds_download.download_directory, '.download-progress', job_uuid,
+                             'download-progress-report.csv'))
+    ds_download.download_job_uuid = job_uuid
+    ds_download.start()
+    # some files are downloaded and should be skipped
+    logger_mock.info.assert_any_call_contains('Skipping 4 files which have already been downloaded')
+    logger_mock.info.assert_any_call_contains('Beginning download of the remaining 2 files')
