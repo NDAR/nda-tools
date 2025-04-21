@@ -77,9 +77,7 @@ class Submission:
         self.thread_num = max([1, multiprocessing.cpu_count() - 1])
         if thread_num:
             self.thread_num = thread_num
-        self.batch_size = 10000
-        if batch_size:
-            self.batch_size = batch_size
+        self.batch_size = batch_size
         self.credentials_list = []
         self.status = None
         self.source_bucket = None
@@ -157,16 +155,10 @@ class Submission:
         return int(response['associated_file_count']), int(response['uploaded_file_count'])
 
     def get_multipart_credentials(self, file_ids):
-        all_credentials = []
-        batched_ids = [file_ids[i:i + self.batch_size] for i in range(0, len(file_ids), self.batch_size)]
-
-        for ids in batched_ids:
-            credentials_list = post_request("/".join(
-                [self.api, self.submission_id, 'files/batchMultipartUploadCredentials']),
-                payload=json.dumps(ids), auth=self.auth)
-            all_credentials = all_credentials + credentials_list['credentials']
-
-        return all_credentials
+        credentials_list = post_request("/".join(
+            [self.api, self.submission_id, 'files/batchMultipartUploadCredentials']),
+            payload=json.dumps(file_ids), auth=self.auth)
+        return credentials_list['credentials']
 
     def get_files_from_page(self, page_number, page_size, exclude_uploaded=False):
         excluded_q_param = f'&omitCompleted=true' if exclude_uploaded else ''
@@ -186,11 +178,11 @@ class Submission:
                 logger.error('\nPlease email NDAHelp@mail.nih.gov for help in resolving this error')
                 exit_error()
 
-    def get_files_iterator(self, total_results, page_size=100_000, exclude_uploaded=False):
-        last_page = math.ceil(total_results / page_size)
+    def get_files_iterator(self, total_results, exclude_uploaded=False):
+        last_page = math.ceil(total_results / self.batch_size)
         page_number = last_page - 1  # pages are 0 based
         while page_number >= 0:
-            tmp = self.get_files_from_page(page_number, page_size, exclude_uploaded)
+            tmp = self.get_files_from_page(page_number, self.batch_size, exclude_uploaded)
             if not tmp:
                 break
             yield tmp
@@ -210,11 +202,9 @@ class Submission:
 
         list_data = list(map(to_payload, files))
         url = "/".join([self.api, self.submission_id, 'files/batchUpdate'])
-        data_to_dump = [list_data[i:i + self.batch_size] for i in range(0, len(list_data), self.batch_size)]
-        for d in data_to_dump:
-            data = json.dumps(d)
-            response = put_request(url, payload=data, auth=self.auth)
-            errors.extend(response['errors'])
+        data = json.dumps(list_data)
+        response = put_request(url, payload=data, auth=self.auth)
+        errors.extend(response['errors'])
 
         return errors
 
@@ -232,7 +222,6 @@ class Submission:
                                 upload_progress=None,
                                 files_to_upload_count=None,
                                 check_uploaded_not_complete=False):
-        batch_size = 50
         multipart_threshold = 5 * GB
 
         files_not_found = []
@@ -249,7 +238,7 @@ class Submission:
         transfer_config = TransferConfig(multipart_threshold=multipart_threshold, use_threads=False)
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.thread_num) as executor:
             for batch_number, submission_file_batch in enumerate(
-                    self.get_files_iterator(files_to_upload_count, page_size=batch_size, exclude_uploaded=True)):
+                    self.get_files_iterator(files_to_upload_count, exclude_uploaded=True)):
 
                 if check_uploaded_not_complete:
                     submission_file_batch = self.check_uploaded_not_complete(submission_file_batch)

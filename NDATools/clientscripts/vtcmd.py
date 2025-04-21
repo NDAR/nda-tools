@@ -73,7 +73,7 @@ def parse_args():
                         help='Number of worker threads')
 
     parser.add_argument('-bc', '--batch', metavar='<arg>', type=int, action='store',
-                        help='Batch size')
+                        help='Batch size', default=50)
 
     parser.add_argument('--hideProgress', action='store_true', help='Hides upload/processing progress')
 
