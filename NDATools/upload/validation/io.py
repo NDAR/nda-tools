@@ -1,4 +1,5 @@
 import logging
+from typing import List
 
 from tabulate import tabulate
 
@@ -10,7 +11,7 @@ from NDATools.upload.validation.filewriter import JsonValidationFileWriter, CsvV
 logger = logging.getLogger(__name__)
 
 
-def preview_validation_errors(results: [ValidationResponse], limit=10):
+def preview_validation_errors(results: List[ValidationResponse], limit=10):
     table_list = []
     for result in results:
         r: ValidationResponse = result
@@ -42,7 +43,7 @@ class UserIO:
         self.file_writer = JsonValidationFileWriter(NDA_TOOLS_VAL_FOLDER) if is_json \
             else CsvValidationFileWriter(NDA_TOOLS_VAL_FOLDER)
 
-    def run_validation_step_io(self, results: [ValidationResponse], output_warnings: bool):
+    def run_validation_step_io(self, results: List[ValidationResponse], output_warnings: bool):
         # Print out various information based on the command line args and the status of the validation results
         self.file_writer.write_errors(results)
         logger.info(
@@ -71,5 +72,3 @@ class UserIO:
             for result in errors:
                 logger.info('UUID {}: {}'.format(result.uuid, result.file.name))
             preview_validation_errors(results, limit=10)
-            if not success:
-                exit_error('No files passed validation, please correct any errors and validate again.')

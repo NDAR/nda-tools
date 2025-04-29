@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import time
+from typing import List
 
 from NDATools.upload.validation.api import ValidationResponse
 
@@ -50,10 +51,10 @@ class JsonValidationFileWriter(ValidationFileWriter):
         with open(self.errors_file if is_errors else self.warnings_file, 'w') as f:
             json.dump(json_data, f)
 
-    def write_errors(self, results: [ValidationResponse]):
+    def write_errors(self, results: List[ValidationResponse]):
         self._write(results, True)
 
-    def write_warnings(self, results: [ValidationResponse]):
+    def write_warnings(self, results: List[ValidationResponse]):
         self._write(results, False)
 
 
@@ -61,7 +62,7 @@ class CsvValidationFileWriter(ValidationFileWriter):
     def __init__(self, results_folder):
         super().__init__(results_folder, Extension.CSV)
 
-    def write_errors(self, results: [ValidationResponse]):
+    def write_errors(self, results: List[ValidationResponse]):
         fieldnames = ['FILE', 'ID', 'STATUS', 'EXPIRATION_DATE', 'ERRORS', 'COLUMN', 'MESSAGE', 'RECORD']
         with open(self.errors_file, 'w', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -95,7 +96,7 @@ class CsvValidationFileWriter(ValidationFileWriter):
                         'RECORD': 'None'
                     })
 
-    def write_warnings(self, results: [ValidationResponse]):
+    def write_warnings(self, results: List[ValidationResponse]):
         fieldnames = ['FILE', 'ID', 'STATUS', 'EXPIRATION_DATE', 'WARNINGS', 'MESSAGE', 'COUNT']
         with open(self.warnings_file, 'w', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)

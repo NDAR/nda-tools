@@ -3,6 +3,7 @@ import logging
 import pathlib
 import traceback
 from concurrent.futures import ThreadPoolExecutor
+from typing import List
 
 from tqdm import tqdm
 
@@ -27,11 +28,11 @@ class NDA:
                                           self.config.hideProgress)
         ...
 
-    def validate_files(self, files: [str]) -> [ValidationResponse]:
+    def validate_files(self, files: List[str]) -> List[ValidationResponse]:
         logger.info(f'\nValidating {len(files)} files...')
         try:
             # validate the files first, and then upload the manifests in order to match the behavior of prev versions of the client
-            results: [ValidationResponse] = []
+            results: List[ValidationResponse] = []
 
             with tqdm(total=len(files), disable=self.config.hideProgress) as progress_bar, \
                     ThreadPoolExecutor(max_workers=self.config.workerThreads) as executor:
@@ -50,6 +51,7 @@ class NDA:
             logger.error(f'An unexpected error occurred: {e}')
             logger.error(traceback.format_exc())
             exit_error()
+            exit(1)
 
     def validate_file(self, file_name: str, upload_manifests=True) -> ValidationResponse:
         val_resp: ValidationResponse = self.validation_api.validate_file(pathlib.Path(file_name), self.config.scope,
@@ -59,7 +61,7 @@ class NDA:
             return self.upload_manifests(val_resp.manifests)[0]
         return val_resp
 
-    def upload_manifests(self, manifests: [ValidationManifest]) -> [ValidationResponse]:
+    def upload_manifests(self, manifests: List[ValidationManifest]) -> List[ValidationResponse]:
         # add warning if more than 1 manifest dir was detected. in later versions of the tool, we are only going to allow users to specify one manifest dir
         if isinstance(self.config.manifest_path, list):
             if len(self.config.manifest_path) > 1:
@@ -72,7 +74,7 @@ class NDA:
 
         self.uploader.upload_manifests(manifests, manifest_dir)
         print(f'\nManifests uploaded. Waiting for validation of manifests to complete....')
-        validation_results: {ValidationResponse} = {m.validation_response for m in manifests}
+        validation_results: List[ValidationResponse] = [m.validation_response for m in manifests]
 
         with tqdm(total=len(validation_results), disable=self.config.hideProgress) as progress_bar, \
                 ThreadPoolExecutor(max_workers=self.config.workerThreads) as executor:

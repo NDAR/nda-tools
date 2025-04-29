@@ -4,6 +4,7 @@ import os
 import pathlib
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import List
 
 from tqdm import tqdm
 
@@ -23,7 +24,7 @@ class ManifestNotFoundError(ManifestError):
     ...
 
 
-def _manifests_not_found_msg(errs: [ManifestNotFoundError], manifests_dir: str):
+def _manifests_not_found_msg(errs: List[ManifestNotFoundError], manifests_dir: str):
     files_not_found = list(map(lambda x: x.manifest.local_file_name, errs))
     msg = f'The following manifests could not be found in {manifests_dir}:\n'
     msg += '\n'.join(files_not_found[:20])
@@ -57,7 +58,7 @@ class ManifestsUploader:
                 raise e
 
     def _handle_manifests_not_found(self,
-                                    errs: [ManifestNotFoundError],
+                                    errs: List[ManifestNotFoundError],
                                     manifest_dir: pathlib.Path,
                                     progress_bar: tqdm):
         # ask the user if they want to continue
@@ -74,7 +75,7 @@ class ManifestsUploader:
                 break
         self._upload_manifests(files_not_found, retry_manifests_dir, progress_bar)
 
-    def upload_manifests(self, manifests: [ValidationManifest], manifest_dir: pathlib.Path):
+    def upload_manifests(self, manifests: List[ValidationManifest], manifest_dir: pathlib.Path):
         logger.info(f'\nUploading {len(manifests)} manifests')
         if not manifest_dir:
             manifest_dir = os.getcwd()
@@ -87,7 +88,7 @@ class ManifestsUploader:
         logger.debug(f'Finished uploading {len(manifests)} manifests')
 
     def _upload_manifests(self,
-                          manifests: [ValidationManifest],
+                          manifests: List[ValidationManifest],
                           manifest_dir: pathlib.Path,
                           progress_bar: tqdm):
         assert len(manifests) > 0, "no manifests passed to _upload_manifests method"

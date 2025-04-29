@@ -1,6 +1,7 @@
 import argparse
 import random
 import sys
+from typing import List
 
 import requests.exceptions
 
@@ -109,7 +110,7 @@ def resume_submission(sub_id, batch, config=None):
         print_submission_complete_message(submission, False)
 
 
-def validate_v2(file_list, config, show_warnings: bool) -> [ValidationResponse]:
+def validate_v2(file_list, config, show_warnings: bool) -> List[ValidationResponse]:
     nda = NDA(config)  # only object to contain urls
     io = UserIO(is_json=config.JSON, skip_prompt=config.force)
 
@@ -123,7 +124,7 @@ def validate_v1(file_list, warnings, will_submit, threads, config=None, pending_
                             allow_exit=True, pending_changes=pending_changes, original_uuids=original_uuids)
     logger.info('\nValidating files...')
     validation.validate()
-    validation.output()
+    validation.save_to_file()
 
     if warnings:
         warning_path = validation.get_warnings()

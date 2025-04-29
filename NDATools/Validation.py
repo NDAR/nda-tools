@@ -154,7 +154,7 @@ class Validation:
                 manifest
                 in manifests}
 
-    def output(self):
+    def save_to_file(self):
         encountered_system_error = False
         if self.config.JSON:
             json_data = dict(Results=[])

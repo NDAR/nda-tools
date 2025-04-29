@@ -4,7 +4,7 @@ import os
 import pathlib
 import time
 from threading import RLock
-from typing import Union
+from typing import Union, List
 
 import boto3
 import requests
@@ -167,7 +167,7 @@ class ValidationResponse:
         return self.rw_creds.uuid
 
     @property
-    def manifests(self) -> [ValidationManifest]:
+    def manifests(self) -> List[ValidationManifest]:
         this = self
         return list(
             map(lambda x: ValidationManifest(**{**x, 'validation_response': this}), self.rw_creds.download_manifests()))
@@ -246,5 +246,10 @@ class ValidationApi:
 
     def get_validation(self, uuid: str) -> ValidationV2:
         url = f"{self.api_v2_endpoint}{uuid}"
+        tmp = get_request(url, auth=self.auth)
+        return ValidationV2(**tmp)
+
+    def get_manifest_errors(self, uuid: str) -> ValidationV2:
+        url = f"{self.api_v2_endpoint}{uuid}/manifests/errors"
         tmp = get_request(url, auth=self.auth)
         return ValidationV2(**tmp)
