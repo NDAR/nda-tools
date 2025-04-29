@@ -171,6 +171,8 @@ class ClientConfiguration:
 
             # validate credentials
             while not self.is_valid_nda_credentials():
+                logger.info(
+                    'Unable to authenticate your NDA account credentials with nda-tools. Please check your NDA account credentials.\n')
                 self._use_keyring = False
                 prompt_for_username()
                 self._get_password()
@@ -185,14 +187,15 @@ class ClientConfiguration:
             return True
         except HTTPError as e:
             if e.response.status_code == 401:
-                logger.error('\nYour account is locked, which is preventing your authorized access to nda-tools. To unlock your account, set a new password by doing the following:')
-                logger.error('\t1. Log into NDA (https://nda.nih.gov) using your RAS credentials (eRA Commons, Login.gov, or Smart Card/CAC)')
-                logger.error('\t2. Navigate to your NDA profile (https://nda.nih.gov/user/dashboard/profile)')
-                logger.error('\t3. Click on the \'Update Password\' button, found near the upper right corner of the page')
-                logger.error('\t4. Set a new password. Once your password is successfully reset, your account will be unlocked.')
-                # exit if unauthorized, users can try again later after they fix their account
-                exit_error()
+                if 'locked' in e.response.text:
+                    # user account is locked
+                    tmp = json.loads(e.response.text)
+                    logger.error('\nError: %s', tmp['message'])
+                    logger.error('\nPlease contact NDAHelp@mail.nih.gov for help in resolving this error')
+                    exit_error()
+                else:
+                    return False
             else:
-                logger.error('\nSystem Error while checking credentials for user %s', self.username)
+                logger.error('\nSystemError while checking credentials for user %s', self.username)
                 logger.error('\nPlease contact NDAHelp@mail.nih.gov for help in resolving this error')
                 exit_error()
