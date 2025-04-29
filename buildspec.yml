@@ -15,7 +15,33 @@ phases:
       - coverage run -m pytest && coverage report -m
       - python -m build
       - twine upload $PYTHON_ENV dist/* -u $PYPI_USER -p $TESTPYPI_PASSWORD
-      - $GITSCRIPT
+      - if ["$ENV" == "prod"]; then
+          echo "Setting up Git remote"
+          git config user.name "$GithubUsername" --replace-all
+          git config user.email "$GithubEmail" --replace-all
+          git remote set-url --push origin $GithubRepo
+          echo "Extract the version number"
+          initFilePath="NDATools/__init__.py"
+          if [ -f "$initFilePath" ]; then
+            versionPattern="__version__ = '([0-9]+\.[0-9]+\.[0-9]+)'"
+            initFileContent=$(cat "$initFilePath")
+            if [[ $initFileContent =~ $versionPattern ]]; then
+               versionNumber=${BASH_REMATCH[1]}
+               echo "Version number found: $versionNumber"
+               commitMessage="Updated to version $versionNumber"
+               git commit -m "$commitMessage"
+               gitTag="$versionNumber"
+               git tag "$gitTag"
+               git push origin "$gitTag"
+            else
+            echo "Version number not found in __init__.py"
+            fi
+          else
+          echo "File $initFilePath does not exist"
+          fi
+        else
+          echo "In Development stage, skipping push to Github."
+        fi
   post_build:
     commands:
       - echo $CODEBUILD_RESOLVED_SOURCE_VERSION
