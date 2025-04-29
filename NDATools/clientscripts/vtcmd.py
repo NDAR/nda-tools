@@ -133,42 +133,37 @@ def validate_v1(file_list, warnings, will_submit, threads, config=None, pending_
             logger.info('\nNote: Your data has warnings. To save warnings, run again with -w argument.')
     logger.info('\nAll files have finished validating.')
 
-    # Test if no files passed validation, exit
-    if not any(map(lambda x: not validation.uuid_dict[x]['errors'], validation.uuid_dict)):
-        logger.info('No files passed validation, please correct any errors and validate again.')
-        validation.output_validation_error_messages()
-        sys.exit(1)
+    has_valid_files = any(map(lambda x: not validation.uuid_dict[x]['errors'], validation.uuid_dict))
+    has_invalid_files = any(map(lambda x: bool(validation.uuid_dict[x]['errors']), validation.uuid_dict))
+
     # If some files passed validation, show files with and without errors
-    else:
+    if has_valid_files:
         logger.info('\nThe following files passed validation:')
         for uuid in validation.uuid_dict:
             if not validation.uuid_dict[uuid]['errors']:
                 logger.info('UUID {}: {}'.format(uuid, validation.uuid_dict[uuid]['file']))
-        if validation.e:
-            logger.info('\nThese files contain errors:')
-            for uuid in validation.uuid_dict:
-                if validation.uuid_dict[uuid]['errors']:
-                    logger.info('UUID {}: {}'.format(uuid, validation.uuid_dict[uuid]['file']))
-                    validation.output_validation_error_messages()
-    # If some files had errors, give option to submit just the files that passed
-    if not config.replace_submission:
-        # If some files had errors, give option to submit just the files that passed
-        if will_submit and validation.e and not config.force:
-            proceed = evaluate_yes_no_input('Some files have errors, do you want to continue '
-                                            'and submit ONLY the files that have passed validation?', 'n')
 
-            if str(proceed).lower() == 'no':
-                return
-            elif str(proceed).lower() == 'y':
-                validation.uuid = validation.verify_uuid()
-    # We are replacing a submission
-    else:
-        if will_submit and validation.e:
-            logger.error('ERROR - At least some of the files failed validation. '
-                         'All files must pass validation in order to edit submission {}. Please fix these errors and try again.'.format(
-                config.replace_submission))
-            exit_error()
-        elif will_submit and validation.data_structures_with_missing_rows and not config.force:
+    if has_invalid_files:
+        logger.info('\nThese files contain errors:')
+        for uuid in validation.uuid_dict:
+            if validation.uuid_dict[uuid]['errors']:
+                logger.info('UUID {}: {}'.format(uuid, validation.uuid_dict[uuid]['file']))
+
+        # pretty print summary of errors in a table
+        validation.output_validation_error_messages()
+
+        if will_submit:
+            if config.replace_submission:
+                logger.error('ERROR - At least some of the files failed validation. '
+                             'All files must pass validation in order to edit submission {}. Please fix these errors and try again.'.format(
+                    config.replace_submission))
+            else:
+                logger.info('You must correct the above errors before you can submit to NDA')
+            sys.exit(1)
+
+    # For resubmission workflow: alert user if data loss was detected in one of their data-structures
+    if config.replace_submission:
+        if will_submit and validation.data_structures_with_missing_rows and not config.force:
             logger.warning('\nWARNING - Detected missing information in the following files: ')
 
             for tuple_expected_actual in validation.data_structures_with_missing_rows:
@@ -342,7 +337,6 @@ def main():
         # Need to check to see if I need to update this step!
         resume_submission(submission_id, batch=args.batch, config=config)
     else:
-
         uuid = validate(args, config, pending_changes, original_uuids)
         # If user requested to build a package
         if args.buildPackage:

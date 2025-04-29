@@ -36,7 +36,6 @@ class Validation:
         self.date = time.strftime("%Y%m%dT%H%M%S")
         self.e = False
         self.w = False
-        self.manifest_data_files = []
         self.manifest_path = self.config.manifest_path
         if self.config.JSON:
             self.log_file = os.path.join(NDATools.NDA_TOOLS_VAL_FOLDER, 'validation_results_{}.json'.format(self.date))
@@ -287,19 +286,6 @@ class Validation:
                 table_list.append(table)
                 logger.info(table)
         return table_list
-
-    def verify_uuid(self):
-        uuid_list = []
-        for uuid in self.uuid_dict:
-            if not self.uuid_dict[uuid]['errors']:
-                uuid_list.append(uuid)
-
-        for response in self.manifest_data_files:
-            if response['id'] not in uuid_list:
-                self.manifest_data_files.remove(response)
-        if self.original_uuids:
-            uuid_list = self.generate_uuids_for_qa_workflow()[0]
-        return uuid_list
 
     def generate_uuids_for_qa_workflow(self, unrecognized_ds=set()):
         unrecognized_structures = set(unrecognized_ds)
