@@ -1,11 +1,13 @@
 import argparse
 import random
+from typing import List
 
 from NDATools.BuildPackage import SubmissionPackage
 from NDATools.Configuration import *
 from NDATools.NDA import NDA
 from NDATools.Submission import Submission
 from NDATools.Utils import get_request, get_non_blank_input
+from NDATools.upload import ValidatedFile
 from NDATools.upload.validation.io import UserIO
 from NDATools.upload.validation.v1 import retrieve_replacement_submission_params
 
@@ -105,7 +107,7 @@ def resume_submission(sub_id, batch, config=None):
         print_submission_complete_message(submission, False)
 
 
-def validate(args, config, pending_changes, original_uuids):
+def validate(args, config, pending_changes, original_uuids) -> List[ValidatedFile]:
     api_config = get_request(f'{config.validation_api_endpoint}/config')
     percent = api_config['v2Routing']['percent']
     logger.debug('v2_routing percent: {}'.format(percent))
@@ -115,6 +117,7 @@ def validate(args, config, pending_changes, original_uuids):
     nda = NDA(config)  # only object to contain urls
     io = UserIO(is_json=config.JSON, skip_prompt=config.force)
 
+    # Perform the validation using v1 or v2 endpoints. Errors and warnings are streamed or saved in memory for v2 and v1 respectively
     if v2_api:
         logger.debug('Using the new validation API.')
         if not config.is_authenticated():
@@ -122,11 +125,9 @@ def validate(args, config, pending_changes, original_uuids):
         validated_files = nda.validate_files(args.files)
     else:
         logger.debug('Using the old validation API.')
-        validated_files = nda.validate_files_v1(args.files, args.warning, args.buildPackage,
-                                                threads=args.workerThreads,
-                                                config=config,
-                                                pending_changes=pending_changes,
+        validated_files = nda.validate_files_v1(args.files, args.workerThreads, pending_changes=pending_changes,
                                                 original_uuids=original_uuids)
+    # Save errors to errors file
     io.save_validation_errors(validated_files)
     logger.info(
         '\nAll files have finished validating. Validation report output to: {}'.format(
@@ -136,12 +137,14 @@ def validate(args, config, pending_changes, original_uuids):
         msg += '\nPlease email NDAHelp@mail.nih.gov for help in resolving this error and include {} as an attachment to help us resolve the issue'
         exit_error(msg)
 
+    # Save warnings to warnings file if user requested
     if args.warning:
         io.save_validation_warnings(validated_files)
         logger.info('Warnings output to: {}'.format(io.warnings_file))
     elif any(map(lambda x: x.has_warnings(), validated_files)):
         logger.info('Note: Your data has warnings. To save warnings, run again with -w argument.')
 
+    # Preview errors for each file
     for file in validated_files:
         if file.has_errors():
             if file.has_manifest_errors():
@@ -149,16 +152,41 @@ def validate(args, config, pending_changes, original_uuids):
             else:
                 file.preview_validation_errors(10)
 
-    # TODO add back in the printout regarding datastructure with missing rows if the user is going to resubmit
+    #  TODO add back in the below output
+    # if will_submit:
+    #      if replace_submission:
+    #          logger.error('ERROR - At least some of the files failed validation. '
+    #                       'All files must pass validation in order to edit submission {}. Please fix these errors and try again.'.format(
+    #              replace_submission))
+    #      else:
+    #          logger.info('You must correct the above errors before you can submit to NDA')
+    #      sys.exit(1)
+    #
+    #  # For resubmission workflow: alert user if data loss was detected in one of their data-structures
+    #  if config.replace_submission:
+    #      if will_submit and validation.data_structures_with_missing_rows and not config.force:
+    #          logger.warning('\nWARNING - Detected missing information in the following files: ')
+    #
+    #          for tuple_expected_actual in validation.data_structures_with_missing_rows:
+    #              logger.warning(
+    #                  '\n{} - expected {} rows but found {}  '.format(tuple_expected_actual[0],
+    #                                                                  tuple_expected_actual[1],
+    #                                                                  tuple_expected_actual[2]))
+    #          prompt = '\nIf you update your submission with these files, the missing data will be reflected in your data-expected numbers'
+    #          prompt += '\nAre you sure you want to continue? <Yes/No>: '
+    #          proceed = evaluate_yes_no_input(prompt, 'n')
+    #          if str(proceed).lower() == 'n':
+    #              exit_error(message='')
+    return validated_files
 
-    
-def build_package(uuid, config, pending_changes=None, original_uuids=None):
+
+def build_package(validated_files, config, pending_changes=None, original_uuids=None):
     if not config.title:
         config.title = get_non_blank_input('Enter title for dataset name:', 'Title')
     if not config.description:
         config.description = get_non_blank_input('Enter description for the dataset submission:', 'Description')
 
-    package = SubmissionPackage(uuid, config=config, pending_changes=pending_changes,
+    package = SubmissionPackage([v.uuid for v in validated_files], config=config, pending_changes=pending_changes,
                                 original_uuids=original_uuids)
 
     logger.info('Building Package')
@@ -229,10 +257,10 @@ def main():
         # Need to check to see if I need to update this step!
         resume_submission(submission_id, batch=args.batch, config=config)
     else:
-        uuid = validate(args, config, pending_changes, original_uuids)
+        validated_files = validate(args, config, pending_changes, original_uuids)
         # If user requested to build a package
         if args.buildPackage:
-            package = build_package(uuid,
+            package = build_package(validated_files,
                                     config=config,
                                     pending_changes=pending_changes,
                                     original_uuids=original_uuids)
