@@ -59,11 +59,17 @@ class ValidatedFile:
         return list(
             map(lambda x: ValidationManifest(**{**x, 'validation_response': this}), self.rw_creds.download_manifests()))
 
+    def has_manifest_errors(self):
+        pass
+
     def is_valid(self):
         return not self.has_errors()
 
     def is_invalid(self):
         return not self.is_valid()
+
+    def system_error(self):
+        return self.status == ValidationStatus.SYSTEM_ERROR
 
     def has_warnings(self):
         # return 'warnings' in str(self.status).lower()
@@ -80,8 +86,6 @@ class ValidatedFile:
     def preview_validation_errors(self, limit=10):
         table_list = []
         logger.info('\nErrors found in {}:'.format(self.file.name))
-        # errors are grouped by error type, so we need to ungroup and flatten to display in a table by record.
-        # add list splice to reduce memory footprint
         errors = self.errors
         rows = [
             [
@@ -99,3 +103,6 @@ class ValidatedFile:
         if len(errors) > limit:
             logger.info('\n...and {} more errors'.format(len(errors) - limit))
         return table_list
+
+    def show_manifest_errors(self):
+        raise NotImplementedError()

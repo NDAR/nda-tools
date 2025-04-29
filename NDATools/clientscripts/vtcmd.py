@@ -3,7 +3,7 @@ import random
 
 from NDATools.BuildPackage import SubmissionPackage
 from NDATools.Configuration import *
-from NDATools.NDA import NDA, display_validation_results
+from NDATools.NDA import NDA
 from NDATools.Submission import Submission
 from NDATools.Utils import get_request, get_non_blank_input
 from NDATools.upload.validation.io import UserIO
@@ -128,11 +128,30 @@ def validate(args, config, pending_changes, original_uuids):
                                                 pending_changes=pending_changes,
                                                 original_uuids=original_uuids)
     io.save_validation_errors(validated_files)
+    logger.info(
+        '\nAll files have finished validating. Validation report output to: {}'.format(
+            io.errors_file))
+    if any(map(lambda x: x.system_error(), validated_files)):
+        msg = 'Unexpected error occurred while validating one or more of the csv files.'
+        msg += '\nPlease email NDAHelp@mail.nih.gov for help in resolving this error and include {} as an attachment to help us resolve the issue'
+        exit_error(msg)
+
     if args.warning:
         io.save_validation_warnings(validated_files)
-    display_validation_results()
+        logger.info('Warnings output to: {}'.format(io.warnings_file))
+    elif any(map(lambda x: x.has_warnings(), validated_files)):
+        logger.info('Note: Your data has warnings. To save warnings, run again with -w argument.')
 
+    for file in validated_files:
+        if file.has_errors():
+            if file.has_manifest_errors():
+                file.show_manifest_errors()
+            else:
+                file.preview_validation_errors(10)
 
+    # TODO add back in the printout regarding datastructure with missing rows if the user is going to resubmit
+
+    
 def build_package(uuid, config, pending_changes=None, original_uuids=None):
     if not config.title:
         config.title = get_non_blank_input('Enter title for dataset name:', 'Title')

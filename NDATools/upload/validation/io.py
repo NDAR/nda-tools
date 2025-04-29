@@ -135,32 +135,16 @@ class UserIO:
         self.file_writer = JsonValidationFileWriter(NDA_TOOLS_VAL_FOLDER) if is_json \
             else CsvValidationFileWriter(NDA_TOOLS_VAL_FOLDER)
 
+    @property
+    def warnings_file(self):
+        return self.file_writer.warnings_file
+
+    @property
+    def errors_file(self):
+        return self.file_writer.errors_file
+
     def save_validation_errors(self, results: List[ValidatedFile]):
-        # Print out various information based on the command line args and the status of the validation results
         self.file_writer.write_errors(results)
-        # logger.info(
-        #     '\nAll files have finished validating. Validation report output to: {}'.format(
-        #         self.file_writer.errors_file))
-        # if any(map(lambda x: x.status == 'SystemError', results)):
-        #     msg = 'Unexpected error occurred while validating one or more of the csv files.'
-        #     msg += '\nPlease email NDAHelp@mail.nih.gov for help in resolving this error and include {} as an attachment to help us resolve the issue'
-        #     exit_error(msg)
 
     def save_validation_warnings(self, results: List[ValidatedFile]):
         self.file_writer.write_warnings(results)
-        #     logger.info('Warnings output to: {}'.format(self.file_writer.warnings_file))
-        # else:
-        #     if any(map(lambda x: x.has_warnings(), results)):
-        #         logger.info('Note: Your data has warnings. To save warnings, run again with -w argument.')
-
-        # errors = list(filter(lambda x: x.has_errors(), results))
-        # success = list(filter(lambda x: not x.has_errors(), results))
-        # if success:
-        #     logger.info('The following files passed validation:')
-        #     for result in success:
-        #         logger.info('UUID {}: {}'.format(result.uuid, result.file.name))
-        # if errors:
-        #     logger.info('\nThese files contain errors:')
-        #     for result in errors:
-        #         logger.info('UUID {}: {}'.format(result.uuid, result.file.name))
-        #     preview_validation_errors(results, limit=10)
