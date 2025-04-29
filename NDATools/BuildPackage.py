@@ -7,8 +7,8 @@ logger = logging.getLogger(__name__)
 class SubmissionPackage:
     def __init__(self, uuid, config, pending_changes=None, original_uuids=None):
         self.config = config
-        self.api = self.config.submission_package_api
-        self.validationtool_api = self.config.validationtool_api
+        self.api = self.config.submission_package_api_endpoint
+        self.validationtool_api = self.config.validationtool_api_endpoint
         self.uuid = uuid
         self.username = self.config.username
         self.password = self.config.password
@@ -44,7 +44,7 @@ class SubmissionPackage:
             endpoints = get_request("/".join([self.validationtool_api, "user/customEndpoints"]), auth=self.auth,
                                     headers={'Accept': 'application/json'})
             # TODO cache api response
-            all_collections = get_request("/".join([self.config.collection_api]), auth=self.auth,
+            all_collections = get_request("/".join([self.config.collection_api_endpoint]), auth=self.auth,
                                           headers={'Accept': 'application/json'})
             tmp_endpoints = {e['title'] for e in endpoints}
             self.alt_endpoints = {int(c['id']): c['title'] for c in all_collections if

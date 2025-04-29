@@ -65,7 +65,7 @@ class Submission:
                  thread_num=None, batch_size=None):
         assert submission_id or package_id, "Either submission-id or package-id must be specified"
         self.config = config
-        self.api = self.config.submission_api
+        self.api = self.config.submission_api_endpoint
         if username:
             self.config.username = username
         if password:

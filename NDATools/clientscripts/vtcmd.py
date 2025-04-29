@@ -1,18 +1,13 @@
 import argparse
 import random
-import sys
-from typing import List
-
-import requests.exceptions
 
 from NDATools.BuildPackage import SubmissionPackage
 from NDATools.Configuration import *
-from NDATools.NDA import NDA
+from NDATools.NDA import NDA, display_validation_results
 from NDATools.Submission import Submission
-from NDATools.Utils import evaluate_yes_no_input, get_request, get_non_blank_input
-from NDATools.Validation import Validation
-from NDATools.upload.validation.api import ValidationResponse
+from NDATools.Utils import get_request, get_non_blank_input
 from NDATools.upload.validation.io import UserIO
+from NDATools.upload.validation.v1 import retrieve_replacement_submission_params
 
 logger = logging.getLogger(__name__)
 
@@ -110,97 +105,32 @@ def resume_submission(sub_id, batch, config=None):
         print_submission_complete_message(submission, False)
 
 
-def validate_v2(file_list, config, show_warnings: bool) -> List[ValidationResponse]:
-    nda = NDA(config)  # only object to contain urls
-    io = UserIO(is_json=config.JSON, skip_prompt=config.force)
-
-    results = nda.validate_files(file_list)
-    io.run_validation_step_io(results, show_warnings)
-    return results
-
-
-def validate_v1(file_list, warnings, will_submit, threads, config=None, pending_changes=None, original_uuids=None):
-    validation = Validation(file_list, config=config, hide_progress=config.hideProgress, thread_num=threads,
-                            allow_exit=True, pending_changes=pending_changes, original_uuids=original_uuids)
-    logger.info('\nValidating files...')
-    validation.validate()
-    validation.save_to_file()
-
-    if warnings:
-        warning_path = validation.get_warnings()
-        logger.info('Warnings output to: {}'.format(warning_path))
-    else:
-        if validation.w:
-            logger.info('\nNote: Your data has warnings. To save warnings, run again with -w argument.')
-    logger.info('\nAll files have finished validating.')
-
-    has_valid_files = any(map(lambda x: not validation.uuid_dict[x]['errors'], validation.uuid_dict))
-    has_invalid_files = any(map(lambda x: bool(validation.uuid_dict[x]['errors']), validation.uuid_dict))
-
-    # If some files passed validation, show files with and without errors
-    if has_valid_files:
-        logger.info('\nThe following files passed validation:')
-        for uuid in validation.uuid_dict:
-            if not validation.uuid_dict[uuid]['errors']:
-                logger.info('UUID {}: {}'.format(uuid, validation.uuid_dict[uuid]['file']))
-
-    if has_invalid_files:
-        logger.info('\nThese files contain errors:')
-        for uuid in validation.uuid_dict:
-            if validation.uuid_dict[uuid]['errors']:
-                logger.info('UUID {}: {}'.format(uuid, validation.uuid_dict[uuid]['file']))
-
-        # pretty print summary of errors in a table
-        validation.output_validation_error_messages()
-
-        if will_submit:
-            if config.replace_submission:
-                logger.error('ERROR - At least some of the files failed validation. '
-                             'All files must pass validation in order to edit submission {}. Please fix these errors and try again.'.format(
-                    config.replace_submission))
-            else:
-                logger.info('You must correct the above errors before you can submit to NDA')
-            sys.exit(1)
-
-    # For resubmission workflow: alert user if data loss was detected in one of their data-structures
-    if config.replace_submission:
-        if will_submit and validation.data_structures_with_missing_rows and not config.force:
-            logger.warning('\nWARNING - Detected missing information in the following files: ')
-
-            for tuple_expected_actual in validation.data_structures_with_missing_rows:
-                logger.warning(
-                    '\n{} - expected {} rows but found {}  '.format(tuple_expected_actual[0], tuple_expected_actual[1],
-                                                                    tuple_expected_actual[2]))
-            prompt = '\nIf you update your submission with these files, the missing data will be reflected in your data-expected numbers'
-            prompt += '\nAre you sure you want to continue? <Yes/No>: '
-            proceed = evaluate_yes_no_input(prompt, 'n')
-            if str(proceed).lower() == 'n':
-                exit_error(message='')
-
-    return validation.uuid, validation.associated_files_to_upload
-
-
 def validate(args, config, pending_changes, original_uuids):
-    api_config = get_request(f'{config.validation_api}/config')
+    api_config = get_request(f'{config.validation_api_endpoint}/config')
     percent = api_config['v2Routing']['percent']
     logger.debug('v2_routing percent: {}'.format(percent))
     # route X% of traffic to the new validation API
     v2_api = random.randint(1, 100) <= (percent * 100)
 
+    nda = NDA(config)  # only object to contain urls
+    io = UserIO(is_json=config.JSON, skip_prompt=config.force)
+
     if v2_api:
         logger.debug('Using the new validation API.')
         if not config.is_authenticated():
-            config.read_user_credentials(True)
-        validation_results = validate_v2(args.files, config, args.warning)
-        return [r.uuid for r in validation_results]
+            config.read_user_credentials()
+        validated_files = nda.validate_files(args.files)
     else:
         logger.debug('Using the old validation API.')
-        validation_results = validate_v1(args.files, args.warning, args.buildPackage,
-                                         threads=args.workerThreads,
-                                         config=config,
-                                         pending_changes=pending_changes,
-                                         original_uuids=original_uuids)
-        return validation_results[0]
+        validated_files = nda.validate_files_v1(args.files, args.warning, args.buildPackage,
+                                                threads=args.workerThreads,
+                                                config=config,
+                                                pending_changes=pending_changes,
+                                                original_uuids=original_uuids)
+    io.save_validation_errors(validated_files)
+    if args.warning:
+        io.save_validation_warnings(validated_files)
+    display_validation_results()
 
 
 def build_package(uuid, config, pending_changes=None, original_uuids=None):
@@ -254,64 +184,6 @@ def submit_package(package_id, threads, batch,
         submission.check_status()
     if submission.status != Status.UPLOADING:
         print_submission_complete_message(submission, replacement=True if original_submission_id else False)
-
-
-def retrieve_replacement_submission_params(config, submission_id):
-    api = type('', (), {})()
-    api.config = config
-    auth = requests.auth.HTTPBasicAuth(config.username, config.password)
-
-    try:
-        response = get_request('/'.join([config.submission_api, submission_id, 'change-history']), auth=auth)
-    except requests.exceptions.HTTPError as e:
-
-        if e.response.status_code == 403:
-            exit_error(
-                message='You are not authorized to access submission {}. If you think this is a mistake, please contact NDA help desk'.format(
-                    submission_id))
-        else:
-            exit_error(message='There was a General Error communicating with the NDA server. Please try again later')
-
-    # check to see if the submission was already replaced?
-    if not response[0]['replacement_authorized']:
-        if len(response) > 1 and response[1]['replacement_authorized']:
-            message = '''Submission {} was already replaced by {} on {}.
-If you need to make further edits to this submission, please reach out the the NDA help desk''' \
-                .format(submission_id, response[0]['created_by'], response[0]['created_date'])
-            exit_error(message=message)
-        else:
-            exit_error(
-                message='submission_id {} is not authorized to be replaced. Please contact the NDA help desk for approval to replace this submission'.format(
-                    submission_id))
-
-    response = get_request('/'.join([config.submission_api, submission_id]), auth=auth)
-    if response is None:
-        exit_error(message='There was a General Error communicating with the NDA server. Please try again later')
-
-    submission_id = response['submission_id']
-    config.title = response['dataset_title']
-    config.description = response['dataset_description']
-    config.collection_id = response['collection']['id']
-
-    # get pending-changes for submission-id
-    response = get_request('/'.join([config.submission_api, submission_id, 'pending-changes']), auth=auth)
-    if response is None:
-        exit_error(message='There was a General Error communicating with the NDA server. Please try again later')
-
-    # get list of associated-files that have already been uploaded for pending changes
-    pending_changes = []
-    original_submission_id = submission_id
-    original_uuids = {uuid for uuid in response['validation_uuids']}
-    for change in response['pendingChanges']:
-        validation_uuids = change['validationUuids']
-        manifest_files = []
-        for uuid in validation_uuids:
-            response = get_request('/'.join([config.validation_api, uuid]))
-            manifest_files.extend(manifest['localFileName'] for manifest in response['manifests'])
-        change['manifests'] = manifest_files
-        pending_changes.append(change)
-
-    return pending_changes, original_uuids, original_submission_id
 
 
 def check_args(args):

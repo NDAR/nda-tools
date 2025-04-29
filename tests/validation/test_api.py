@@ -24,11 +24,11 @@ def test_pydantic_validation_errors(monkeypatch, validation_api):
         m.setattr(NDATools.upload.validation.api, 'post_request', Mock(side_effect=[mock_response]))
         # missing field causes Validation Error
         with pytest.raises(ValidationError):
-            validation_api.initialize_validation_request('fmriresults01.csv')
+            validation_api.request_upload_credentials('fmriresults01.csv')
         # adding the field back resolves the validation error
         mock_response['access_key_id'] = 'fake_access_key'
         m.setattr(NDATools.upload.validation.api, 'post_request', Mock(side_effect=[mock_response]))
-        creds = validation_api.initialize_validation_request('fmriresults01.csv')
+        creds = validation_api.request_upload_credentials('fmriresults01.csv')
         assert creds.secret_access_key == 'fake_secret_key'
         assert creds.access_key_id == 'fake_access_key'
         assert creds.session_token == 'fake_session_token'

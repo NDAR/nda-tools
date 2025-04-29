@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import NDATools
-from NDATools.upload.validation.api import ValidationV2Credentials, ValidationResponse, ValidationV2
+from NDATools.upload.validation.api import ValidationV2Credentials, ValidatedFile, ValidationV2
 from NDATools.upload.validation.io import UserIO
 from tests.conftest import MockLogger
 
@@ -37,15 +37,15 @@ def validation_result():
             status = 'CompleteWithErrors'
         elif warnings:
             status = 'CompleteWithWarnings'
-        vr = ValidationResponse(**{'file': Path(f'/path/to/{filename}'),
-                                   'creds': mock_creds,
-                                   'validation_resource': ValidationV2(
-                                       **{'validation_uuid': validation_uuid,
-                                          'status': status,
-                                          'short_name': 'fmriresults01',
-                                          'rows': 1,
-                                          'validation_files': {},
-                                          'scope': None})})
+        vr = ValidatedFile(**{'file': Path(f'/path/to/{filename}'),
+                              'creds': mock_creds,
+                              'validation_resource': ValidationV2(
+                                  **{'validation_uuid': validation_uuid,
+                                     'status': status,
+                                     'short_name': 'fmriresults01',
+                                     'rows': 1,
+                                     'validation_files': {},
+                                     'scope': None})})
 
         # set method to return mock errors and warnings
         vr.rw_creds.download_errors = MagicMock(return_value=errors)
@@ -106,7 +106,7 @@ def test_user_io_run_validation_step_io(test_warnings, test_errors, validation_r
         m.setattr(NDATools.upload.validation.io.logger, 'info', mock_logger)
         m.setattr(NDATools.upload.validation.io, 'exit_error', MagicMock(return_value=None))
 
-        user_io.run_validation_step_io([result], output_warnings=False)
+        user_io.save_validation_errors([result], save_warnings=False)
 
         # check that program outputs message indicating validation completion
         assert mock_logger.any_call_contains('All files have finished validating')
@@ -132,7 +132,7 @@ def test_user_io_run_validation_step_io(test_warnings, test_errors, validation_r
         # run an additional test that warnings file is created when parameter is set
         if test_warnings and not test_errors:
             mock_logger.reset_mock()
-            user_io.run_validation_step_io([result], output_warnings=True)
+            user_io.save_validation_errors([result], save_warnings=True)
             assert mock_file_writer.write_warnings.call_count == 1
             assert mock_logger.any_call_contains('Warnings output to:')
 
@@ -151,7 +151,7 @@ def test_user_io_run_validation_step_io_sys_error(validation_result, monkeypatch
         m.setattr(NDATools.upload.validation.io.logger, 'info', mock_logger)
         m.setattr(NDATools.upload.validation.io, 'exit_error', MagicMock(side_effect=[SystemExit]))
 
-        user_io.run_validation_step_io([result], output_warnings=False)
+        user_io.save_validation_errors([result], save_warnings=False)
 
         assert NDATools.upload.validation.io.exit_error.call_count == 1
         assert NDATools.upload.validation.io.exit_error.assert_called_with(

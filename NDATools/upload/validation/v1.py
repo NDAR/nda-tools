@@ -1,8 +1,6 @@
-import csv
 import multiprocessing
 import queue
 
-from tabulate import tabulate
 from tqdm import tqdm
 
 from NDATools.Configuration import *
@@ -11,12 +9,70 @@ from NDATools.Utils import *
 logger = logging.getLogger(__name__)
 
 
+def retrieve_replacement_submission_params(config, submission_id):
+    api = type('', (), {})()
+    api.config = config
+    auth = requests.auth.HTTPBasicAuth(config.username, config.password)
+
+    try:
+        response = get_request('/'.join([config.submission_api_endpoint, submission_id, 'change-history']), auth=auth)
+    except requests.exceptions.HTTPError as e:
+
+        if e.response.status_code == 403:
+            exit_error(
+                message='You are not authorized to access submission {}. If you think this is a mistake, please contact NDA help desk'.format(
+                    submission_id))
+        else:
+            exit_error(message='There was a General Error communicating with the NDA server. Please try again later')
+
+    # check to see if the submission was already replaced?
+    if not response[0]['replacement_authorized']:
+        if len(response) > 1 and response[1]['replacement_authorized']:
+            message = '''Submission {} was already replaced by {} on {}.
+If you need to make further edits to this submission, please reach out the the NDA help desk''' \
+                .format(submission_id, response[0]['created_by'], response[0]['created_date'])
+            exit_error(message=message)
+        else:
+            exit_error(
+                message='submission_id {} is not authorized to be replaced. Please contact the NDA help desk for approval to replace this submission'.format(
+                    submission_id))
+
+    response = get_request('/'.join([config.submission_api_endpoint, submission_id]), auth=auth)
+    if response is None:
+        exit_error(message='There was a General Error communicating with the NDA server. Please try again later')
+
+    submission_id = response['submission_id']
+    config.title = response['dataset_title']
+    config.description = response['dataset_description']
+    config.collection_id = response['collection']['id']
+
+    # get pending-changes for submission-id
+    response = get_request('/'.join([config.submission_api_endpoint, submission_id, 'pending-changes']), auth=auth)
+    if response is None:
+        exit_error(message='There was a General Error communicating with the NDA server. Please try again later')
+
+    # get list of associated-files that have already been uploaded for pending changes
+    pending_changes = []
+    original_submission_id = submission_id
+    original_uuids = {uuid for uuid in response['validation_uuids']}
+    for change in response['pendingChanges']:
+        validation_uuids = change['validationUuids']
+        manifest_files = []
+        for uuid in validation_uuids:
+            response = get_request('/'.join([config.validation_api_endpoint, uuid]))
+            manifest_files.extend(manifest['localFileName'] for manifest in response['manifests'])
+        change['manifests'] = manifest_files
+        pending_changes.append(change)
+
+    return pending_changes, original_uuids, original_submission_id
+
+
 class Validation:
     def __init__(self, file_list, config, hide_progress, allow_exit=False, thread_num=None,
                  pending_changes=None, original_uuids=None):
         self.config = config
         self.hide_progress = hide_progress
-        self.api = self.config.validation_api.strip('/')
+        self.api = self.config.validation_api_endpoint.strip('/')
         self.thread_num = max([1, multiprocessing.cpu_count() - 1])
         if thread_num:
             self.thread_num = thread_num
@@ -153,139 +209,6 @@ class Validation:
         return {manifest for manifests in list(map(lambda change: change['manifests'], self.pending_changes)) for
                 manifest
                 in manifests}
-
-    def save_to_file(self):
-        encountered_system_error = False
-        if self.config.JSON:
-            json_data = dict(Results=[])
-            for (response, file) in self.responses:
-                if response['status'] == Status.SYSERROR:
-                    encountered_system_error = True
-                file_name = self.uuid_dict[response['id']]['file']
-                json_data['Results'].append({
-                    'File': file_name,
-                    'ID': response['id'],
-                    'Status': response['status'],
-                    'Expiration Date': response['expiration_date'],
-                    'Errors': response['errors']
-                })
-            with open(self.log_file, 'w') as outfile:
-                json.dump(json_data, outfile)
-
-        else:
-            with open(self.log_file, 'w', newline='') as csvfile:
-                writer = csv.DictWriter(csvfile, fieldnames=self.field_names)
-                writer.writeheader()
-                for (response, file) in self.responses:
-                    if response['status'] == Status.SYSERROR:
-                        encountered_system_error = True
-
-                    file_name = self.uuid_dict[response['id']]['file']
-
-                    if response['errors'] == {}:
-                        writer.writerow(
-                            {'FILE': file_name, 'ID': response['id'], 'STATUS': response['status'],
-                             'EXPIRATION_DATE': response['expiration_date'], 'ERRORS': 'None', 'COLUMN': 'None',
-                             'MESSAGE': 'None', 'RECORD': 'None'})
-                    else:
-                        for error, value in response['errors'].items():
-                            if error == 'system':
-                                encountered_system_error = True
-                            for v in value:
-                                try:
-                                    column = v['columnName'] if 'columnName' in v else None
-                                    message = v['message']
-                                    record = v['recordNumber'] if 'recordNumber' in v else None
-                                    writer.writerow(
-                                        {'FILE': file_name, 'ID': response['id'], 'STATUS': response['status'],
-                                         'EXPIRATION_DATE': response['expiration_date'], 'ERRORS': error,
-                                         'COLUMN': column,
-                                         'MESSAGE': message, 'RECORD': record})
-                                except KeyError:
-                                    logger.error('Unrecognized result from validation service - {}. '.format(
-                                        json.dumps(response)))
-                                    logger.error(
-                                        '\nPlease contact NDAHelp@mail.nih.gov for help in resolving this error')
-                                    exit_error()
-
-        logger.info('Validation report output to: {}'.format(self.log_file))
-        if encountered_system_error:
-            logger.error('Unexpected error occurred while validating one or more of the csv files')
-            logger.error(
-                '\nPlease email NDAHelp@mail.nih.gov for help in resolving this error and include {} as an attachment to help us resolve the issue'.format(
-                    self.log_file))
-            exit_error()
-
-    def get_warnings(self):
-        if self.config.JSON:
-            json_data = dict(Results=[])
-            for (response, file) in self.responses:
-                file_name = self.uuid_dict[response['id']]['file']
-                json_data['Results'].append({
-                    'File': file_name,
-                    'ID': response['id'],
-                    'Status': response['status'],
-                    'Expiration Date': response['expiration_date'],
-                    'Warnings': response['warnings']
-                })
-                new_path = ''.join([NDATools.NDA_TOOLS_VAL_FOLDER, '/validation_warnings_', self.date, '.json'])
-                with open(new_path, 'w') as outfile:
-                    json.dump(json_data, outfile)
-        else:
-            new_path = ''.join([NDATools.NDA_TOOLS_VAL_FOLDER, '/validation_warnings_', self.date, '.csv'])
-            if sys.version_info[0] < 3:
-                csvfile = open(new_path, 'wb')
-            else:
-                csvfile = open(new_path, 'w', newline='')
-            fieldnames = ['FILE', 'ID', 'STATUS', 'EXPIRATION_DATE', 'WARNINGS', 'MESSAGE', 'COUNT']
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            writer.writeheader()
-            for (response, file) in self.responses:
-                file_name = self.uuid_dict[response['id']]['file']
-                if response['warnings'] == {}:
-                    writer.writerow(
-                        {'FILE': file_name, 'ID': response['id'], 'STATUS': response['status'],
-                         'EXPIRATION_DATE': response['expiration_date'], 'WARNINGS': 'None', 'MESSAGE': 'None',
-                         'COUNT': '0'})
-                else:
-                    for warning, value in response['warnings'].items():
-                        m = {}
-                        warning_list = []
-                        for v in value:
-                            count = 1
-                            if v not in warning_list:
-                                warning_list.append(v)
-                                message = v['message']
-                                m[message] = count
-                            else:
-                                count = m[message] + 1
-                                m[message] = count
-                        for x in m:
-                            writer.writerow(
-                                {'FILE': file_name,
-                                 'ID': response['id'],
-                                 'STATUS': response['status'],
-                                 'EXPIRATION_DATE': response['expiration_date'],
-                                 'WARNINGS': warning,
-                                 'MESSAGE': x,
-                                 'COUNT': m[x]})
-            csvfile.close()
-            return os.path.abspath(new_path)
-
-    def output_validation_error_messages(self):
-        table_list = []
-        for (response, file) in self.responses:
-            logger.info('\nErrors found in {}:'.format(file))
-            rows = []
-            for key, value in (response['errors'].items()):
-                for i in value:
-                    rows.append([i.get('recordNumber'), i.get('columnName'), i.get('message')])
-            if rows:
-                logger.info('')
-                table = tabulate(rows, headers=['Row', 'Column', 'Message'])
-                table_list.append(table)
-                logger.info(table)
-        return table_list
 
     def generate_uuids_for_qa_workflow(self, unrecognized_ds=set()):
         unrecognized_structures = set(unrecognized_ds)

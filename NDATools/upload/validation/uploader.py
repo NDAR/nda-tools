@@ -9,7 +9,7 @@ from typing import List
 from tqdm import tqdm
 
 from NDATools.Utils import exit_error
-from NDATools.upload.validation.api import ValidationResponse, ValidationManifest, ValidationApi
+from NDATools.upload.validation.api import ValidatedFile, ValidationManifest, ValidationApi
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ class ManifestsUploader:
         logger.info(f'\nUploading {len(manifests)} manifests')
         if not manifest_dir:
             manifest_dir = os.getcwd()
-        validation_results: {ValidationResponse} = {m.validation_response for m in manifests}
+        validation_results: {ValidatedFile} = {m.validation_response for m in manifests}
         with tqdm(total=len(manifests), disable=self.hide_progress) as progress_bar:
             # do this one validation_result at a time in order to avoid running multiple instances of S3Transfer simultaneously
             for v in validation_results:

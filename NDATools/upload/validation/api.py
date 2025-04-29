@@ -4,14 +4,13 @@ import os
 import pathlib
 import time
 from threading import RLock
-from typing import Union, List
+from typing import Union
 
 import boto3
 import requests
 from botocore.exceptions import ClientError
 from pydantic import BaseModel, Field, ValidationError
 
-from NDATools.Configuration import ClientConfiguration
 from NDATools.Utils import get_request, post_request, exit_error
 
 logger = logging.getLogger(__name__)
@@ -31,11 +30,13 @@ class NdaCredentials(BaseModel):
         self._s3_transfer = boto3.s3.transfer.S3Transfer(self._s3_cli)
 
     def download(self, s3_url: str):
+        assert s3_url.startswith('s3://')
         bucket, key = s3_url.replace("s3://", "").split("/", 1)
         res = self._s3_cli.get_object(Bucket=bucket, Key=key)
         return res['Body'].read()
 
     def upload(self, file: Union[pathlib.Path, str], s3_url: str):
+        assert s3_url.startswith('s3://')
         bucket, key = s3_url.replace("s3://", "").split("/", 1)
         self._s3_transfer.upload_file(str(file), bucket, key)
         logger.debug(f'Finished uploading {file} to {s3_url}')
@@ -152,44 +153,14 @@ class ValidationManifest(BaseModel):
         return self._validation_response
 
 
-class ValidationResponse:
-    def __init__(self, file: pathlib.Path, creds: ValidationV2Credentials, validation_resource: ValidationV2):
-        self.file = file
-        self.rw_creds = creds
-        self.validation_resource = validation_resource
-
-    @property
-    def status(self):
-        return self.validation_resource.status
-
-    @property
-    def uuid(self):
-        return self.rw_creds.uuid
-
-    @property
-    def manifests(self) -> List[ValidationManifest]:
-        this = self
-        return list(
-            map(lambda x: ValidationManifest(**{**x, 'validation_response': this}), self.rw_creds.download_manifests()))
-
-    def has_warnings(self):
-        return 'warnings' in self.status.lower()
-
-    def has_errors(self):
-        return 'errors' in self.status.lower()
-
-    def waiting_manifest_upload(self):
-        return 'pending' in self.status.lower()
-
-
 class ValidationApi:
-    def __init__(self, config: ClientConfiguration):
-        self.config = config
-        self.api_v2_endpoint = f"{self.config.validation_api}/v2/"
-        self.auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
+    def __init__(self, validation_api_endpoint, username, password):
+        # self.config = config
+        self.api_v2_endpoint = f"{validation_api_endpoint}/v2/"
+        self.auth = requests.auth.HTTPBasicAuth(username, password)
         self._refresh_creds_lock = RLock()
 
-    def initialize_validation_request(self, file_name: str, scope=None) -> ValidationV2Credentials:
+    def request_upload_credentials(self, file_name: str, scope=None) -> ValidationV2Credentials:
         payload = {
             "validation_file": os.path.basename(file_name)
         }
@@ -219,11 +190,11 @@ class ValidationApi:
                     exit_error()
         return validation
 
-    def validate_file(self, file: pathlib.Path, scope: int = None, timeout_seconds: int = 120) -> ValidationResponse:
-        creds = self.initialize_validation_request(file.name, scope)
-        creds.upload_csv(file)
-        res = self.wait_validation_complete(creds.uuid, timeout_seconds, False)
-        return ValidationResponse(file, creds, res)
+    # def validate_file(self, file: pathlib.Path, scope: int = None, timeout_seconds: int = 120) -> (ValidationV2,
+    #                                                                                                ValidationV2Credentials):
+    #     creds = self.request_upload_credentials(file.name, scope)
+    #     creds.upload_csv(file)
+    #     return self.wait_validation_complete(creds.uuid, timeout_seconds, False)
 
     def _get_refreshable_credentials(self, creds: dict):
         try:

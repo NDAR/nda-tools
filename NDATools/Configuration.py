@@ -14,6 +14,8 @@ from requests import HTTPError
 import NDATools
 from NDATools import NDA_TOOLS_LOGGING_YML_FILE
 from NDATools.Utils import exit_error, HttpErrorHandlingStrategy, get_request
+from NDATools.upload.validation.api import ValidationApi
+from NDATools.upload.validation.uploader import ManifestsUploader
 
 logger = logging.getLogger(__name__)
 
@@ -54,15 +56,15 @@ class ClientConfiguration:
         logger.info('Using configuration file from {}'.format(NDATools.NDA_TOOLS_SETTINGS_CFG_FILE))
         self.config.read(NDATools.NDA_TOOLS_SETTINGS_CFG_FILE)
         self._check_and_fix_missing_options()
-        self.validation_api = self.config.get("Endpoints", "validation")
-        self.submission_package_api = self.config.get("Endpoints", "submission_package")
-        self.submission_api = self.config.get("Endpoints", "submission")
-        self.validationtool_api = self.config.get("Endpoints", "validationtool")
-        self.package_creation_api = self.config.get("Endpoints", "package_creation")
-        self.package_api = self.config.get("Endpoints", "package")
-        self.datadictionary_api = self.config.get("Endpoints", "datadictionary")
-        self.collection_api = self.config.get("Endpoints", "collection")
-        self.user_api = self.config.get("Endpoints", "user")
+        self.validation_api_endpoint = self.config.get("Endpoints", "validation")
+        self.submission_package_api_endpoint = self.config.get("Endpoints", "submission_package")
+        self.submission_api_endpoint = self.config.get("Endpoints", "submission")
+        self.validationtool_api_endpoint = self.config.get("Endpoints", "validationtool")
+        self.package_creation_api_endpoint = self.config.get("Endpoints", "package_creation")
+        self.package_api_endpoint = self.config.get("Endpoints", "package")
+        self.datadictionary_api_endpoint = self.config.get("Endpoints", "datadictionary")
+        self.collection_api_endpoint = self.config.get("Endpoints", "collection")
+        self.user_api_endpoint = self.config.get("Endpoints", "user")
         self.username = self.config.get("User", "username").lower()
 
         # options that appear in both vtcmd and downloadcmd
@@ -91,6 +93,9 @@ class ClientConfiguration:
             self.replace_submission = args.replace_submission
         if self.username:
             logger.info('proceeding as NDA user: {}'.format(self.username))
+
+        self.validation_api = None
+        self.manifests_uploader = None
 
     def _check_and_fix_missing_options(self):
         default_config = configparser.ConfigParser()
@@ -145,43 +150,50 @@ class ClientConfiguration:
             self.config.set('User', 'username', self.username)
             self.config.write(configfile)
 
-    def read_user_credentials(self, auth_req=True):
+    def read_user_credentials(self):
         def prompt_for_username():
             self.username = str(input('Enter your NDA account username:')).lower()
             self._save_username()
 
-        if auth_req:
-            # username is fetched from settings.cfg, and it is not present at the first time use of nda-tools
-            # display NDA account instructions
-            if not self.username:
-                logger.info(
-                    '\nPlease use your NIMH Data Archive (NDA) account credentials to authenticate with nda-tools')
-                logger.info(
-                    'You may already have an existing eRA commons account or a login.gov account, this is different from your NDA account')
-                logger.info(
-                    'You may retrieve your NDA account info by logging into https://nda.nih.gov/user/dashboard/profile.html using your eRA commons account or login.gov account')
-                logger.info(
-                    'Once you are logged into your profile page, you can find your NDA account username. For password retrieval, click UPDATE/RESET PASSWORD button')
+        # username is fetched from settings.cfg, and it is not present at the first time use of nda-tools
+        # display NDA account instructions
+        if not self.username:
+            logger.info(
+                '\nPlease use your NIMH Data Archive (NDA) account credentials to authenticate with nda-tools')
+            logger.info(
+                'You may already have an existing eRA commons account or a login.gov account, this is different from your NDA account')
+            logger.info(
+                'You may retrieve your NDA account info by logging into https://nda.nih.gov/user/dashboard/profile.html using your eRA commons account or login.gov account')
+            logger.info(
+                'Once you are logged into your profile page, you can find your NDA account username. For password retrieval, click UPDATE/RESET PASSWORD button')
 
-            while not self.username:
-                prompt_for_username()
+        while not self.username:
+            prompt_for_username()
 
-            while not self.password:
-                self._get_password()
+        while not self.password:
+            self._get_password()
 
-            # validate credentials
-            while not self.is_valid_nda_credentials():
-                logger.info(
-                    'Unable to authenticate your NDA account credentials with nda-tools. Please check your NDA account credentials.\n')
-                self._use_keyring = False
-                prompt_for_username()
-                self._get_password()
-            self._try_save_password_keyring()
+        # validate credentials
+        while not self.is_valid_nda_credentials():
+            logger.info(
+                'Unable to authenticate your NDA account credentials with nda-tools. Please check your NDA account credentials.\n')
+            self._use_keyring = False
+            prompt_for_username()
+            self._get_password()
+        self._try_save_password_keyring()
+        self._save_apis()
+
+    def _save_apis(self):
+        self.validation_api = ValidationApi(self.validation_api_endpoint, self.username, self.password)
+        self.manifests_uploader = ManifestsUploader(self.validation_api,
+                                                    self.config.workerThreads,
+                                                    not self.config.force,
+                                                    self.config.hideProgress)
 
     def is_valid_nda_credentials(self):
         try:
             # will raise HTTP error 401 if invalid creds
-            get_request(self.user_api, headers={'content-type': 'application/json'},
+            get_request(self.user_api_endpoint, headers={'content-type': 'application/json'},
                         auth=requests.auth.HTTPBasicAuth(self.username, self.password),
                         error_handler=HttpErrorHandlingStrategy.reraise_status)
             return True

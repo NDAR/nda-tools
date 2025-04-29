@@ -22,7 +22,7 @@ class Submission(BaseModel):
 class SubmissionApi:
     def __init__(self, config):
         self.config = config
-        self.api_endpoint = self.config.submission_api
+        self.api_endpoint = self.config.submission_api_endpoint
         self.auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
 
     def get_submission(self, submission_id):

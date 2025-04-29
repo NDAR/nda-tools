@@ -6,8 +6,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from NDATools.upload.validation.api import ValidationResponse, ValidationV2Credentials, ValidationV2
-from NDATools.upload.validation.filewriter import JsonValidationFileWriter, CsvValidationFileWriter
+from NDATools.upload.validation.api import ValidatedFile, ValidationV2Credentials, ValidationV2
+from NDATools.upload.validation.io import JsonValidationFileWriter, CsvValidationFileWriter
 
 
 @pytest.fixture
@@ -26,7 +26,7 @@ def validation(shared_datadir):
             'rows': 42,
             'validation_files': dict()
         })
-        return ValidationResponse(file1, rw_creds, resource)
+        return ValidatedFile(file1, rw_creds, resource)
 
     return _validation
 

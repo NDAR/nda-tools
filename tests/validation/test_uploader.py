@@ -7,7 +7,7 @@ import pytest
 
 import NDATools
 from NDATools.upload.validation.api import ValidationManifest, ValidationV2Credentials, \
-    ValidationApi, ValidationResponse, ValidationV2
+    ValidationApi, ValidatedFile, ValidationV2
 from NDATools.upload.validation.uploader import ManifestNotFoundError, ManifestsUploader
 from NDATools.upload.validation.uploader import _manifests_not_found_msg
 
@@ -24,16 +24,16 @@ def validation_manifest(monkeypatch):
     def _validation_manifest(filename: str = 'manifest.json'):
         validation_uuid = str(uuid.uuid4())
         mock_creds = MagicMock(spec=ValidationV2Credentials)
-        validation_response = ValidationResponse(**{'file': Path('/path/to/manifest.json'),
-                                                    'creds': mock_creds,
-                                                    'validation_resource': ValidationV2(
-                                                        **{'validation_uuid': validation_uuid,
-                                                           'status': 'PendingManifests',
-                                                           'short_name': 'fmriresults01',
-                                                           'rows': 1,
-                                                           'validation_files': {},
-                                                           'scope': None})}
-                                                 )
+        validation_response = ValidatedFile(**{'file': Path('/path/to/manifest.json'),
+                                               'creds': mock_creds,
+                                               'validation_resource': ValidationV2(
+                                                   **{'validation_uuid': validation_uuid,
+                                                      'status': 'PendingManifests',
+                                                      'short_name': 'fmriresults01',
+                                                      'rows': 1,
+                                                      'validation_files': {},
+                                                      'scope': None})}
+                                            )
         manifest_data = {
             'localFileName': filename,
             's3Destination': f's3://nimhda-validation/{validation_uuid}/manifests/manifest.json',

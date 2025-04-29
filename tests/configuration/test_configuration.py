@@ -43,7 +43,7 @@ def test_read_user_credentials_no_username_set():
         client_config.username = None
         client_config._use_keyring = False
 
-        client_config.read_user_credentials(True)
+        client_config.read_user_credentials()
 
         mock_logger.any_call_contains(
             '\nPlease use your NIMH Data Archive (NDA) account credentials to authenticate with nda-tools')
@@ -73,7 +73,7 @@ def test_read_user_credentials_has_username_set_no_password_in_keyring():
         args.username = 'test_username'
         client_config = ClientConfiguration(args)
 
-        client_config.read_user_credentials(True)
+        client_config.read_user_credentials()
 
         mock_logger.assert_no_call_contains(
             '\nPlease use your NIMH Data Archive (NDA) account credentials to authenticate with nda-tools')
@@ -103,7 +103,7 @@ def test_read_user_credentials_has_username_set_has_password_in_keyring():
         args.username = 'test_username'
         client_config = ClientConfiguration(args)
 
-        client_config.read_user_credentials(True)
+        client_config.read_user_credentials()
 
         mock_logger.assert_no_call_contains(
             '\nPlease use your NIMH Data Archive (NDA) account credentials to authenticate with nda-tools')
@@ -132,7 +132,7 @@ def test_read_user_credentials_reenter_credentials():
         client_config.username = None
         client_config._use_keyring = False
 
-        client_config.read_user_credentials(True)
+        client_config.read_user_credentials()
 
         mock_logger.any_call_contains(
             '\nPlease use your NIMH Data Archive (NDA) account credentials to authenticate with nda-tools')
@@ -162,7 +162,7 @@ def test_no_keyring(monkeypatch):
         m.setattr(client_config, 'is_valid_nda_credentials', lambda: True)
         # patch this method to avoid writing to any files
         m.setattr(client_config, '_save_username', lambda: None)
-        client_config.read_user_credentials(True)
+        client_config.read_user_credentials()
         assert builtins.input.call_count == 1
         assert getpass.getpass.call_count == 1
         assert client_config._use_keyring == False

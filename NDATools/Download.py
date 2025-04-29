@@ -96,9 +96,9 @@ class Download(Protocol):
 
         # Instance variables from config
         self.config = download_config
-        self.package_url = self.config.package_api
-        self.package_creation_url = self.config.package_creation_api
-        self.datadictionary_url = self.config.datadictionary_api
+        self.package_url = self.config.package_api_endpoint
+        self.package_creation_url = self.config.package_creation_api_endpoint
+        self.datadictionary_url = self.config.datadictionary_api_endpoint
         self.username = download_config.username
         self.password = download_config.password
         self.auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)

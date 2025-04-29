@@ -1,41 +1,133 @@
+import abc
+import csv
+import enum
+import json
 import logging
+import os
+import time
 from typing import List
 
-from tabulate import tabulate
-
 from NDATools import NDA_TOOLS_VAL_FOLDER
-from NDATools.Utils import exit_error
-from NDATools.upload.validation.api import ValidationResponse
-from NDATools.upload.validation.filewriter import JsonValidationFileWriter, CsvValidationFileWriter
+from NDATools.upload import ValidatedFile
 
 logger = logging.getLogger(__name__)
 
 
-def preview_validation_errors(results: List[ValidationResponse], limit=10):
-    table_list = []
-    for result in results:
-        r: ValidationResponse = result
-        logger.info('\nErrors found in {}:'.format(r.file.name))
-        errors = r.rw_creds.download_errors()
-        # errors are grouped by error type, so we need to ungroup and flatten to display in a table by record.
-        # add list splice to reduce memory footprint
-        errors = [e for error_list in errors.values() for e in error_list[:limit]]
-        rows = [
-            [
-                error['record'] if 'record' in error else '',
-                error['columnName'] if 'columnName' in error else '',
-                error['message']
-            ] for error in errors[:limit]
-        ]
-        if rows:
-            logger.info('')
-            table = tabulate(rows, headers=['Row', 'Column', 'Message'])
-            table_list.append(table)
-            logger.info(table)
-            logger.info('')
-        if len(errors) > limit:
-            logger.info('\n...and {} more errors'.format(len(errors) - limit))
-    return table_list
+class Extension(enum.Enum):
+    JSON = '.json'
+    CSV = '.csv'
+
+
+class ValidationFileWriter(abc.ABC):
+    def __init__(self, results_folder, ext: Extension):
+        date = time.strftime("%Y%m%dT%H%M%S")
+        self.errors_file = os.path.join(results_folder, f'validation_results_{date}{ext.value}')
+        self.warnings_file = os.path.join(results_folder, f'validation_warnings_{date}{ext.value}')
+
+    @abc.abstractmethod
+    def write_errors(self, results: [ValidatedFile]):
+        ...
+
+    @abc.abstractmethod
+    def write_warnings(self, results: [ValidatedFile]):
+        ...
+
+
+class JsonValidationFileWriter(ValidationFileWriter):
+    def __init__(self, results_folder):
+        super().__init__(results_folder, Extension.JSON)
+
+    def _write(self, results, is_errors):
+        json_data = dict(Results=[])
+        for result in results:
+            r: ValidatedFile = result
+            key = 'Errors' if is_errors else 'Warnings'
+            json_data['Results'].append({
+                'File': r.file.name,
+                'ID': r.uuid,
+                'Status': r.status,
+                'Expiration Date': '',
+                key: r.rw_creds.download_errors() if is_errors else r.rw_creds.download_warnings()
+            })
+        with open(self.errors_file if is_errors else self.warnings_file, 'w') as f:
+            json.dump(json_data, f)
+
+    def write_errors(self, results: List[ValidatedFile]):
+        self._write(results, True)
+
+    def write_warnings(self, results: List[ValidatedFile]):
+        self._write(results, False)
+
+
+class CsvValidationFileWriter(ValidationFileWriter):
+    def __init__(self, results_folder):
+        super().__init__(results_folder, Extension.CSV)
+
+    def write_errors(self, results: List[ValidatedFile]):
+        fieldnames = ['FILE', 'ID', 'STATUS', 'EXPIRATION_DATE', 'ERRORS', 'COLUMN', 'MESSAGE', 'RECORD']
+        with open(self.errors_file, 'w', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for result in results:
+                r: ValidatedFile = result
+                errors = r.rw_creds.download_errors()
+                for error_key in errors.keys():
+                    for error in errors[error_key]:
+                        row = {
+                            'FILE': r.file.name,
+                            'ID': r.uuid,
+                            'STATUS': r.status,
+                            'EXPIRATION_DATE': '',
+                            'ERRORS': error_key,
+                            'COLUMN': error['columnName'] if 'columnName' in error else None,
+                            'MESSAGE': error['message'],  # guaranteed to be in error
+                            'RECORD': error['record'] if 'record' in error else None
+                        }
+                        writer.writerow(row)
+                # if there are no errors in the file, write a single row to indicate no errors were found
+                if not errors:
+                    writer.writerow({
+                        'FILE': r.file.name,
+                        'ID': r.uuid,
+                        'STATUS': r.status,
+                        'EXPIRATION_DATE': '',
+                        'ERRORS': 'None',
+                        'COLUMN': 'None',
+                        'MESSAGE': 'None',
+                        'RECORD': 'None'
+                    })
+
+    def write_warnings(self, results: List[ValidatedFile]):
+        fieldnames = ['FILE', 'ID', 'STATUS', 'EXPIRATION_DATE', 'WARNINGS', 'MESSAGE', 'COUNT']
+        with open(self.warnings_file, 'w', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for result in results:
+                r: ValidatedFile = result
+                warnings = r.rw_creds.download_warnings()
+                for warning_key, values in warnings.items():
+                    row = {
+                        'FILE': r.file.name,
+                        'ID': r.uuid,
+                        'STATUS': r.status,
+                        'EXPIRATION_DATE': '',
+                        'WARNINGS': warning_key,
+                        # this is how this was done originally, though this doesnt make sense to me
+                        'MESSAGE': values[0]['message'],
+                        'COUNT': len(values)
+                    }
+                    writer.writerow(row)
+                # if there are no warnings in the file, write a single row to indicate no warnings were found
+                if not warnings:
+                    writer.writerow({
+                        'FILE': r.file.name,
+                        'ID': r.uuid,
+                        'STATUS': r.status,
+                        'EXPIRATION_DATE': '',
+                        'WARNINGS': 'None',
+                        'MESSAGE': 'None',
+                        'COUNT': '0'
+                    })
 
 
 class UserIO:
@@ -43,32 +135,32 @@ class UserIO:
         self.file_writer = JsonValidationFileWriter(NDA_TOOLS_VAL_FOLDER) if is_json \
             else CsvValidationFileWriter(NDA_TOOLS_VAL_FOLDER)
 
-    def run_validation_step_io(self, results: List[ValidationResponse], output_warnings: bool):
+    def save_validation_errors(self, results: List[ValidatedFile]):
         # Print out various information based on the command line args and the status of the validation results
         self.file_writer.write_errors(results)
-        logger.info(
-            '\nAll files have finished validating. Validation report output to: {}'.format(
-                self.file_writer.errors_file))
-        if any(map(lambda x: x.status == 'SystemError', results)):
-            msg = 'Unexpected error occurred while validating one or more of the csv files.'
-            msg += '\nPlease email NDAHelp@mail.nih.gov for help in resolving this error and include {} as an attachment to help us resolve the issue'
-            exit_error(msg)
+        # logger.info(
+        #     '\nAll files have finished validating. Validation report output to: {}'.format(
+        #         self.file_writer.errors_file))
+        # if any(map(lambda x: x.status == 'SystemError', results)):
+        #     msg = 'Unexpected error occurred while validating one or more of the csv files.'
+        #     msg += '\nPlease email NDAHelp@mail.nih.gov for help in resolving this error and include {} as an attachment to help us resolve the issue'
+        #     exit_error(msg)
 
-        if output_warnings:
-            self.file_writer.write_warnings(results)
-            logger.info('Warnings output to: {}'.format(self.file_writer.warnings_file))
-        else:
-            if any(map(lambda x: x.has_warnings(), results)):
-                logger.info('Note: Your data has warnings. To save warnings, run again with -w argument.')
+    def save_validation_warnings(self, results: List[ValidatedFile]):
+        self.file_writer.write_warnings(results)
+        #     logger.info('Warnings output to: {}'.format(self.file_writer.warnings_file))
+        # else:
+        #     if any(map(lambda x: x.has_warnings(), results)):
+        #         logger.info('Note: Your data has warnings. To save warnings, run again with -w argument.')
 
-        errors = list(filter(lambda x: x.has_errors(), results))
-        success = list(filter(lambda x: not x.has_errors(), results))
-        if success:
-            logger.info('The following files passed validation:')
-            for result in success:
-                logger.info('UUID {}: {}'.format(result.uuid, result.file.name))
-        if errors:
-            logger.info('\nThese files contain errors:')
-            for result in errors:
-                logger.info('UUID {}: {}'.format(result.uuid, result.file.name))
-            preview_validation_errors(results, limit=10)
+        # errors = list(filter(lambda x: x.has_errors(), results))
+        # success = list(filter(lambda x: not x.has_errors(), results))
+        # if success:
+        #     logger.info('The following files passed validation:')
+        #     for result in success:
+        #         logger.info('UUID {}: {}'.format(result.uuid, result.file.name))
+        # if errors:
+        #     logger.info('\nThese files contain errors:')
+        #     for result in errors:
+        #         logger.info('UUID {}: {}'.format(result.uuid, result.file.name))
+        #     preview_validation_errors(results, limit=10)
