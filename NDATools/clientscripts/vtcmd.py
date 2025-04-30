@@ -3,15 +3,15 @@ import random
 import sys
 from typing import List
 
+from NDATools.Submission import Submission
+
 from NDATools.BuildPackage import SubmissionPackage
 from NDATools.Configuration import *
 from NDATools.NDA import NDA
-from NDATools.Submission import Submission
 from NDATools.Utils import get_request, get_non_blank_input, evaluate_yes_no_input
 from NDATools.upload import ValidatedFile
 from NDATools.upload.submission.resubmission import retrieve_replacement_submission_params, \
     check_missing_data_for_resubmission, check_replacement_authorized
-from NDATools.upload.validation.io import UserIO
 
 logger = logging.getLogger(__name__)
 
@@ -117,8 +117,6 @@ def validate(args, config) -> List[ValidatedFile]:
     v2_api = random.randint(1, 100) <= (percent * 100)
 
     nda = NDA(config)  # only object to contain urls
-    io = UserIO(is_json=config.JSON, skip_prompt=config.force)
-
     # Perform the validation using v1 or v2 endpoints. Errors and warnings are streamed or saved in memory for v2 and v1 respectively
     if v2_api:
         logger.debug('Using the new validation API.')
@@ -128,20 +126,21 @@ def validate(args, config) -> List[ValidatedFile]:
     else:
         logger.debug('Using the old validation API.')
         validated_files = nda.validate_files_v1(args.files, args.workerThreads)
+
     # Save errors to errors file
-    io.save_validation_errors(validated_files)
+    errors_file = nda.save_validation_errors(validated_files)
     logger.info(
         '\nAll files have finished validating. Validation report output to: {}'.format(
-            io.errors_file))
+            errors_file))
     if any(map(lambda x: x.system_error(), validated_files)):
         msg = 'Unexpected error occurred while validating one or more of the csv files.'
         msg += '\nPlease email NDAHelp@mail.nih.gov for help in resolving this error and include {} as an attachment to help us resolve the issue'
         exit_error(msg)
 
-    # Save warnings to warnings file if user requested
+    # Save warnings to warnings file (if requested)
     if args.warning:
-        io.save_validation_warnings(validated_files)
-        logger.info('Warnings output to: {}'.format(io.warnings_file))
+        warnings_file = nda.save_validation_warnings(validated_files)
+        logger.info('Warnings output to: {}'.format(warnings_file))
     elif any(map(lambda x: x.has_warnings(), validated_files)):
         logger.info('Note: Your data has warnings. To save warnings, run again with -w argument.')
 

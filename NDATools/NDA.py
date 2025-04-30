@@ -11,8 +11,7 @@ from NDATools.Configuration import ClientConfiguration
 from NDATools.Utils import exit_error
 from NDATools.upload import ValidatedFile
 from NDATools.upload.submission import NdaSubmission
-from NDATools.upload.validation.api import ValidationManifest
-from NDATools.upload.validation.io import UserIO
+from NDATools.upload.validation.io import ValidationResultsWriter
 from NDATools.upload.validation.v1 import Validation
 
 logger = logging.getLogger(__name__)
@@ -25,6 +24,7 @@ class NDA:
         self.config = client_config
         self.validation_api = self.config.validation_api
         self.uploader = self.config.manifests_uploader
+        self.validation_results_writer = ValidationResultsWriter(is_json=self.config.JSON)
         ...
 
     def submit(self, collection_id) -> NdaSubmission:
@@ -60,7 +60,7 @@ class NDA:
 
             manifest_csvs = [r for r in results if r.waiting_manifest_upload()]
             if manifest_csvs:
-                self.upload_manifests([m for csv in manifest_csvs for m in csv.manifests])
+                self.upload_manifests(*manifest_csvs)
             return results
 
         except Exception as e:
@@ -74,14 +74,14 @@ class NDA:
         creds = self.validation_api.request_upload_credentials(file.name, self.config.scope)
         creds.upload_csv(file)
         validation_v2 = self.validation_api.wait_validation_complete(creds.uuid, self.config.validation_timeout, False)
-        validated_file = ValidatedFile(file, v2_resource=validation_v2)
+        validated_file = ValidatedFile(file, v2_resource=validation_v2, v2_creds=creds)
 
         # upload manifests if the file has any...
         if upload_manifests and validated_file.waiting_manifest_upload():
-            return self.upload_manifests(validated_file.manifests)[0]
+            self.upload_manifests(validated_file)
         return validated_file
 
-    def upload_manifests(self, manifests: List[ValidationManifest]) -> List[ValidatedFile]:
+    def upload_manifests(self, *files):
         # add warning if more than 1 manifest dir was detected. in later versions of the tool, we are only going to allow users to specify one manifest dir
         if isinstance(self.config.manifest_path, list):
             if len(self.config.manifest_path) > 1:
@@ -91,30 +91,35 @@ class NDA:
         else:
             # should be NoneType
             manifest_dir = self.config.manifest_path
-
+        manifests = [manifest for file in files for manifest in file.manifests]
         self.uploader.upload_manifests(manifests, manifest_dir)
         print(f'\nManifests uploaded. Waiting for validation of manifests to complete....')
-        validation_results: List[ValidatedFile] = [m.validation_response for m in manifests]
 
-        with tqdm(total=len(validation_results), disable=self.config.hideProgress) as progress_bar, \
+        with tqdm(total=len(files), disable=self.config.hideProgress) as progress_bar, \
                 ThreadPoolExecutor(max_workers=self.config.workerThreads) as executor:
             # executor.map seems to block whereas executor.submit doesn't...
             futures = list(
                 map(lambda x: executor.submit(
                     self.validation_api.wait_validation_complete, x.uuid, self.config.validation_timeout, True),
-                    validation_results))
+                    files))
             for f in concurrent.futures.as_completed(futures):
                 r = f.result()
                 logger.debug(f'Validation status for {r.uuid} updated to {r.status}')
                 progress_bar.update(1)
 
-        return validation_results
+    def save_validation_warnings(self, validated_files):
+        self.validation_results_writer.save_validation_warnings(validated_files)
+        return self.validation_results_writer.warnings_file
+
+    def save_validation_errors(self, validated_files):
+        self.validation_results_writer.save_validation_errors(validated_files)
+        return self.validation_results_writer.errors_file
 
 
 def validate(args):
     client_config = ClientConfiguration(args)
     nda = NDA(client_config)  # only object to contain urls
-    io = UserIO(is_json=args.json, skip_prompt=args.force)
+    io = ValidationResultsWriter(is_json=args.json, skip_prompt=args.force)
 
     results = nda.validate_files(args.files)
     io.save_validation_errors(results)

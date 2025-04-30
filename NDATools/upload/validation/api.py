@@ -190,12 +190,6 @@ class ValidationApi:
                     exit_error()
         return validation
 
-    # def validate_file(self, file: pathlib.Path, scope: int = None, timeout_seconds: int = 120) -> (ValidationV2,
-    #                                                                                                ValidationV2Credentials):
-    #     creds = self.request_upload_credentials(file.name, scope)
-    #     creds.upload_csv(file)
-    #     return self.wait_validation_complete(creds.uuid, timeout_seconds, False)
-
     def _get_refreshable_credentials(self, creds: dict):
         try:
             return ValidationV2Credentials(lambda: self.refresh_upload_credentials(creds['validation_uuid']), **creds)

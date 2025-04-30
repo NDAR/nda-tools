@@ -130,8 +130,8 @@ class CsvValidationFileWriter(ValidationFileWriter):
                     })
 
 
-class UserIO:
-    def __init__(self, *, is_json, skip_prompt):
+class ValidationResultsWriter:
+    def __init__(self, *, is_json):
         self.file_writer = JsonValidationFileWriter(NDA_TOOLS_VAL_FOLDER) if is_json \
             else CsvValidationFileWriter(NDA_TOOLS_VAL_FOLDER)
 

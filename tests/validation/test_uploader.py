@@ -98,12 +98,12 @@ def test_upload_manifest_not_found_interactive(shared_datadir, validation_manife
     vm = validation_manifest('manifest.json')
     manifest_uploader = ManifestsUploader(MagicMock(spec=ValidationApi), 1, True, True)
     manifest_uploader._handle_manifests_not_found = MagicMock(wraps=manifest_uploader._handle_manifests_not_found)
-    manifest_uploader._upload_manifests = MagicMock(wraps=manifest_uploader._upload_manifests)
+    manifest_uploader._upload_manifests_for_file = MagicMock(wraps=manifest_uploader._upload_manifests_for_file)
     with monkeypatch.context() as m:
         m.setattr('builtins.input', MagicMock(return_value=str(shared_datadir)))
         manifest_uploader.upload_manifests([vm], tmp_path)
         assert manifest_uploader._handle_manifests_not_found.call_count == 1
-        manifest_uploader._upload_manifests.assert_called_with([vm], shared_datadir, ANY)
+        manifest_uploader._upload_manifests_for_file.assert_called_with([vm], shared_datadir, ANY)
         assert vm.validation_response.rw_creds.upload.call_count == 1
         builtins.input.assert_called_once_with(
             'Press the "Enter" key to specify location for manifest files and try again:')

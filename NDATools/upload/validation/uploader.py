@@ -9,19 +9,10 @@ from typing import List
 from tqdm import tqdm
 
 from NDATools.Utils import exit_error
-from NDATools.upload.validation.api import ValidatedFile, ValidationManifest, ValidationApi
+from NDATools.upload import ValidatedFile, ManifestFile, ManifestNotFoundError
+from NDATools.upload.validation.api import ValidationApi
 
 logger = logging.getLogger(__name__)
-
-
-class ManifestError(Exception):
-    def __init__(self, manifest: ValidationManifest, unexpected_error: Exception = None):
-        self.manifest = manifest
-        self.error = unexpected_error
-
-
-class ManifestNotFoundError(ManifestError):
-    ...
 
 
 def _manifests_not_found_msg(errs: List[ManifestNotFoundError], manifests_dir: str):
@@ -40,22 +31,47 @@ class ManifestsUploader:
         self.hide_progress = hide_progress
         self.interactive = interactive
 
-    def _upload_manifest_for_validation(self, manifest: ValidationManifest, manifest_dir: pathlib.Path):
-        creds = manifest.validation_response.rw_creds
-        try:
-            local_file = pathlib.Path(os.path.join(manifest_dir, manifest.local_file_name))
-            if not local_file.exists():
-                raise ManifestNotFoundError(manifest)
-            creds.upload(str(local_file), manifest.s3_destination)
-        except Exception as e:
-            if not isinstance(e, ManifestNotFoundError):
-                logger.error(f'Unexpected error occurred while uploading {manifest.local_file_name}: {e}')
-                logger.error(traceback.format_exc())
-                raise ManifestError(manifest, e)
+    def upload_manifests(self, manifests: List[ManifestFile], manifest_dir: pathlib.Path):
+        manifest_count = len(manifests)
+        validated_files = {m.validated_file for m in manifests}
+
+        logger.info(f'\nUploading {manifest_count} manifests...')
+        if not manifest_dir:
+            manifest_dir = os.getcwd()
+        with tqdm(total=manifest_count, disable=self.hide_progress) as progress_bar:
+            # do this one validation_result at a time in order to avoid running multiple instances of S3Transfer simultaneously
+            for v in validated_files:
+                self.upload_manifests_for_validated_file(v, manifest_dir, progress_bar)
+
+        logger.debug(f'Finished uploading {manifest_count} manifests')
+
+    def upload_manifests_for_validated_file(self,
+                                            validated_file: ValidatedFile,
+                                            manifest_dir: pathlib.Path,
+                                            progress_bar: tqdm):
+
+        assert len(validated_file.manifests) > 0, "no manifests passed to _upload_manifests method"
+        with ThreadPoolExecutor(max_workers=self.max_threads) as executor:
+            futures = list(
+                map(lambda man: executor.submit(man.upload_manifest, manifest_dir), validated_file.manifests))
+
+        not_found_errors = []
+        for f in as_completed(futures):
+            err = f.exception()
+            if err:
+                if isinstance(err, ManifestNotFoundError):
+                    not_found_errors.append(err)
+                else:
+                    logger.error(
+                        f'Unexpected errors occurred while uploading {err.manifest.name}: {err.error}')
+                    traceback.print_exc()
+                    exit_error()
             else:
-                logger.debug(
-                    f'Could not find manifest {manifest.local_file_name} from file {manifest.validation_response.file.name} in {manifest_dir}')
-                raise e
+                # success
+                progress_bar.update(1)
+
+        if not_found_errors:
+            self._handle_manifests_not_found(not_found_errors, manifest_dir, progress_bar)
 
     def _handle_manifests_not_found(self,
                                     errs: List[ManifestNotFoundError],
@@ -73,43 +89,4 @@ class ManifestsUploader:
                 logger.error(f'{retry_manifests_dir} does not exist. Please try again.')
             else:
                 break
-        self._upload_manifests(files_not_found, retry_manifests_dir, progress_bar)
-
-    def upload_manifests(self, manifests: List[ValidationManifest], manifest_dir: pathlib.Path):
-        logger.info(f'\nUploading {len(manifests)} manifests')
-        if not manifest_dir:
-            manifest_dir = os.getcwd()
-        validation_results: {ValidatedFile} = {m.validation_response for m in manifests}
-        with tqdm(total=len(manifests), disable=self.hide_progress) as progress_bar:
-            # do this one validation_result at a time in order to avoid running multiple instances of S3Transfer simultaneously
-            for v in validation_results:
-                self._upload_manifests(v.manifests, manifest_dir, progress_bar)
-
-        logger.debug(f'Finished uploading {len(manifests)} manifests')
-
-    def _upload_manifests(self,
-                          manifests: List[ValidationManifest],
-                          manifest_dir: pathlib.Path,
-                          progress_bar: tqdm):
-        assert len(manifests) > 0, "no manifests passed to _upload_manifests method"
-        with ThreadPoolExecutor(max_workers=self.max_threads) as executor:
-            futures = list(
-                map(lambda man: executor.submit(self._upload_manifest_for_validation, man, manifest_dir), manifests))
-
-        not_found_errors = []
-        for f in as_completed(futures):
-            err = f.exception()
-            if err:
-                if isinstance(err, ManifestNotFoundError):
-                    not_found_errors.append(err)
-                else:
-                    logger.error(
-                        f'Unexpected errors occurred while uploading {err.manifest.local_file_name}: {err.error}')
-                    traceback.print_exc()
-                    exit_error()
-            else:
-                # success
-                progress_bar.update(1)
-
-        if not_found_errors:
-            self._handle_manifests_not_found(not_found_errors, manifest_dir, progress_bar)
+        self.upload_manifests_for_validated_file(files_not_found, retry_manifests_dir, progress_bar)

@@ -1,11 +1,43 @@
 import enum
 import logging
+import os
 import pathlib
+import traceback
 from typing import List
 
 from tabulate import tabulate
 
 logger = logging.Logger(__name__)
+
+
+class ManifestFile:
+    def __init__(self, name: str, s3_destination: str, validated_file):
+        self.name = name
+        self.s3_destination = s3_destination
+        self.validated_file = validated_file
+
+    def upload(self, manifest_dir):
+        try:
+            self.validated_file.upload_manifest(self, manifest_dir)
+        except Exception as e:
+            if not isinstance(e, ManifestNotFoundError):
+                logger.error(f'Unexpected error occurred while uploading {self.name}: {e}')
+                logger.error(traceback.format_exc())
+                raise ManifestUploadError(self, e)
+            else:
+                logger.debug(
+                    f'Could not find manifest {self.name} from file {self.validated_file.file.name} in {manifest_dir}')
+                raise e
+
+
+class ManifestUploadError(Exception):
+    def __init__(self, manifest: ManifestFile, unexpected_error: Exception = None):
+        self.manifest = manifest
+        self.error = unexpected_error
+
+
+class ManifestNotFoundError(ManifestUploadError):
+    ...
 
 
 class ValidationError:
@@ -25,7 +57,7 @@ class ValidationStatus(str, enum.Enum):
 
 
 class ValidatedFile:
-    def __init__(self, file: pathlib.Path, *, v1_resource=None, v2_resource=None):
+    def __init__(self, file: pathlib.Path, *, v1_resource=None, v2_resource=None, v2_creds=None):
         self.file = file
         assert v1_resource or v2_resource, "v1_resource or v2_resource must be specified"
         if v2_resource:
@@ -35,15 +67,23 @@ class ValidatedFile:
             self._warnings = None
             self._manifests = None
             self._associated_files = None
-            self.data_structures_with_missing_rows = None
+            self._v2_creds = v2_creds
         elif v1_resource:
             self.status = ValidationStatus(v1_resource['status'])
             self.uuid = v1_resource['id']
             self._errors = v1_resource['errors']
             self._warnings = v1_resource['warnings']
-            self._manifests = v1_resource['manifests']
+            self._manifests = [ManifestFile(m['localFileName'], m['s3Destination'], self) for m in
+                               v1_resource['manifests']]
             self._associated_files = v1_resource['associated_file_paths']
-            self.data_structures_with_missing_rows = None
+
+    def __hash__(self):
+        return hash(self.file) + hash(self.uuid)
+
+    def __eq__(self, other):
+        if isinstance(other, ValidatedFile):
+            return other.file == self.file and other.uuid == self.uuid
+        return False
 
     @property
     def errors(self) -> List[ValidationError]:
@@ -54,10 +94,11 @@ class ValidatedFile:
             raise NotImplementedError()
 
     @property
-    def manifests(self) -> List[ValidationManifest]:
-        this = self
-        return list(
-            map(lambda x: ValidationManifest(**{**x, 'validation_response': this}), self.rw_creds.download_manifests()))
+    def manifests(self):
+        if not self._manifests:
+            self._manifests = [ManifestFile(m['local_file_name'], m['s3_destination']) for m in
+                               self._v2_creds.download_manifests()]
+        return self._manifests
 
     def has_manifest_errors(self):
         pass
@@ -106,3 +147,10 @@ class ValidatedFile:
 
     def show_manifest_errors(self):
         raise NotImplementedError()
+
+    def upload_manifest(self, manifest: ManifestFile, manifest_dir: str):
+        assert self._v2_creds
+        local_file = pathlib.Path(os.path.join(manifest_dir, manifest.name))
+        if not local_file.exists():
+            raise ManifestNotFoundError(manifest)
+        self._v2_creds.upload(str(local_file), manifest.s3_destination)

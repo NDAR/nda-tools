@@ -7,7 +7,7 @@ import pytest
 
 import NDATools
 from NDATools.upload.validation.api import ValidationV2Credentials, ValidatedFile, ValidationV2
-from NDATools.upload.validation.io import UserIO
+from NDATools.upload.validation.io import ValidationResultsWriter
 from tests.conftest import MockLogger
 
 
@@ -93,7 +93,7 @@ def test_user_io_run_validation_step_io(test_warnings, test_errors, validation_r
                                         validation_warnings):
     """Test that information is printed to screen as expected """
 
-    user_io = UserIO(is_json=True, skip_prompt=False)
+    user_io = ValidationResultsWriter(is_json=True, skip_prompt=False)
     mock_file_writer = MagicMock()
     mock_logger = MockLogger()
     result = validation_result('file1.csv',
@@ -139,7 +139,7 @@ def test_user_io_run_validation_step_io(test_warnings, test_errors, validation_r
 
 def test_user_io_run_validation_step_io_sys_error(validation_result, monkeypatch):
     """Test that information is printed to screen as expected when system error is encountered"""
-    user_io = UserIO(is_json=True, skip_prompt=False)
+    user_io = ValidationResultsWriter(is_json=True, skip_prompt=False)
     mock_file_writer = MagicMock()
     mock_logger = MockLogger()
     result = validation_result('file1.csv', {}, {})
