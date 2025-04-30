@@ -119,12 +119,11 @@ class NDA:
 def validate(args):
     client_config = ClientConfiguration(args)
     nda = NDA(client_config)  # only object to contain urls
-    io = ValidationResultsWriter(is_json=args.json, skip_prompt=args.force)
 
     results = nda.validate_files(args.files)
-    io.save_validation_errors(results)
+    nda.save_validation_errors(results)
     if args.warnings:
-        io.save_validation_warnings(results)
+        nda.save_validation_warnings(results)
 
 
 def submit(args):

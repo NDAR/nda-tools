@@ -4,12 +4,12 @@ import os
 import pathlib
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List
+from typing import List, Callable
 
 from tqdm import tqdm
 
 from NDATools.Utils import exit_error
-from NDATools.upload import ValidatedFile, ManifestFile, ManifestNotFoundError
+from NDATools.upload import ManifestFile, ManifestNotFoundError
 from NDATools.upload.validation.api import ValidationApi
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ class ManifestsUploader:
         self.hide_progress = hide_progress
         self.interactive = interactive
 
-    def upload_manifests(self, manifests: List[ManifestFile], manifest_dir: pathlib.Path):
+    def upload_manifests(self, manifests: List[ManifestFile], manifest_dir: pathlib.Path, progress_cb: Callable):
         manifest_count = len(manifests)
         validated_files = {m.validated_file for m in manifests}
 
@@ -41,19 +41,19 @@ class ManifestsUploader:
         with tqdm(total=manifest_count, disable=self.hide_progress) as progress_bar:
             # do this one validation_result at a time in order to avoid running multiple instances of S3Transfer simultaneously
             for v in validated_files:
-                self.upload_manifests_for_validated_file(v, manifest_dir, progress_bar)
+                self._upload_manifests_helper(v.manifests, manifest_dir, lambda x: progress_bar.update(1))
 
         logger.debug(f'Finished uploading {manifest_count} manifests')
 
-    def upload_manifests_for_validated_file(self,
-                                            validated_file: ValidatedFile,
-                                            manifest_dir: pathlib.Path,
-                                            progress_bar: tqdm):
+    def _upload_manifests_helper(self,
+                                 manifests: List[ManifestFile],
+                                 manifest_dir: pathlib.Path,
+                                 progress_cb: Callable = None):
 
-        assert len(validated_file.manifests) > 0, "no manifests passed to _upload_manifests method"
+        assert len(manifests) > 0, "no manifests passed to _upload_manifests method"
         with ThreadPoolExecutor(max_workers=self.max_threads) as executor:
             futures = list(
-                map(lambda man: executor.submit(man.upload_manifest, manifest_dir), validated_file.manifests))
+                map(lambda man: executor.submit(man.upload_manifest, manifest_dir), manifests))
 
         not_found_errors = []
         for f in as_completed(futures):
@@ -68,15 +68,16 @@ class ManifestsUploader:
                     exit_error()
             else:
                 # success
-                progress_bar.update(1)
+                if progress_cb:
+                    progress_cb()
 
         if not_found_errors:
-            self._handle_manifests_not_found(not_found_errors, manifest_dir, progress_bar)
+            self._handle_manifests_not_found(not_found_errors, manifest_dir, progress_cb)
 
     def _handle_manifests_not_found(self,
                                     errs: List[ManifestNotFoundError],
                                     manifest_dir: pathlib.Path,
-                                    progress_bar: tqdm):
+                                    progress_cb: Callable = None):
         # ask the user if they want to continue
         msg = _manifests_not_found_msg(errs, str(manifest_dir))
         files_not_found = list(map(lambda x: x.manifest, errs))
@@ -89,4 +90,4 @@ class ManifestsUploader:
                 logger.error(f'{retry_manifests_dir} does not exist. Please try again.')
             else:
                 break
-        self.upload_manifests_for_validated_file(files_not_found, retry_manifests_dir, progress_bar)
+        self._upload_manifests_helper(files_not_found, retry_manifests_dir, progress_cb)
