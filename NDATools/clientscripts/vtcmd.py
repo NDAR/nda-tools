@@ -220,6 +220,18 @@ def print_submission_complete_message(submission, replacement):
               (submission.submission_id, submission.status))
 
 
+def replace_submission(validated_files, submission_id, config, args):
+    package = build_package(validated_files, config, args)
+    submission = Submission(package_id=package.package_id,
+                            submission_id=args.replace_submission,
+                            thread_num=args.threads,
+                            batch_size=args.batch,
+                            allow_exit=True,
+                            config=config)
+    logger.info('Requesting submission for package: {}'.format(submission.package_id))
+    submission.replace_submission()
+
+
 def submit(validated_files, config, args):
     package = build_package(validated_files, config, args)
     submission = Submission(package_id=package.package_id,
@@ -229,10 +241,7 @@ def submit(validated_files, config, args):
                             allow_exit=True,
                             config=config)
     logger.info('Requesting submission for package: {}'.format(submission.package_id))
-    if args.replace_submission:
-        submission.replace_submission()
-    else:
-        submission.submit()
+    submission.submit()
     submission.check_status()
     if submission.submission_id:
         logger.info('Submission ID: {}'.format(str(submission.submission_id)))
@@ -267,7 +276,10 @@ def main():
     else:
         validated_files = validate(args, config)
         if args.buildPackage:
-            submit(validated_files, config, args)
+            if args.replace_submission:
+                replace_submission(validated_files, args.replace_submission, config, args)
+            else:
+                submit(validated_files, config, args)
 
 
 if __name__ == "__main__":

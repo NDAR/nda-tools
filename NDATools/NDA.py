@@ -10,6 +10,7 @@ from tqdm import tqdm
 from NDATools.Configuration import ClientConfiguration
 from NDATools.Utils import exit_error
 from NDATools.upload import ValidatedFile
+from NDATools.upload.submission import NdaSubmission
 from NDATools.upload.validation.api import ValidationManifest
 from NDATools.upload.validation.io import UserIO
 from NDATools.upload.validation.v1 import Validation
@@ -25,6 +26,15 @@ class NDA:
         self.validation_api = self.config.validation_api
         self.uploader = self.config.manifests_uploader
         ...
+
+    def submit(self, collection_id) -> NdaSubmission:
+        pass
+
+    def resubmit(self, submission_id: int, validated_files: List[ValidatedFile]) -> NdaSubmission:
+        pass
+
+    def upload_associated_files(self, submission: NdaSubmission):
+        pass
 
     def validate_files_v1(self, file_list, threads) -> List[ValidatedFile]:
         validation = Validation(file_list, config=self.config, hide_progress=self.config.hideProgress,
