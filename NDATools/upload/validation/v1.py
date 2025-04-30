@@ -9,67 +9,8 @@ from NDATools.Utils import *
 logger = logging.getLogger(__name__)
 
 
-def retrieve_replacement_submission_params(config, submission_id):
-    api = type('', (), {})()
-    api.config = config
-    auth = requests.auth.HTTPBasicAuth(config.username, config.password)
-
-    try:
-        response = get_request('/'.join([config.submission_api_endpoint, submission_id, 'change-history']), auth=auth)
-    except requests.exceptions.HTTPError as e:
-
-        if e.response.status_code == 403:
-            exit_error(
-                message='You are not authorized to access submission {}. If you think this is a mistake, please contact NDA help desk'.format(
-                    submission_id))
-        else:
-            exit_error(message='There was a General Error communicating with the NDA server. Please try again later')
-
-    # check to see if the submission was already replaced?
-    if not response[0]['replacement_authorized']:
-        if len(response) > 1 and response[1]['replacement_authorized']:
-            message = '''Submission {} was already replaced by {} on {}.
-If you need to make further edits to this submission, please reach out the the NDA help desk''' \
-                .format(submission_id, response[0]['created_by'], response[0]['created_date'])
-            exit_error(message=message)
-        else:
-            exit_error(
-                message='submission_id {} is not authorized to be replaced. Please contact the NDA help desk for approval to replace this submission'.format(
-                    submission_id))
-
-    response = get_request('/'.join([config.submission_api_endpoint, submission_id]), auth=auth)
-    if response is None:
-        exit_error(message='There was a General Error communicating with the NDA server. Please try again later')
-
-    submission_id = response['submission_id']
-    config.title = response['dataset_title']
-    config.description = response['dataset_description']
-    config.collection_id = response['collection']['id']
-
-    # get pending-changes for submission-id
-    response = get_request('/'.join([config.submission_api_endpoint, submission_id, 'pending-changes']), auth=auth)
-    if response is None:
-        exit_error(message='There was a General Error communicating with the NDA server. Please try again later')
-
-    # get list of associated-files that have already been uploaded for pending changes
-    pending_changes = []
-    original_submission_id = submission_id
-    original_uuids = {uuid for uuid in response['validation_uuids']}
-    for change in response['pendingChanges']:
-        validation_uuids = change['validationUuids']
-        manifest_files = []
-        for uuid in validation_uuids:
-            response = get_request('/'.join([config.validation_api_endpoint, uuid]))
-            manifest_files.extend(manifest['localFileName'] for manifest in response['manifests'])
-        change['manifests'] = manifest_files
-        pending_changes.append(change)
-
-    return pending_changes, original_uuids, original_submission_id
-
-
 class Validation:
-    def __init__(self, file_list, config, hide_progress, allow_exit=False, thread_num=None,
-                 pending_changes=None, original_uuids=None):
+    def __init__(self, file_list, config, hide_progress, allow_exit=False, thread_num=None):
         self.config = config
         self.hide_progress = hide_progress
         self.api = self.config.validation_api_endpoint.strip('/')
@@ -100,10 +41,7 @@ class Validation:
 
         self.field_names = ['FILE', 'ID', 'STATUS', 'EXPIRATION_DATE', 'ERRORS', 'COLUMN', 'MESSAGE', 'RECORD']
         self.validation_progress = None
-        self.pending_changes = pending_changes
         self.exit = allow_exit
-        self.original_uuids = original_uuids
-        self.data_structures_with_missing_rows = None
         if self.config.password:
             self.auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
         else:
@@ -166,74 +104,6 @@ class Validation:
                 'rows': response['rows'],
                 'manifests': {manifest['localFileName'] for manifest in response['manifests']}
             }
-
-        if self.pending_changes:
-            structure_to_new_row_count = {}
-            for uuid in self.uuid_dict:
-                short_name = self.uuid_dict[uuid]['short_name']
-                structure_to_new_row_count[short_name] = 0
-            for uuid in self.uuid_dict:
-                short_name = self.uuid_dict[uuid]['short_name']
-                structure_to_new_row_count[short_name] += self.uuid_dict[uuid]['rows']
-
-            unrecognized_ds = set()
-            data_structures_with_missing_rows = []
-            for data_structure in structure_to_new_row_count:
-                expected_change_for_data_structure = next(
-                    filter(lambda pending_change: pending_change['shortName'] == data_structure, self.pending_changes),
-                    None)
-                if expected_change_for_data_structure is not None:
-                    if structure_to_new_row_count[data_structure] < expected_change_for_data_structure['rows']:
-                        data_structures_with_missing_rows.append((data_structure,
-                                                                  expected_change_for_data_structure['rows'],
-                                                                  structure_to_new_row_count[data_structure]))
-                else:
-                    unrecognized_ds.update({data_structure})
-
-            # update list of validation-uuids to be used during the packaging step
-            new_uuids, unrecognized_ds = self.generate_uuids_for_qa_workflow(unrecognized_ds)
-
-            if unrecognized_ds:
-                message = 'ERROR - The following datastructures were not included in the original submission and therefore cannot be included in the replacement submission: '
-                message += "\r\n" + "\r\n".join(unrecognized_ds)
-                exit_error(message=message)
-            else:
-                self.data_structures_with_missing_rows = data_structures_with_missing_rows
-                self.uuid = new_uuids
-
-    def get_existing_manifests(self):
-        if not self.pending_changes:
-            return set()
-        # create a set of manifest files from the set of pending changes to enforce no duplicates
-        # convert back into a list because the process_manifests method expects a list
-        return {manifest for manifests in list(map(lambda change: change['manifests'], self.pending_changes)) for
-                manifest
-                in manifests}
-
-    def generate_uuids_for_qa_workflow(self, unrecognized_ds=set()):
-        unrecognized_structures = set(unrecognized_ds)
-        new_uuids = set(self.original_uuids)
-        val_by_short_name = {}
-        for uuid in self.uuid_dict:
-            short_name = self.uuid_dict[uuid]['short_name']
-            val_by_short_name[short_name] = set()
-        for uuid in self.uuid_dict:
-            short_name = self.uuid_dict[uuid]['short_name']
-            val_by_short_name[short_name].update({uuid})
-        for short_name in val_by_short_name:
-            # find the pending change with the same short name
-            matching_change = {}
-            for change in self.pending_changes:
-                if change['shortName'] == short_name:
-                    matching_change = change
-            if not matching_change:
-                unrecognized_structures.add(short_name)
-            else:
-                # prevValidationUuids is the set of validation-uuids on the pending changes resource
-                new_uuids = new_uuids.difference(set(matching_change['validationUuids']))
-                new_uuids.update({res for res in val_by_short_name[short_name]})
-
-        return list(new_uuids), unrecognized_structures
 
     def process_manifests(self, r, validation_results=None, yes_manifest=set(), bulk_upload=False):
         if not self.manifest_path:

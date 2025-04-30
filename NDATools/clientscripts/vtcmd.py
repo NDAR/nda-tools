@@ -1,15 +1,17 @@
 import argparse
 import random
+import sys
 from typing import List
 
 from NDATools.BuildPackage import SubmissionPackage
 from NDATools.Configuration import *
 from NDATools.NDA import NDA
 from NDATools.Submission import Submission
-from NDATools.Utils import get_request, get_non_blank_input
+from NDATools.Utils import get_request, get_non_blank_input, evaluate_yes_no_input
 from NDATools.upload import ValidatedFile
+from NDATools.upload.submission.resubmission import retrieve_replacement_submission_params, \
+    check_missing_data_for_resubmission, check_replacement_authorized
 from NDATools.upload.validation.io import UserIO
-from NDATools.upload.validation.v1 import retrieve_replacement_submission_params
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +109,7 @@ def resume_submission(sub_id, batch, config=None):
         print_submission_complete_message(submission, False)
 
 
-def validate(args, config, pending_changes, original_uuids) -> List[ValidatedFile]:
+def validate(args, config) -> List[ValidatedFile]:
     api_config = get_request(f'{config.validation_api_endpoint}/config')
     percent = api_config['v2Routing']['percent']
     logger.debug('v2_routing percent: {}'.format(percent))
@@ -125,8 +127,7 @@ def validate(args, config, pending_changes, original_uuids) -> List[ValidatedFil
         validated_files = nda.validate_files(args.files)
     else:
         logger.debug('Using the old validation API.')
-        validated_files = nda.validate_files_v1(args.files, args.workerThreads, pending_changes=pending_changes,
-                                                original_uuids=original_uuids)
+        validated_files = nda.validate_files_v1(args.files, args.workerThreads)
     # Save errors to errors file
     io.save_validation_errors(validated_files)
     logger.info(
@@ -152,35 +153,45 @@ def validate(args, config, pending_changes, original_uuids) -> List[ValidatedFil
             else:
                 file.preview_validation_errors(10)
 
-    #  TODO add back in the below output
-    # if will_submit:
-    #      if replace_submission:
-    #          logger.error('ERROR - At least some of the files failed validation. '
-    #                       'All files must pass validation in order to edit submission {}. Please fix these errors and try again.'.format(
-    #              replace_submission))
-    #      else:
-    #          logger.info('You must correct the above errors before you can submit to NDA')
-    #      sys.exit(1)
-    #
-    #  # For resubmission workflow: alert user if data loss was detected in one of their data-structures
-    #  if config.replace_submission:
-    #      if will_submit and validation.data_structures_with_missing_rows and not config.force:
-    #          logger.warning('\nWARNING - Detected missing information in the following files: ')
-    #
-    #          for tuple_expected_actual in validation.data_structures_with_missing_rows:
-    #              logger.warning(
-    #                  '\n{} - expected {} rows but found {}  '.format(tuple_expected_actual[0],
-    #                                                                  tuple_expected_actual[1],
-    #                                                                  tuple_expected_actual[2]))
-    #          prompt = '\nIf you update your submission with these files, the missing data will be reflected in your data-expected numbers'
-    #          prompt += '\nAre you sure you want to continue? <Yes/No>: '
-    #          proceed = evaluate_yes_no_input(prompt, 'n')
-    #          if str(proceed).lower() == 'n':
-    #              exit_error(message='')
+    # Exit if user intended to submit and there are any errors
+    will_submit = args.buildPackage
+    replace_submission = args.replace_submission
+    if will_submit:
+        if replace_submission:
+            logger.error('ERROR - At least some of the files failed validation. '
+                         'All files must pass validation in order to edit submission {}. Please fix these errors and try again.'.format(
+                replace_submission))
+        else:
+            logger.info('You must correct the above errors before you can submit to NDA')
+        sys.exit(1)
+
     return validated_files
 
 
-def build_package(validated_files, config, pending_changes=None, original_uuids=None):
+def build_package(validated_files, config, args):
+    pending_changes, original_uuids, original_submission_id = None, None, None
+    if args.replace_submission:
+        pending_changes, original_uuids, original_submission_id = retrieve_replacement_submission_params(config,
+                                                                                                         args.replace_submission)
+    # For resubmission workflow: alert user if data loss was detected in one of their data-structures
+    if original_submission_id and not config.force:
+        data_structures_with_missing_rows = check_missing_data_for_resubmission(validated_files,
+                                                                                pending_changes,
+                                                                                original_uuids)
+        if data_structures_with_missing_rows:
+            logger.warning('\nWARNING - Detected missing information in the following files: ')
+
+            for tuple_expected_actual in data_structures_with_missing_rows:
+                logger.warning(
+                    '\n{} - expected {} rows but found {}  '.format(tuple_expected_actual[0],
+                                                                    tuple_expected_actual[1],
+                                                                    tuple_expected_actual[2]))
+            prompt = '\nIf you update your submission with these files, the missing data will be reflected in your data-expected numbers'
+            prompt += '\nAre you sure you want to continue? <Yes/No>: '
+            proceed = evaluate_yes_no_input(prompt, 'n')
+            if str(proceed).lower() == 'n':
+                exit_error(message='')
+
     if not config.title:
         config.title = get_non_blank_input('Enter title for dataset name:', 'Title')
     if not config.description:
@@ -209,16 +220,16 @@ def print_submission_complete_message(submission, replacement):
               (submission.submission_id, submission.status))
 
 
-def submit_package(package_id, threads, batch,
-                   config=None, original_submission_id=None):
-    submission = Submission(package_id=package_id,
-                            submission_id=original_submission_id,
-                            thread_num=threads,
-                            batch_size=batch,
+def submit(validated_files, config, args):
+    package = build_package(validated_files, config, args)
+    submission = Submission(package_id=package.package_id,
+                            submission_id=args.replace_submission,
+                            thread_num=args.threads,
+                            batch_size=args.batch,
                             allow_exit=True,
                             config=config)
     logger.info('Requesting submission for package: {}'.format(submission.package_id))
-    if original_submission_id:
+    if args.replace_submission:
         submission.replace_submission()
     else:
         submission.submit()
@@ -230,16 +241,17 @@ def submit_package(package_id, threads, batch,
         submission.upload_associated_files()
         submission.check_status()
     if submission.status != Status.UPLOADING:
-        print_submission_complete_message(submission, replacement=True if original_submission_id else False)
+        print_submission_complete_message(submission, replacement=True if args.replace_submission else False)
 
 
-def check_args(args):
+def check_args(args, config):
     if args.replace_submission:
         if args.title or args.description or args.collectionID:
             message = 'Title, description, and collection ID are not allowed when replacing a submission' \
                       ' using -rs flag. Please remove -t, -d and -c when using -rs. Exiting...'
             logger.error(message)
             exit(1)
+        check_replacement_authorized(config, args.replace_submission)
 
 
 def main():
@@ -247,28 +259,15 @@ def main():
     args = parse_args()
     auth_req = True if args.buildPackage or args.resume or args.replace_submission or args.username else False
     config = NDATools.init_and_create_configuration(args, NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER, auth_req=auth_req)
-    pending_changes, original_uuids, original_submission_id = None, None, None
-    check_args(args)
-    if args.replace_submission:
-        pending_changes, original_uuids, original_submission_id = retrieve_replacement_submission_params(config,
-                                                                                                         args.replace_submission)
+    check_args(args, config)
     if args.resume:
         submission_id = args.files[0]
         # Need to check to see if I need to update this step!
         resume_submission(submission_id, batch=args.batch, config=config)
     else:
-        validated_files = validate(args, config, pending_changes, original_uuids)
-        # If user requested to build a package
+        validated_files = validate(args, config)
         if args.buildPackage:
-            package = build_package(validated_files,
-                                    config=config,
-                                    pending_changes=pending_changes,
-                                    original_uuids=original_uuids)
-            submit_package(package_id=package.package_id,
-                           threads=args.workerThreads,
-                           batch=args.batch,
-                           config=config,
-                           original_submission_id=original_submission_id)
+            submit(validated_files, config, args)
 
 
 if __name__ == "__main__":

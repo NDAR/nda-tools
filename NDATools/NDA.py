@@ -26,10 +26,10 @@ class NDA:
         self.uploader = self.config.manifests_uploader
         ...
 
-    def validate_files_v1(self, file_list, threads, pending_changes=None, original_uuids=None) -> List[ValidatedFile]:
+    def validate_files_v1(self, file_list, threads) -> List[ValidatedFile]:
         validation = Validation(file_list, config=self.config, hide_progress=self.config.hideProgress,
                                 thread_num=threads,
-                                allow_exit=True, pending_changes=pending_changes, original_uuids=original_uuids)
+                                allow_exit=True)
         logger.info('\nValidating files...')
         validation.validate()
         return [ValidatedFile(v[1], v1_resource=v[0]) for v in validation.responses]

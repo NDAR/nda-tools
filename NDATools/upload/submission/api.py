@@ -1,7 +1,19 @@
+from typing import List
+
 import requests
 from pydantic import BaseModel
 
-from NDATools.Utils import get_request
+from NDATools.Utils import get_request, exit_error
+
+
+class SubmissionVersion(BaseModel):
+    pass
+
+
+class SubmissionHistory(BaseModel):
+    replacement_authorized: bool
+    created_by: int
+    created_date: str
 
 
 class NdaCollection(BaseModel):
@@ -28,3 +40,21 @@ class SubmissionApi:
     def get_submission(self, submission_id):
         tmp = get_request("/".join([self.api_endpoint, submission_id]), auth=self.auth)
         return Submission(**tmp)
+
+    def get_submission_history(self, submission_id) -> List[SubmissionHistory]:
+        try:
+            tmp = get_request('/'.join([self.api_endpoint, submission_id, 'change-history']), auth=self.auth)
+            return [SubmissionHistory(**t) for t in tmp]
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 403:
+                exit_error(
+                    message='You are not authorized to access submission {}. If you think this is a mistake, please contact NDA help desk'.format(
+                        submission_id))
+            else:
+                exit_error(
+                    message='There was a General Error communicating with the NDA server. Please try again later')
+            exit(1)
+
+    def get_latest_submission_version(self, submission_id):
+        tmp = get_request('/'.join([self.api_endpoint, submission_id, 'pending-changes']), auth=self.auth)
+        return SubmissionVersion(**tmp)
