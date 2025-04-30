@@ -31,7 +31,7 @@ class ManifestsUploader:
         self.hide_progress = hide_progress
         self.interactive = interactive
 
-    def upload_manifests(self, manifests: List[ManifestFile], manifest_dir: pathlib.Path, progress_cb: Callable):
+    def upload_manifests(self, manifests: List[ManifestFile], manifest_dir: pathlib.Path):
         manifest_count = len(manifests)
         validated_files = {m.validated_file for m in manifests}
 

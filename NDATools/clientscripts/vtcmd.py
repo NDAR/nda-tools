@@ -1,17 +1,13 @@
 import argparse
-import random
-import sys
-from typing import List
-
-from NDATools.Submission import Submission
 
 from NDATools.BuildPackage import SubmissionPackage
 from NDATools.Configuration import *
-from NDATools.NDA import NDA
-from NDATools.Utils import get_request, get_non_blank_input, evaluate_yes_no_input
-from NDATools.upload import ValidatedFile
+from NDATools.NDA import validate
+from NDATools.Utils import get_non_blank_input, evaluate_yes_no_input
+from NDATools.upload import check_args
 from NDATools.upload.submission.resubmission import retrieve_replacement_submission_params, \
-    check_missing_data_for_resubmission, check_replacement_authorized
+    check_missing_data_for_resubmission
+from NDATools.upload.submission.submission import Submission
 
 logger = logging.getLogger(__name__)
 
@@ -109,64 +105,6 @@ def resume_submission(sub_id, batch, config=None):
         print_submission_complete_message(submission, False)
 
 
-def validate(args, config) -> List[ValidatedFile]:
-    api_config = get_request(f'{config.validation_api_endpoint}/config')
-    percent = api_config['v2Routing']['percent']
-    logger.debug('v2_routing percent: {}'.format(percent))
-    # route X% of traffic to the new validation API
-    v2_api = random.randint(1, 100) <= (percent * 100)
-
-    nda = NDA(config)  # only object to contain urls
-    # Perform the validation using v1 or v2 endpoints. Errors and warnings are streamed or saved in memory for v2 and v1 respectively
-    if v2_api:
-        logger.debug('Using the new validation API.')
-        if not config.is_authenticated():
-            config.read_user_credentials()
-        validated_files = nda.validate_files(args.files)
-    else:
-        logger.debug('Using the old validation API.')
-        validated_files = nda.validate_files_v1(args.files, args.workerThreads)
-
-    # Save errors to errors file
-    errors_file = nda.save_validation_errors(validated_files)
-    logger.info(
-        '\nAll files have finished validating. Validation report output to: {}'.format(
-            errors_file))
-    if any(map(lambda x: x.system_error(), validated_files)):
-        msg = 'Unexpected error occurred while validating one or more of the csv files.'
-        msg += '\nPlease email NDAHelp@mail.nih.gov for help in resolving this error and include {} as an attachment to help us resolve the issue'
-        exit_error(msg)
-
-    # Save warnings to warnings file (if requested)
-    if args.warning:
-        warnings_file = nda.save_validation_warnings(validated_files)
-        logger.info('Warnings output to: {}'.format(warnings_file))
-    elif any(map(lambda x: x.has_warnings(), validated_files)):
-        logger.info('Note: Your data has warnings. To save warnings, run again with -w argument.')
-
-    # Preview errors for each file
-    for file in validated_files:
-        if file.has_errors():
-            if file.has_manifest_errors():
-                file.show_manifest_errors()
-            else:
-                file.preview_validation_errors(10)
-
-    # Exit if user intended to submit and there are any errors
-    will_submit = args.buildPackage
-    replace_submission = args.replace_submission
-    if will_submit:
-        if replace_submission:
-            logger.error('ERROR - At least some of the files failed validation. '
-                         'All files must pass validation in order to edit submission {}. Please fix these errors and try again.'.format(
-                replace_submission))
-        else:
-            logger.info('You must correct the above errors before you can submit to NDA')
-        sys.exit(1)
-
-    return validated_files
-
-
 def build_package(validated_files, config, args):
     pending_changes, original_uuids, original_submission_id = None, None, None
     if args.replace_submission:
@@ -250,16 +188,6 @@ def submit(validated_files, config, args):
         submission.check_status()
     if submission.status != Status.UPLOADING:
         print_submission_complete_message(submission, replacement=True if args.replace_submission else False)
-
-
-def check_args(args, config):
-    if args.replace_submission:
-        if args.title or args.description or args.collectionID:
-            message = 'Title, description, and collection ID are not allowed when replacing a submission' \
-                      ' using -rs flag. Please remove -t, -d and -c when using -rs. Exiting...'
-            logger.error(message)
-            exit(1)
-        check_replacement_authorized(config, args.replace_submission)
 
 
 def main():

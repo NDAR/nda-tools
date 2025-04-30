@@ -18,22 +18,22 @@ class Extension(enum.Enum):
     CSV = '.csv'
 
 
-class ValidationFileWriter(abc.ABC):
+class ResultsWriterABC(abc.ABC):
     def __init__(self, results_folder, ext: Extension):
         date = time.strftime("%Y%m%dT%H%M%S")
         self.errors_file = os.path.join(results_folder, f'validation_results_{date}{ext.value}')
         self.warnings_file = os.path.join(results_folder, f'validation_warnings_{date}{ext.value}')
 
     @abc.abstractmethod
-    def write_errors(self, results: [ValidatedFile]):
+    def write_errors(self, results: [ValidatedFile]) -> str:
         ...
 
     @abc.abstractmethod
-    def write_warnings(self, results: [ValidatedFile]):
+    def write_warnings(self, results: [ValidatedFile]) -> str:
         ...
 
 
-class JsonValidationFileWriter(ValidationFileWriter):
+class JsonWriter(ResultsWriterABC):
     def __init__(self, results_folder):
         super().__init__(results_folder, Extension.JSON)
 
@@ -54,12 +54,14 @@ class JsonValidationFileWriter(ValidationFileWriter):
 
     def write_errors(self, results: List[ValidatedFile]):
         self._write(results, True)
+        return self.errors_file
 
     def write_warnings(self, results: List[ValidatedFile]):
         self._write(results, False)
+        return self.warnings_file
 
 
-class CsvValidationFileWriter(ValidationFileWriter):
+class CsvWriter(ResultsWriterABC):
     def __init__(self, results_folder):
         super().__init__(results_folder, Extension.CSV)
 
@@ -96,6 +98,7 @@ class CsvValidationFileWriter(ValidationFileWriter):
                         'MESSAGE': 'None',
                         'RECORD': 'None'
                     })
+        return self.errors_file
 
     def write_warnings(self, results: List[ValidatedFile]):
         fieldnames = ['FILE', 'ID', 'STATUS', 'EXPIRATION_DATE', 'WARNINGS', 'MESSAGE', 'COUNT']
@@ -128,23 +131,16 @@ class CsvValidationFileWriter(ValidationFileWriter):
                         'MESSAGE': 'None',
                         'COUNT': '0'
                     })
+        return self.warnings_file
 
 
-class ValidationResultsWriter:
-    def __init__(self, *, is_json):
-        self.file_writer = JsonValidationFileWriter(NDA_TOOLS_VAL_FOLDER) if is_json \
-            else CsvValidationFileWriter(NDA_TOOLS_VAL_FOLDER)
+class ResultsWriterFactory:
 
-    @property
-    def warnings_file(self):
-        return self.file_writer.warnings_file
-
-    @property
-    def errors_file(self):
-        return self.file_writer.errors_file
-
-    def save_validation_errors(self, results: List[ValidatedFile]):
-        self.file_writer.write_errors(results)
-
-    def save_validation_warnings(self, results: List[ValidatedFile]):
-        self.file_writer.write_warnings(results)
+    @staticmethod
+    def get_writer(file_format: str = 'csv'):
+        if file_format == 'csv':
+            return CsvWriter(NDA_TOOLS_VAL_FOLDER)
+        elif file_format == 'json':
+            return JsonWriter(NDA_TOOLS_VAL_FOLDER)
+        else:
+            raise Exception('invalid format')
