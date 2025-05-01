@@ -11,12 +11,14 @@ import time
 import traceback
 import urllib.parse
 from pathlib import Path
+from typing import Callable, List, Tuple
 from urllib.parse import urlparse, unquote
 
 import boto3
 import requests
 from botocore.exceptions import ClientError
 from requests.adapters import HTTPAdapter, Retry
+from tqdm.contrib.concurrent import thread_map
 
 logger = logging.getLogger(__name__)
 
@@ -341,7 +343,8 @@ def get_s3_resource(aws_access_key, aws_secret_key, aws_session_token, s3_config
 
 def collect_directory_list():
     while True:
-        retry = input('\nPlease specify the immediate parent directory of the associated file paths specified in the csv, then press Enter. Separate multiple directories by a comma: ')
+        retry = input(
+            '\nPlease specify the immediate parent directory of the associated file paths specified in the csv, then press Enter. Separate multiple directories by a comma: ')
         response = retry.split(',')
         directories = list(map(lambda x: Path(x.strip()), response))
         if all(map(lambda x: os.path.isdir(x), directories)):
@@ -378,3 +381,20 @@ def get_object(s3_url, /, access_key_id, secret_access_key, session_token):
     except ClientError as e:
         print(f"An error occurred: {e}")
         exit(1)
+
+
+def execute_in_threadpool(func: Callable, args: List[Tuple], max_workers: int, disable_tqdm: bool = False):
+    return thread_map(func, args, max_workers=max_workers, total=len(args), disable=disable_tqdm)
+    # manual implementation - keeping for now until decidedly not needed
+    # results = []
+    # with tqdm(total=len(args), disable=self.config.hideProgress or disable_tqdm) as progress_bar, \
+    #         ThreadPoolExecutor(max_workers=self.config.workerThreads) as executor:
+    #     # executor.map seems to block whereas executor.submit doesnt...
+    #     futures = list(map(lambda arg: executor.submit(func, *arg), args))
+    #     for result in concurrent.futures.as_completed(futures):
+    #         r = result.result()
+    #         results.append(r)
+    #         if cb:
+    #             cb(r)
+    #         progress_bar.update(1)
+    # return results

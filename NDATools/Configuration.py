@@ -15,7 +15,7 @@ import NDATools
 from NDATools import NDA_TOOLS_LOGGING_YML_FILE
 from NDATools.Utils import exit_error, HttpErrorHandlingStrategy, get_request
 from NDATools.upload.validation.api import ValidationApi
-from NDATools.upload.validation.uploader import ManifestsUploader
+from NDATools.upload.validation.manifests import ManifestsUploader
 
 logger = logging.getLogger(__name__)
 
@@ -186,7 +186,7 @@ class ClientConfiguration:
         self.validation_api = ValidationApi(self.validation_api_endpoint, self.username, self.password)
         self.manifests_uploader = ManifestsUploader(self.validation_api,
                                                     self.config.workerThreads,
-                                                    not self.config.force,
+                                                    self.config.force,
                                                     self.config.hideProgress)
 
     def is_valid_nda_credentials(self):

@@ -1,15 +1,14 @@
 import enum
 import logging
-import os
 import pathlib
 import traceback
 from typing import List, Callable, Tuple
 
 from tabulate import tabulate
-from tqdm.contrib.concurrent import thread_map
 
 from NDATools.Configuration import ClientConfiguration
-from NDATools.Utils import exit_error
+from NDATools.Utils import exit_error, execute_in_threadpool
+from NDATools.upload.validation.manifests import ManifestFile
 from NDATools.upload.validation.v1 import Validation
 
 logger = logging.Logger(__name__)
@@ -19,57 +18,10 @@ class NdaSubmission:
     pass
 
 
-class ManifestFile:
-    def __init__(self, name: str, s3_destination: str, uuid: str, record_number: int, validated_file):
-        self.name = name
-        self.s3_destination = s3_destination
-        self.uuid = uuid
-        self.record_number = record_number
-        self.validated_file = validated_file
-
-    def upload(self, manifest_dir):
-        try:
-            self.validated_file.upload_manifest(self, manifest_dir)
-        except Exception as e:
-            if not isinstance(e, ManifestNotFoundError):
-                logger.error(f'Unexpected error occurred while uploading {self.name}: {e}')
-                logger.error(traceback.format_exc())
-                raise ManifestUploadError(self, e)
-            else:
-                logger.debug(
-                    f'Could not find manifest {self.name} from file {self.validated_file.file.name} in {manifest_dir}')
-                raise e
-
-    @staticmethod
-    def from_credentials(creds):
-        return [
-            ManifestFile(m['localFileName'], m['s3Destination'], m['uuid'], m['recordNumber'], None)
-            for m in creds.download_manifests()
-        ]
-
-    def __eq__(self, other):
-        if isinstance(other, ManifestFile):
-            return self.uuid == other.uuid
-        return False
-
-    def __hash__(self):
-        return self.uuid
-
-
-class ManifestValidationError():
+class ManifestValidationError:
     def __init__(self, manifest: ManifestFile, messages: List[str]):
         self.manifest = manifest
         self.messages = messages
-
-
-class ManifestUploadError(Exception):
-    def __init__(self, manifest: ManifestFile, unexpected_error: Exception = None):
-        self.manifest = manifest
-        self.error = unexpected_error
-
-
-class ManifestNotFoundError(ManifestUploadError):
-    ...
 
 
 class ValidationError:
@@ -89,8 +41,7 @@ class ValidationStatus(str, enum.Enum):
 
 
 class ValidatedFile:
-    def __init__(self, file: pathlib.Path, *, v1_resource=None, v2_resource=None, v2_creds=None, manifests=None,
-                 manifest_errors=None):
+    def __init__(self, file: pathlib.Path, *, v1_resource=None, v2_resource=None, v2_creds=None, manifest_errors=None):
         self.file = file
         assert v1_resource or v2_resource, "v1_resource or v2_resource must be specified"
         if v2_resource:
@@ -98,7 +49,6 @@ class ValidatedFile:
             self.uuid = v2_resource.uuid
             self._errors = None
             self._warnings = None
-            self._manifests = manifests
             self._associated_files = None
             self._manifest_errors = manifest_errors
             self._v2_creds = v2_creds
@@ -109,8 +59,8 @@ class ValidatedFile:
                             in v1_resource['errors'].values() for i in err_type]
             self._warnings = [ValidationError(i.get('recordNumber'), i.get('columnName'), i.get('message')) for err_type
                               in v1_resource['warnings'].values() for i in err_type]
-            self._manifests = [ManifestFile(m['localFileName'], m['s3Destination'], m['uuid'], m['recordNumber'], self)
-                               for m in v1_resource['manifests']]
+            # self._manifests = [ManifestFile(m['localFileName'], m['s3Destination'], m['uuid'], m['recordNumber'], self)
+            #                    for m in v1_resource['manifests']]
             self._associated_files = v1_resource['associated_file_paths']
             self._manifest_errors = None
 
@@ -135,13 +85,6 @@ class ValidatedFile:
             self._errors = [ValidationError(m.get('recordNumber'), m.get('columnName'), m.get('message')) for err_type
                             in self._v2_creds.download_errors().values() for m in err_type]
         return self._errors
-
-    @property
-    def manifests(self) -> List[ManifestFile]:
-        if self._manifests is None:
-            self._manifests = [ManifestFile(m['localFileName'], m['s3Destination'], m['uuid'], m['recordNumber'], self)
-                               for m in self._v2_creds.download_manifests()['manifests']]
-        return self._manifests
 
     @property
     def associated_file(self) -> List[str]:
@@ -175,8 +118,16 @@ class ValidatedFile:
     def waiting_manifest_upload(self):
         return self.status == ValidationStatus.PENDING_MANIFESTS
 
+    def _preview(self, rows, headers):
+        if not rows:
+            return None
+        logger.info('')
+        table = tabulate(rows, headers=headers)
+        logger.info(table)
+        logger.info('')
+        return table
+
     def preview_validation_errors(self, limit=10):
-        table_list = []
         logger.info('\nErrors found in {}:'.format(self.file.name))
         rows = [
             [
@@ -185,33 +136,22 @@ class ValidatedFile:
                 error.message
             ] for error in self.errors[:limit]
         ]
-        if rows:
-            logger.info('')
-            table = tabulate(rows, headers=['Row', 'Column', 'Message'])
-            table_list.append(table)
-            logger.info(table)
-            logger.info('')
+        self._preview(rows, ['Row', 'Column', 'Message'])
         if len(self.errors) > limit:
             logger.info('\n...and {} more errors'.format(len(self.errors) - limit))
-        return table_list
 
     def preview_manifest_errors(self, limit=10):
-        table_list = []
         logger.info('\nManifest Errors found in {}:'.format(self.file.name))
         rows = [
             [
                 error.record_number,
                 error.column_name,
                 error.message
-            ] for error in self.get_manifest_errors(limit)
+            ] for error in self._manifest_errors[:limit]
         ]
-
-    def upload_manifest(self, manifest: ManifestFile, manifest_dir: str):
-        assert self._v2_creds
-        local_file = pathlib.Path(os.path.join(manifest_dir, manifest.name))
-        if not local_file.exists():
-            raise ManifestNotFoundError(manifest)
-        self._v2_creds.upload(str(local_file), manifest.s3_destination)
+        self._preview(rows, ['Row', 'FileName', 'Message'])
+        if len(self._manifest_errors) > limit:
+            logger.info('\n...and {} more errors'.format(len(self._manifest_errors) - limit))
 
 
 class NdaUploadCli:
@@ -345,20 +285,6 @@ class NdaUploadCli:
             exit(1)
 
     def _execute_in_threadpool(self, func: Callable, args: List[Tuple], disable_tqdm: bool = False):
-        return thread_map(func, args,
-                          max_workers=self.config.workerThreads,
-                          total=len(args),
-                          disable=self.config.hideProgress or disable_tqdm)
-        # manual implementation - keeping for now until decidedly not needed
-        # results = []
-        # with tqdm(total=len(args), disable=self.config.hideProgress or disable_tqdm) as progress_bar, \
-        #         ThreadPoolExecutor(max_workers=self.config.workerThreads) as executor:
-        #     # executor.map seems to block whereas executor.submit doesnt...
-        #     futures = list(map(lambda arg: executor.submit(func, *arg), args))
-        #     for result in concurrent.futures.as_completed(futures):
-        #         r = result.result()
-        #         results.append(r)
-        #         if cb:
-        #             cb(r)
-        #         progress_bar.update(1)
-        # return results
+        return execute_in_threadpool(func, args,
+                                     max_workers=self.config.workerThreads,
+                                     disable_tqdm=self.config.hideProgress or disable_tqdm)
