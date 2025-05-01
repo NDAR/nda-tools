@@ -131,9 +131,10 @@ def validate(args):
         logger.debug('Using the old validation API.')
         validated_files = nda.validate_v1(args.files, args.workerThreads)
 
-    # Save errors to errors file
+    # Save errors to file
     writer = ResultsWriterFactory.get_writer(file_format='json' if args.JSON else 'csv')
 
+    # TODO update this to include manifest errors
     errors_file = writer.write_errors(validated_files)
     logger.info(
         '\nAll files have finished validating. Validation report output to: {}'.format(
@@ -143,7 +144,7 @@ def validate(args):
         msg += '\nPlease email NDAHelp@mail.nih.gov for help in resolving this error and include {} as an attachment to help us resolve the issue'
         exit_error(msg)
 
-    # Save warnings to warnings file (if requested)
+    # Save warnings to file (if requested)
     if args.warning:
         warnings_file = writer.write_warnings(validated_files)
         logger.info('Warnings output to: {}'.format(warnings_file))
@@ -154,7 +155,7 @@ def validate(args):
     for file in validated_files:
         if file.has_errors():
             if file.has_manifest_errors():
-                file.show_manifest_errors()
+                file.preview_manifest_errors(10)
             else:
                 file.preview_validation_errors(10)
 

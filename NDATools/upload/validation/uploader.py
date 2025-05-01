@@ -9,7 +9,6 @@ from typing import List, Callable
 from tqdm import tqdm
 
 from NDATools.Utils import exit_error
-from NDATools.upload import ManifestFile, ManifestNotFoundError
 from NDATools.upload.validation.api import ValidationApi
 
 logger = logging.getLogger(__name__)

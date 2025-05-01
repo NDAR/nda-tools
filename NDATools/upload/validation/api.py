@@ -169,27 +169,6 @@ class ValidationApi:
         tmp = post_request(self.api_v2_endpoint, auth=self.auth, payload=payload)
         return self._get_refreshable_credentials(tmp)
 
-    def wait_validation_complete(self, uuid, timeout_seconds, wait_manifest_upload=False):
-        timeout = time.time() + timeout_seconds
-        poll_interval_sec = 1
-        while True:
-            validation = self.get_validation(uuid)
-            status = validation.status.lower()
-
-            if 'complete' in status:
-                break
-            elif 'pending' in status and not wait_manifest_upload:
-                break
-            elif 'error' in status:
-                exit_error()
-            else:
-                time.sleep(poll_interval_sec)  # Wait before checking again
-                poll_interval_sec = min(poll_interval_sec * 1.5, 10)
-                if time.time() > timeout:
-                    logger.error(f"Validation timed out for uuid {uuid}")
-                    exit_error()
-        return validation
-
     def _get_refreshable_credentials(self, creds: dict):
         try:
             return ValidationV2Credentials(lambda: self.refresh_upload_credentials(creds['validation_uuid']), **creds)
@@ -218,3 +197,24 @@ class ValidationApi:
         url = f"{self.api_v2_endpoint}{uuid}/manifests/errors"
         tmp = get_request(url, auth=self.auth)
         return ValidationV2(**tmp)
+
+    def wait_validation_complete(self, uuid, timeout_seconds, wait_manifest_upload=False) -> ValidationV2:
+        timeout = time.time() + timeout_seconds
+        poll_interval_sec = 1
+        while True:
+            validation = self.get_validation(uuid)
+            status = validation.status.lower()
+
+            if 'complete' in status:
+                break
+            elif 'pending' in status and not wait_manifest_upload:
+                break
+            elif 'error' in status:
+                exit_error()
+            else:
+                time.sleep(poll_interval_sec)  # Wait before checking again
+                poll_interval_sec = min(poll_interval_sec * 1.5, 10)
+                if time.time() > timeout:
+                    logger.error(f"Validation timed out for uuid {uuid}")
+                    exit_error()
+        return validation
