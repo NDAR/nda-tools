@@ -1,13 +1,15 @@
 import argparse
+import random
+import sys
 
 from NDATools.BuildPackage import SubmissionPackage
 from NDATools.Configuration import *
-from NDATools.NDA import validate
 from NDATools.Utils import get_non_blank_input, evaluate_yes_no_input
-from NDATools.upload import check_args
+from NDATools.upload.cli import NdaUploadCli
 from NDATools.upload.submission.resubmission import retrieve_replacement_submission_params, \
-    check_missing_data_for_resubmission
+    check_missing_data_for_resubmission, check_replacement_authorized
 from NDATools.upload.submission.submission import Submission
+from NDATools.upload.validation.results_writer import ResultsWriterFactory
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +58,7 @@ def parse_args():
                         help='Flag whether to validate using a custom scope. Must enter a custom scope')
 
     parser.add_argument('-rs', '--replace-submission', metavar='<arg>', type=str, action='store', default=0,
-                        help='Use this arugment to replace a submission that has QA errors or that NDA staff has authorized manually to replace.')
+                        help='Use this argument to replace a submission that has QA errors or that NDA staff has authorized manually to replace.')
 
     parser.add_argument('-r', '--resume', action='store_true',
                         help='Restart an in-progress submission, resuming from the last successful part in a multi-part'
@@ -73,8 +75,6 @@ def parse_args():
 
     parser.add_argument('--hideProgress', action='store_true', help='Hides upload/processing progress')
 
-    parser.add_argument('--skipLocalAssocFileCheck', action='store_true', help='Not recommended UNLESS you have already'
-                                                                               ' verified all paths for associated data files are correct')
     parser.add_argument('-f', '--force', action='store_true',
                         help='Ignores all warnings and continues without prompting for input from the user.')
 
@@ -96,6 +96,81 @@ def parse_args():
 class Status:
     UPLOADING = 'Uploading'
     SYSERROR = 'SystemError'
+
+
+def check_args(args, config):
+    if args.replace_submission:
+        if args.title or args.description or args.collectionID:
+            message = 'Title, description, and collection ID are not allowed when replacing a submission' \
+                      ' using -rs flag. Please remove -t, -d and -c when using -rs. Exiting...'
+            logger.error(message)
+            exit(1)
+        check_replacement_authorized(config, args.replace_submission)
+
+
+def validate(args):
+    auth_req = True if args.buildPackage or args.resume or args.replace_submission or args.username else False
+    config = NDATools.init_and_create_configuration(args, NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER, auth_req=auth_req)
+    check_args(args, config)
+
+    api_config = get_request(f'{config.validation_api_endpoint}/config')
+    percent = api_config['v2Routing']['percent']
+    logger.debug('v2_routing percent: {}'.format(percent))
+    # route X% of traffic to the new validation API
+    v2_api = random.randint(1, 100) <= (percent * 100)
+
+    logger.info(f'\nValidating {len(args.files)} files...')
+    nda = NdaUploadCli(config)  # only object to contain urls
+    # Perform the validation using v1 or v2 endpoints. Errors and warnings are streamed or saved in memory for v2 and v1 respectively
+    if v2_api:
+        logger.debug('Using the new validation API.')
+        if not config.is_authenticated():
+            config.read_user_credentials()
+        validated_files = nda.validate(args.files)
+    else:
+        logger.debug('Using the old validation API.')
+        validated_files = nda.validate_v1(args.files, args.workerThreads)
+
+    # Save errors to errors file
+    writer = ResultsWriterFactory.get_writer(file_format='json' if args.JSON else 'csv')
+
+    errors_file = writer.write_errors(validated_files)
+    logger.info(
+        '\nAll files have finished validating. Validation report output to: {}'.format(
+            errors_file))
+    if any(map(lambda x: x.system_error(), validated_files)):
+        msg = 'Unexpected error occurred while validating one or more of the csv files.'
+        msg += '\nPlease email NDAHelp@mail.nih.gov for help in resolving this error and include {} as an attachment to help us resolve the issue'
+        exit_error(msg)
+
+    # Save warnings to warnings file (if requested)
+    if args.warning:
+        warnings_file = writer.write_warnings(validated_files)
+        logger.info('Warnings output to: {}'.format(warnings_file))
+    elif any(map(lambda x: x.has_warnings(), validated_files)):
+        logger.info('Note: Your data has warnings. To save warnings, run again with -w argument.')
+
+    # Preview errors for each file
+    for file in validated_files:
+        if file.has_errors():
+            if file.has_manifest_errors():
+                file.show_manifest_errors()
+            else:
+                file.preview_validation_errors(10)
+
+    # Exit if user intended to submit and there are any errors
+    will_submit = args.buildPackage
+    replace_submission = args.replace_submission
+    if will_submit:
+        if replace_submission:
+            logger.error('ERROR - At least some of the files failed validation. '
+                         'All files must pass validation in order to edit submission {}. Please fix these errors and try again.'.format(
+                replace_submission))
+        else:
+            logger.info('You must correct the above errors before you can submit to NDA')
+        sys.exit(1)
+
+    return validated_files
 
 
 def resume_submission(sub_id, batch, config=None):
@@ -196,12 +271,13 @@ def main():
     auth_req = True if args.buildPackage or args.resume or args.replace_submission or args.username else False
     config = NDATools.init_and_create_configuration(args, NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER, auth_req=auth_req)
     check_args(args, config)
+
     if args.resume:
         submission_id = args.files[0]
         # Need to check to see if I need to update this step!
         resume_submission(submission_id, batch=args.batch, config=config)
     else:
-        validated_files = validate(args, config)
+        validated_files = validate(args)
         if args.buildPackage:
             if args.replace_submission:
                 replace_submission(validated_files, args.replace_submission, config, args)

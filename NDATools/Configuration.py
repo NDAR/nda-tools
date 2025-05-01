@@ -89,7 +89,6 @@ class ClientConfiguration:
             self.description = args.description
             self.scope = args.scope
             self.JSON = args.JSON
-            self.skip_local_file_check = args.skipLocalAssocFileCheck
             self.replace_submission = args.replace_submission
         if self.username:
             logger.info('proceeding as NDA user: {}'.format(self.username))
