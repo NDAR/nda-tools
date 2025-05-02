@@ -108,11 +108,7 @@ def check_args(args, config):
         check_replacement_authorized(config, args.replace_submission)
 
 
-def validate(args):
-    auth_req = True if args.buildPackage or args.resume or args.replace_submission or args.username else False
-    config = NDATools.init_and_create_configuration(args, NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER, auth_req=auth_req)
-    check_args(args, config)
-
+def validate(args, config):
     api_config = get_request(f'{config.validation_api_endpoint}/config')
     percent = api_config['v2Routing']['percent']
     logger.debug('v2_routing percent: {}'.format(percent))

@@ -8,6 +8,7 @@ from tabulate import tabulate
 
 from NDATools.Configuration import ClientConfiguration
 from NDATools.Utils import exit_error, execute_in_threadpool
+from NDATools.upload.validation.api import ManifestError
 from NDATools.upload.validation.manifests import ManifestFile
 from NDATools.upload.validation.v1 import Validation
 
@@ -59,8 +60,6 @@ class ValidatedFile:
                             in v1_resource['errors'].values() for i in err_type]
             self._warnings = [ValidationError(i.get('recordNumber'), i.get('columnName'), i.get('message')) for err_type
                               in v1_resource['warnings'].values() for i in err_type]
-            # self._manifests = [ManifestFile(m['localFileName'], m['s3Destination'], m['uuid'], m['recordNumber'], self)
-            #                    for m in v1_resource['manifests']]
             self._associated_files = v1_resource['associated_file_paths']
             self._manifest_errors = None
 
@@ -144,14 +143,14 @@ class ValidatedFile:
         logger.info('\nManifest Errors found in {}:'.format(self.file.name))
         rows = [
             [
-                error.record_number,
-                error.column_name,
-                error.message
+                error.manifest.record_number,
+                error.manifest.name,
+                error.messages
             ] for error in self._manifest_errors[:limit]
         ]
         self._preview(rows, ['Row', 'FileName', 'Message'])
-        if len(self._manifest_errors) > limit:
-            logger.info('\n...and {} more errors'.format(len(self._manifest_errors) - limit))
+        if len(self.manifest_errors) > limit:
+            logger.info('\n...and {} more errors'.format(len(self.manifest_errors) - limit))
 
 
 class NdaUploadCli:
@@ -238,8 +237,8 @@ class NdaUploadCli:
         assert isinstance(files, list), "files must be a list of strings"
 
         class InitiatedV2Request:
-            ''' Private class used to keep track of the state of requests. Some requests complete as soon as they are
-            uploaded while others require manifests to be validated after the csv is validated.'''
+            """ Private class used to keep track of the state of requests. Some requests complete as soon as they are
+             uploaded, while others require manifests to be validated after the csv is validated."""
 
             def __init__(self, file: pathlib.Path, v2_resource=None, v2_creds=None):
                 self.file = file
@@ -248,6 +247,11 @@ class NdaUploadCli:
                 self.waiting_manifest_upload = v2_resource['status'] == ValidationStatus.PENDING_MANIFESTS
                 self.uuid = v2_resource['uuid']
                 self.manifest_errors = None
+
+            def set_manifest_errors(self, errors: List[ManifestError]):
+                manifests = ManifestFile.manifests_from_credentials(self.v2_creds)
+                mdict = {m.uuid: m for m in manifests}
+                self.manifest_errors = [ManifestValidationError(mdict[e.uuid], e.errors) for e in errors]
 
         def initiate_v2_request(file: pathlib.Path) -> InitiatedV2Request:
             """ Uploads CSV file and waits until validation is complete. Does not upload manifest files if manifests are present"""
@@ -275,8 +279,8 @@ class NdaUploadCli:
                 # update the resource on the owning request object
                 request.v2_resource = resource
                 if resource['status'] == ValidationStatus.COMPLETE_WITH_ERRORS:
-                    # get manifest errors
-                    request.manifest_errors = request.v2_creds.get_manifest_errors()
+                    # update the manifest errors
+                    request.set_manifest_errors(self.validation_api.get_manifest_errors(request.uuid))
 
             self._execute_in_threadpool(wait_and_update, [(r,) for r in manifest_requests])
 

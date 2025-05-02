@@ -4,7 +4,7 @@ import os
 import pathlib
 import time
 from threading import RLock
-from typing import Union
+from typing import Union, List
 
 import boto3
 import requests
@@ -126,6 +126,11 @@ class ValidationV2Credentials(AutoRefreshableCredentials):
             raise Exception('These are not read write credentials')
 
 
+class ManifestError(BaseModel):
+    uuid: str
+    errors: List[str]
+
+
 class ValidationV2(BaseModel):
     uuid: str = Field(..., alias='validation_uuid')
     status: str
@@ -193,10 +198,17 @@ class ValidationApi:
         tmp = get_request(url, auth=self.auth)
         return ValidationV2(**tmp)
 
-    def get_manifest_errors(self, uuid: str) -> ValidationV2:
+    def get_manifest_errors(self, uuid: str) -> List[ManifestError]:
         url = f"{self.api_v2_endpoint}{uuid}/manifests/errors"
-        tmp = get_request(url, auth=self.auth)
-        return ValidationV2(**tmp)
+        results = []
+        page = 0
+        while True:
+            tmp = get_request(f"{url}?page={page}", auth=self.auth)
+            if not tmp:
+                break
+            results.extend([ManifestError(**t) for t in tmp])
+            page += 1
+        return results
 
     def wait_validation_complete(self, uuid, timeout_seconds, wait_manifest_upload=False) -> ValidationV2:
         timeout = time.time() + timeout_seconds
