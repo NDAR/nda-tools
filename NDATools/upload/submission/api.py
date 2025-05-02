@@ -18,6 +18,12 @@ class SubmissionDetails(BaseModel):
     submission_id: int
     data_structure_details: List[DataStructureDetails] = Field(..., alias='pending_changes')
 
+    def get_data_structure_details(self, short_name):
+        for data_structure in self.data_structure_details:
+            if data_structure.short_name == short_name:
+                return data_structure
+        return None
+
 
 class SubmissionHistory(BaseModel):
     replacement_authorized: bool

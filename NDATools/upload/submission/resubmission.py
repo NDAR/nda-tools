@@ -1,12 +1,12 @@
 import functools
 import logging
+from collections import defaultdict
 from typing import List
 
 from NDATools.BuildPackage import SubmissionPackage
 from NDATools.Utils import exit_error, evaluate_yes_no_input
 from NDATools.upload.cli import ValidatedFile
 from NDATools.upload.submission.api import SubmissionApi, Submission, SubmissionDetails
-from NDATools.upload.validation.v1 import ValidationV1Api
 
 logger = logging.getLogger(__name__)
 
@@ -28,49 +28,26 @@ def check_replacement_authorized(config, submission_id):
                     submission_id))
 
 
-'''
-    pending_changes, original_uuids, original_submission_id = retrieve_replacement_submission_params(config,
-                                                                                                         args.replace_submission)
-    # For resubmission workflow: alert user if data loss was detected in one of their data-structures
-    if original_submission_id and not config.force:
-        data_structures_with_missing_rows = check_missing_data_for_resubmission(validated_files,
-                                                                                pending_changes,
-                                                                                original_uuids)
-        if data_structures_with_missing_rows:
-            logger.warning('\nWARNING - Detected missing information in the following files: ')
-
-            for tuple_expected_actual in data_structures_with_missing_rows:
-                logger.warning(
-                    '\n{} - expected {} rows but found {}  '.format(tuple_expected_actual[0],
-                                                                    tuple_expected_actual[1],
-                                                                    tuple_expected_actual[2]))
-            prompt = '\nIf you update your submission with these files, the missing data will be reflected in your data-expected numbers'
-            prompt += '\nAre you sure you want to continue? <Yes/No>: '
-            proceed = evaluate_yes_no_input(prompt, 'n')
-            if str(proceed).lower() == 'n':
-                exit_error(message='')
-'''
-
-
 def _check_missing_data_for_resubmission(validated_files: List[ValidatedFile], submission_details: SubmissionDetails):
     def add(d, v):
-        if v.short_name not in d:
-            d[v.short_name] = 0
         if isinstance(v, ValidatedFile):
             d[v.short_name] += v.row_count
         else:
             d[v.short_name] += v.rows
         return {**d}
 
-    sorted_files = sorted(validated_files, key=lambda v: v.short_name)
-    provided_row_counts = functools.reduce(add, sorted_files, dict())
+    # create a dictionary containing row counts per datastructure in validated_files
+    provided_row_counts = functools.reduce(add, validated_files, defaultdict(int))
 
-    sorted_details = sorted(submission_details.data_structure_details, key=lambda v: v.short_name)
-    submission_row_counts = functools.reduce(add, sorted_details, dict())
+    # create a dictionary containing row counts per datastructure in original submission
+    submission_row_counts = functools.reduce(add, submission_details.data_structure_details, defaultdict(int))
 
+    # find structures where the number of rows provided is less than expected
     data_structures_with_missing_rows = []
     for short_name, row_count in submission_row_counts.items():
-        if row_count < provided_row_counts[short_name]:
+        # Users only need to submit data for structures with changed data, so dont flag structures that the user submit changes for.
+        submitted_data = short_name in provided_row_counts
+        if submitted_data and row_count < provided_row_counts[short_name]:
             data_structures_with_missing_rows.append((short_name, row_count, provided_row_counts[short_name]))
 
     if data_structures_with_missing_rows:
@@ -100,7 +77,6 @@ def _check_unrecognized_datastructures(validated_files: List[ValidatedFile], sub
 
 def build_replacement_package(validated_files, args, config) -> SubmissionPackage:
     submission_api = SubmissionApi(config)
-    validation_api = ValidationV1Api(config.validation_api_endpoint)
 
     submission: Submission = submission_api.get_submission(args.replacement_submission)
 
@@ -113,39 +89,26 @@ def build_replacement_package(validated_files, args, config) -> SubmissionPackag
     # perform some checks before attempting to build the package
     _check_unrecognized_datastructures(validated_files, submission_details)
     _check_missing_data_for_resubmission(validated_files, submission_details)
+    updated_uuids = _generate_uuids_for_qa_workflow(validated_files, submission_details)
 
     # get list of associated-files that have already been uploaded for each data-structure
-    # for structure_details in submission_details.data_structure_details:
-    #     validation_uuids = structure_details.validation_uuids
-    #     manifest_files = []
-    #     for uuid in validation_uuids:
-    #         v = validation_api.get_validation(uuid)
-    #         manifest_files.extend(manifest.local_file_name for manifest in v.manifests)
-
-    # return pending_changes, original_uuids, original_submission_id
+    return SubmissionPackage(updated_uuids, config=config)
 
 
-def _generate_uuids_for_qa_workflow(unrecognized_ds=set()):
-    unrecognized_structures = set(unrecognized_ds)
-    new_uuids = set(original_uuids)
-    val_by_short_name = {}
-    for uuid in uuid_dict:
-        short_name = uuid_dict[uuid]['short_name']
-        val_by_short_name[short_name] = set()
-    for uuid in uuid_dict:
-        short_name = uuid_dict[uuid]['short_name']
-        val_by_short_name[short_name].update({uuid})
-    for short_name in val_by_short_name:
-        # find the pending change with the same short name
-        matching_change = {}
-        for change in pending_changes:
-            if change['shortName'] == short_name:
-                matching_change = change
-        if not matching_change:
-            unrecognized_structures.add(short_name)
-        else:
-            # prevValidationUuids is the set of validation-uuids on the pending changes resource
-            new_uuids = new_uuids.difference(set(matching_change['validationUuids']))
-            new_uuids.update({res for res in val_by_short_name[short_name]})
+def _generate_uuids_for_qa_workflow(validated_files: List[ValidatedFile], submission_details: SubmissionDetails):
+    new_uuids = set(submission_details.validation_uuids)
+    # create a dictionary containing validation-uuids per datastructure in validated_files
+    validation_uuids_by_short_name = defaultdict(set)
+    for file in validated_files:
+        validation_uuids_by_short_name[file.short_name].add(file.uuid)
 
-    return list(new_uuids), unrecognized_structures
+    # adds to 'new_uuids' one datastructure at a time
+    for short_name in validation_uuids_by_short_name:
+        structure_details = submission_details.get_data_structure_details(short_name)
+
+        # remove uuids from the previous submission for this data-structure
+        new_uuids = new_uuids.difference(set(structure_details.validation_uuids))
+        # add uuids from the validated_files for this data-structure
+        new_uuids.update({res for res in validation_uuids_by_short_name[short_name]})
+
+    return list(new_uuids)
