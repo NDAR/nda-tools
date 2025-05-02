@@ -14,11 +14,12 @@ logger = logging.getLogger(__name__)
 
 
 class ManifestFile:
-    def __init__(self, name: str, s3_destination: str, uuid: str, record_number: int):
+    def __init__(self, name: str, s3_destination: str, uuid: str, record_number: int, column: str):
         self.name = name
         self.s3_destination = s3_destination
         self.uuid = uuid
         self.record_number = record_number
+        self.column = column
 
     def resolve_local_path(self, manifest_dir: pathlib.Path):
         return manifest_dir / self.name
@@ -26,7 +27,7 @@ class ManifestFile:
     @staticmethod
     def manifests_from_credentials(creds):
         return [
-            ManifestFile(m['localFileName'], m['s3Destination'], m['uuid'], m['recordNumber'], None)
+            ManifestFile(m['localFileName'], m['s3Destination'], m['uuid'], m['recordNumber'], m['header'])
             for m in creds.download_manifests()
         ]
 

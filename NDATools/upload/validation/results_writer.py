@@ -18,6 +18,15 @@ class Extension(enum.Enum):
     CSV = '.csv'
 
 
+def group_errors_by_key(errors: List[ValidationError]):
+    obj = {}
+    for error in errors:
+        if error.err_code not in obj:
+            obj[error.err_code] = []
+        obj[error.err_code].append(error)
+    return obj
+
+
 class ResultsWriterABC(abc.ABC):
     def __init__(self, results_folder, ext: Extension):
         date = time.strftime("%Y%m%dT%H%M%S")
@@ -60,11 +69,7 @@ class JsonWriter(ResultsWriterABC):
             r: ValidatedFile = result
             key = 'Errors' if is_errors else 'Warnings'
             # group errors/warnings by err_code
-            obj = {}
-            for error in r.errors if is_errors else r.warnings:
-                if error.err_code not in obj:
-                    obj[error.err_code] = []
-                obj[error.err_code].append(error)
+            obj = group_errors_by_key(r.errors if is_errors else r.warnings)
 
             # add in the manifest validation errors
             if is_errors:
@@ -102,22 +107,33 @@ class CsvWriter(ResultsWriterABC):
             writer.writeheader()
             for result in results:
                 r: ValidatedFile = result
-                errors = r.rw_creds.download_errors()
-                for error_key in errors.keys():
-                    for error in errors[error_key]:
-                        row = {
-                            'FILE': r.file.name,
-                            'ID': r.uuid,
-                            'STATUS': r.status,
-                            'EXPIRATION_DATE': '',
-                            'ERRORS': error_key,
-                            'COLUMN': error['columnName'] if 'columnName' in error else None,
-                            'MESSAGE': error['message'],  # guaranteed to be in error
-                            'RECORD': error['record'] if 'record' in error else None
-                        }
-                        writer.writerow(row)
+                for error in sorted(r.errors, key=lambda x: x.record_number):
+                    row = {
+                        'FILE': r.file.name,
+                        'ID': r.uuid,
+                        'STATUS': r.status,
+                        'EXPIRATION_DATE': '',
+                        'ERRORS': error.err_code,
+                        'COLUMN': error.column_name,
+                        'MESSAGE': error.message,
+                        'RECORD': error.record_number
+                    }
+                    writer.writerow(row)
+                for error in sorted(r.manifest_errors, key=lambda x: x.manifest.record_number):
+                    row = {
+                        'FILE': r.file.name,
+                        'ID': r.uuid,
+                        'STATUS': r.status,
+                        'EXPIRATION_DATE': '',
+                        'ERRORS': 'manifest_error',
+                        'COLUMN': error.manifest.column,
+                        'MESSAGE': error.messages,
+                        'RECORD': error.manifest.record_number
+                    }
+                    writer.writerow(row)
+
                 # if there are no errors in the file, write a single row to indicate no errors were found
-                if not errors:
+                if not r.errors and not r.manifest_errors:
                     writer.writerow({
                         'FILE': r.file.name,
                         'ID': r.uuid,
@@ -137,21 +153,20 @@ class CsvWriter(ResultsWriterABC):
             writer.writeheader()
             for result in results:
                 r: ValidatedFile = result
-                warnings = r.rw_creds.download_warnings()
-                for warning_key, values in warnings.items():
+                for key, values in group_errors_by_key(r.warnings):
                     row = {
                         'FILE': r.file.name,
                         'ID': r.uuid,
                         'STATUS': r.status,
                         'EXPIRATION_DATE': '',
-                        'WARNINGS': warning_key,
+                        'WARNINGS': key,
                         # this is how this was done originally, though this doesnt make sense to me
                         'MESSAGE': values[0]['message'],
                         'COUNT': len(values)
                     }
                     writer.writerow(row)
                 # if there are no warnings in the file, write a single row to indicate no warnings were found
-                if not warnings:
+                if not r.warnings:
                     writer.writerow({
                         'FILE': r.file.name,
                         'ID': r.uuid,
