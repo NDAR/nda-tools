@@ -1,4 +1,5 @@
 import enum
+import json
 import logging
 import pathlib
 import traceback
@@ -24,12 +25,12 @@ class ManifestValidationError:
         self.manifest = manifest
         self.messages = messages
 
-
 class ValidationError:
-    def __init__(self, record_number, column_name, message):
+    def __init__(self, record_number, column_name, message, err_code):
         self.record_number = record_number
         self.column_name = column_name
         self.message = message
+        self.err_code = err_code
 
 
 class ValidationStatus(str, enum.Enum):
@@ -56,10 +57,12 @@ class ValidatedFile:
         elif v1_resource:
             self.status = ValidationStatus(v1_resource['status'])
             self.uuid = v1_resource['id']
-            self._errors = [ValidationError(i.get('recordNumber'), i.get('columnName'), i.get('message')) for err_type
-                            in v1_resource['errors'].values() for i in err_type]
-            self._warnings = [ValidationError(i.get('recordNumber'), i.get('columnName'), i.get('message')) for err_type
-                              in v1_resource['warnings'].values() for i in err_type]
+            self._errors = [ValidationError(i.get('recordNumber'), i.get('columnName'), i.get('message'), err_type) for
+                            err_type, errors
+                            in v1_resource['errors'].items() for i in errors]
+            self._warnings = [ValidationError(i.get('recordNumber'), i.get('columnName'), i.get('message'), err_type)
+                              for err_type, errors
+                              in v1_resource['warnings'].items() for i in errors]
             self._associated_files = v1_resource['associated_file_paths']
             self._manifest_errors = None
 
@@ -74,15 +77,15 @@ class ValidatedFile:
     @property
     def warnings(self) -> List[ValidationError]:
         if self._warnings is None:
-            self._warnings = [ValidationError(m.get('recordNumber'), m.get('columnName'), m.get('message')) for err_type
-                              in self._v2_creds.download_warnings().values() for m in err_type]
+            self._warnings = [ValidationError(m.get('recordNumber'), m.get('columnName'), m.get('message'), err_type)
+                              for err_type, errors in self._v2_creds.download_warnings().items() for m in errors]
         return self._warnings
 
     @property
     def errors(self) -> List[ValidationError]:
         if self._errors is None:
-            self._errors = [ValidationError(m.get('recordNumber'), m.get('columnName'), m.get('message')) for err_type
-                            in self._v2_creds.download_errors().values() for m in err_type]
+            self._errors = [ValidationError(m.get('recordNumber'), m.get('columnName'), m.get('message'), err_type)
+                            for err_type, errors in self._v2_creds.download_errors().items() for m in errors]
         return self._errors
 
     @property

@@ -8,7 +8,7 @@ import time
 from typing import List
 
 from NDATools import NDA_TOOLS_VAL_FOLDER
-from NDATools.upload import ValidatedFile
+from NDATools.upload.cli import ValidatedFile, ValidationError, ManifestValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,23 @@ class ResultsWriterABC(abc.ABC):
         ...
 
 
+class JsonValidationResultsEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, ValidationError):
+            return {
+                'recordNumber': obj.record_number,
+                'columnName': obj.column_name,
+                'message': obj.message
+            }
+        elif isinstance(obj, ManifestValidationError):
+            return {
+                'recordNumber': obj.manifest.record_number,
+                'manifest': obj.manifest.name,
+                'messages': obj.messages
+            }
+        return super().default(obj)
+
+
 class JsonWriter(ResultsWriterABC):
     def __init__(self, results_folder):
         super().__init__(results_folder, Extension.JSON)
@@ -42,12 +59,25 @@ class JsonWriter(ResultsWriterABC):
         for result in results:
             r: ValidatedFile = result
             key = 'Errors' if is_errors else 'Warnings'
+            # group errors/warnings by err_code
+            obj = {}
+            for error in r.errors if is_errors else r.warnings:
+                if error.err_code not in obj:
+                    obj[error.err_code] = []
+                obj[error.err_code].append(error)
+
+            # add in the manifest validation errors
+            if is_errors:
+                obj['manifest_error'] = []
+                for error in r.manifest_errors:
+                    obj['manifest_error'].append(error)
+
             json_data['Results'].append({
                 'File': r.file.name,
                 'ID': r.uuid,
                 'Status': r.status,
                 'Expiration Date': '',
-                key: r.rw_creds.download_errors() if is_errors else r.rw_creds.download_warnings()
+                key: json.dumps(obj, cls=JsonValidationResultsEncoder)
             })
         with open(self.errors_file if is_errors else self.warnings_file, 'w') as f:
             json.dump(json_data, f)
