@@ -4,10 +4,9 @@ import sys
 
 from NDATools.BuildPackage import SubmissionPackage
 from NDATools.Configuration import *
-from NDATools.Utils import get_non_blank_input, evaluate_yes_no_input
+from NDATools.Utils import get_non_blank_input
 from NDATools.upload.cli import NdaUploadCli
-from NDATools.upload.submission.resubmission import retrieve_replacement_submission_params, \
-    check_missing_data_for_resubmission, check_replacement_authorized
+from NDATools.upload.submission.resubmission import check_replacement_authorized, build_replacement_package
 from NDATools.upload.submission.submission import Submission
 from NDATools.upload.validation.results_writer import ResultsWriterFactory
 
@@ -178,36 +177,14 @@ def resume_submission(sub_id, batch, config=None):
 
 
 def build_package(validated_files, args, config):
-    pending_changes, original_uuids, original_submission_id = None, None, None
     if args.replace_submission:
-        pending_changes, original_uuids, original_submission_id = retrieve_replacement_submission_params(config,
-                                                                                                         args.replace_submission)
-    # For resubmission workflow: alert user if data loss was detected in one of their data-structures
-    if original_submission_id and not config.force:
-        data_structures_with_missing_rows = check_missing_data_for_resubmission(validated_files,
-                                                                                pending_changes,
-                                                                                original_uuids)
-        if data_structures_with_missing_rows:
-            logger.warning('\nWARNING - Detected missing information in the following files: ')
-
-            for tuple_expected_actual in data_structures_with_missing_rows:
-                logger.warning(
-                    '\n{} - expected {} rows but found {}  '.format(tuple_expected_actual[0],
-                                                                    tuple_expected_actual[1],
-                                                                    tuple_expected_actual[2]))
-            prompt = '\nIf you update your submission with these files, the missing data will be reflected in your data-expected numbers'
-            prompt += '\nAre you sure you want to continue? <Yes/No>: '
-            proceed = evaluate_yes_no_input(prompt, 'n')
-            if str(proceed).lower() == 'n':
-                exit_error(message='')
-
-    if not config.title:
-        config.title = get_non_blank_input('Enter title for dataset name:', 'Title')
-    if not config.description:
-        config.description = get_non_blank_input('Enter description for the dataset submission:', 'Description')
-
-    package = SubmissionPackage([v.uuid for v in validated_files], config=config, pending_changes=pending_changes,
-                                original_uuids=original_uuids)
+        package = build_replacement_package(validated_files, args, config)
+    else:
+        if not config.title:
+            config.title = get_non_blank_input('Enter title for dataset name:', 'Title')
+        if not config.description:
+            config.description = get_non_blank_input('Enter description for the dataset submission:', 'Description')
+        package = SubmissionPackage([v.uuid for v in validated_files], config=config)
 
     logger.info('Building Package')
     package.build_package()

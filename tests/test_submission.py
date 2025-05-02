@@ -5,9 +5,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from NDATools import Submission
-from NDATools.Submission import LocalAssociatedFile
-
 
 @pytest.fixture
 def config(shared_datadir, validation_config_factory):

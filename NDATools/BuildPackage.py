@@ -5,7 +5,7 @@ logger = logging.getLogger(__name__)
 
 
 class SubmissionPackage:
-    def __init__(self, uuid, config, pending_changes=None, original_uuids=None):
+    def __init__(self, uuid, config):
         self.config = config
         self.api = self.config.submission_package_api_endpoint
         self.validationtool_api = self.config.validationtool_api_endpoint
@@ -21,8 +21,6 @@ class SubmissionPackage:
         self.alt_endpoints = None
         self.collection_id = self.check_and_get_collection_id()
         self.validation_results = []
-        self.pending_changes = pending_changes
-        self.original_validation_uuids = original_uuids
         # these fields will be set after the package is created
         self.expiration_date = None
         self.create_date = None
@@ -43,7 +41,6 @@ class SubmissionPackage:
         else:
             endpoints = get_request("/".join([self.validationtool_api, "user/customEndpoints"]), auth=self.auth,
                                     headers={'Accept': 'application/json'})
-            # TODO cache api response
             all_collections = get_request("/".join([self.config.collection_api_endpoint]), auth=self.auth,
                                           headers={'Accept': 'application/json'})
             tmp_endpoints = {e['title'] for e in endpoints}
@@ -104,11 +101,6 @@ class SubmissionPackage:
         }
         if self.config.replace_submission:
             self.package_info['package_info']['replacement_submission'] = self.config.replace_submission
-            self.print_replacement_summary()
-            if not self.config.force:
-                user_input = evaluate_yes_no_input("Are you sure you want to continue?", 'n')
-                if user_input.lower() == 'n':
-                    exit_error(message='Exiting...')
 
         json_data = json.dumps(self.package_info)
         response = post_request(self.api, json_data, auth=self.auth)
@@ -139,15 +131,6 @@ class SubmissionPackage:
         else:
             message = 'There was an error with your package request.'
             exit_error(message=message)
-
-    def print_replacement_summary(self):
-        logger.info('Below is a summary of what your submission will look like with the validation files provided:')
-        logger.info('')
-        logger.info('Short-Name, Number of Rows')
-        for change in self.pending_changes:
-            logger.info('{},{}'.format(change['shortName'], change['rows']))
-        logger.info('')
-        logger.info('')
 
 
 class Status:

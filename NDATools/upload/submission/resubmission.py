@@ -1,3 +1,4 @@
+from NDATools.BuildPackage import SubmissionPackage
 from NDATools.Utils import get_request, exit_error
 from NDATools.upload.submission.api import SubmissionApi
 
@@ -19,7 +20,31 @@ def check_replacement_authorized(config, submission_id):
                     submission_id))
 
 
-def retrieve_replacement_submission_params(config, submission_id):
+'''
+    pending_changes, original_uuids, original_submission_id = retrieve_replacement_submission_params(config,
+                                                                                                         args.replace_submission)
+    # For resubmission workflow: alert user if data loss was detected in one of their data-structures
+    if original_submission_id and not config.force:
+        data_structures_with_missing_rows = check_missing_data_for_resubmission(validated_files,
+                                                                                pending_changes,
+                                                                                original_uuids)
+        if data_structures_with_missing_rows:
+            logger.warning('\nWARNING - Detected missing information in the following files: ')
+
+            for tuple_expected_actual in data_structures_with_missing_rows:
+                logger.warning(
+                    '\n{} - expected {} rows but found {}  '.format(tuple_expected_actual[0],
+                                                                    tuple_expected_actual[1],
+                                                                    tuple_expected_actual[2]))
+            prompt = '\nIf you update your submission with these files, the missing data will be reflected in your data-expected numbers'
+            prompt += '\nAre you sure you want to continue? <Yes/No>: '
+            proceed = evaluate_yes_no_input(prompt, 'n')
+            if str(proceed).lower() == 'n':
+                exit_error(message='')
+'''
+
+
+def build_replacement_package(validated_files, args, config) -> SubmissionPackage:
     # auth = requests.auth.HTTPBasicAuth(config.username, config.password)
     # response = get_request('/'.join([config.submission_api_endpoint, submission_id]), auth=auth)
     api = SubmissionApi(config)
@@ -50,7 +75,7 @@ def retrieve_replacement_submission_params(config, submission_id):
     return pending_changes, original_uuids, original_submission_id
 
 
-def check_missing_data_for_resubmission(validated_files, pending_changes, original_uuids):
+def _check_missing_data_for_resubmission(validated_files, pending_changes, original_uuids):
     if pending_changes:
         structure_to_new_row_count = {}
         for uuid in uuid_dict:
@@ -75,7 +100,7 @@ def check_missing_data_for_resubmission(validated_files, pending_changes, origin
                 unrecognized_ds.update({data_structure})
 
         # update list of validation-uuids to be used during the packaging step
-        new_uuids, unrecognized_ds = generate_uuids_for_qa_workflow(unrecognized_ds)
+        new_uuids, unrecognized_ds = _generate_uuids_for_qa_workflow(unrecognized_ds)
 
         if unrecognized_ds:
             message = 'ERROR - The following datastructures were not included in the original submission and therefore cannot be included in the replacement submission: '
@@ -86,7 +111,7 @@ def check_missing_data_for_resubmission(validated_files, pending_changes, origin
             uuid = new_uuids
 
 
-def generate_uuids_for_qa_workflow(unrecognized_ds=set()):
+def _generate_uuids_for_qa_workflow(unrecognized_ds=set()):
     unrecognized_structures = set(unrecognized_ds)
     new_uuids = set(original_uuids)
     val_by_short_name = {}
