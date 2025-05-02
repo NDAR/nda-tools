@@ -1,5 +1,4 @@
 import enum
-import json
 import logging
 import pathlib
 import traceback
@@ -24,6 +23,7 @@ class ManifestValidationError:
     def __init__(self, manifest: ManifestFile, messages: List[str]):
         self.manifest = manifest
         self.messages = messages
+
 
 class ValidationError:
     def __init__(self, record_number, column_name, message, err_code):

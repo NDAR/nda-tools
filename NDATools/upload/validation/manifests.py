@@ -47,7 +47,7 @@ class ManifestUploadError(Exception):
 
 
 def _manifests_not_found_msg(manifests: List[ManifestFile], manifests_dir: str):
-    files_not_found = [m.local_file_name for m in manifests]
+    files_not_found = [m.name for m in manifests]
     msg = f'The following manifests could not be found in {manifests_dir}:\n'
     msg += '\n'.join(files_not_found[:20])
     if len(files_not_found) > 20:

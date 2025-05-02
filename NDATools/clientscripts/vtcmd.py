@@ -177,7 +177,7 @@ def resume_submission(sub_id, batch, config=None):
         print_submission_complete_message(submission, False)
 
 
-def build_package(validated_files, config, args):
+def build_package(validated_files, args, config):
     pending_changes, original_uuids, original_submission_id = None, None, None
     if args.replace_submission:
         pending_changes, original_uuids, original_submission_id = retrieve_replacement_submission_params(config,
@@ -229,8 +229,8 @@ def print_submission_complete_message(submission, replacement):
               (submission.submission_id, submission.status))
 
 
-def replace_submission(validated_files, submission_id, config, args):
-    package = build_package(validated_files, config, args)
+def replace_submission(validated_files, args, config):
+    package = build_package(validated_files, args, config)
     submission = Submission(package_id=package.package_id,
                             submission_id=args.replace_submission,
                             thread_num=args.threads,
@@ -239,10 +239,11 @@ def replace_submission(validated_files, submission_id, config, args):
                             config=config)
     logger.info('Requesting submission for package: {}'.format(submission.package_id))
     submission.replace_submission()
+    _finish_submission(submission, replacement=True)
 
 
-def submit(validated_files, config, args):
-    package = build_package(validated_files, config, args)
+def submit(validated_files, args, config):
+    package = build_package(validated_files, args, config)
     submission = Submission(package_id=package.package_id,
                             submission_id=args.replace_submission,
                             thread_num=args.threads,
@@ -251,6 +252,10 @@ def submit(validated_files, config, args):
                             config=config)
     logger.info('Requesting submission for package: {}'.format(submission.package_id))
     submission.submit()
+    _finish_submission(submission)
+
+
+def _finish_submission(submission, replacement=False):
     submission.check_status()
     if submission.submission_id:
         logger.info('Submission ID: {}'.format(str(submission.submission_id)))
@@ -259,7 +264,7 @@ def submit(validated_files, config, args):
         submission.upload_associated_files()
         submission.check_status()
     if submission.status != Status.UPLOADING:
-        print_submission_complete_message(submission, replacement=True if args.replace_submission else False)
+        print_submission_complete_message(submission, replacement=replacement)
 
 
 def main():
@@ -271,15 +276,14 @@ def main():
 
     if args.resume:
         submission_id = args.files[0]
-        # Need to check to see if I need to update this step!
         resume_submission(submission_id, batch=args.batch, config=config)
     else:
-        validated_files = validate(args)
+        validated_files = validate(args, config)
         if args.buildPackage:
             if args.replace_submission:
-                replace_submission(validated_files, args.replace_submission, config, args)
+                replace_submission(validated_files, args, config)
             else:
-                submit(validated_files, config, args)
+                submit(validated_files, args, config)
 
 
 if __name__ == "__main__":
