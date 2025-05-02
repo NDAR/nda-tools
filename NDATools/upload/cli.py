@@ -2,7 +2,7 @@ import enum
 import logging
 import pathlib
 import traceback
-from typing import List, Callable, Tuple
+from typing import List, Callable, Tuple, Union
 
 from tabulate import tabulate
 
@@ -188,9 +188,9 @@ class NdaUploadCli:
         validation.validate()
         return [ValidatedFile(v[1], v1_resource=v[0]) for v in validation.responses]
 
-    def validate(self, file_name: str) -> ValidatedFile:
+    def validate(self, file_name: Union[List[str], str]) -> Union[List[ValidatedFile], ValidatedFile]:
         """
-        Validates a single file
+        Validates the passed in files.
 
         Args:
             file_name (str): The path to the file to be validated.
@@ -201,20 +201,29 @@ class NdaUploadCli:
         Raises:
             Exception: If there are unexpected issues during the validation or upload process.
         """
-        assert isinstance(file_name, str), "file_name must be a string"
+        if isinstance(file_name, list):
+            # this method is optimized for multiple files
+            return self._validate_multiple(file_name)
+
         file = pathlib.Path(file_name)
         creds = self.validation_api.request_upload_credentials(file.name, self.config.scope)
         creds.upload_csv(file)
         resource = self.validation_api.wait_validation_complete(creds.uuid, self.config.validation_timeout, False)
         if resource['status'] == ValidationStatus.PENDING_MANIFESTS:
-            manifests = creds.download_manifests()
-            self.uploader.upload_manifests(manifests, creds.uuid)
+            self.uploader.upload_manifests(creds, self.config.manifest_path)
 
         return ValidatedFile(file, v2_resource=resource, v2_creds=creds)
 
-    def validate_multiple(self, files: List[str]) -> List[ValidatedFile]:
+    def _validate_multiple(self, files: List[str]) -> List[ValidatedFile]:
         """
-        Validates the provided data-structure files
+        Validates multiple data-structure files in a way that minimizes the amount of time user needs to wait for
+        validation of all files to complete. Workflow is:
+            1. validate data-structure files - after this step all statuses of files are Complete or PendingManifests
+            2. upload manifests - manifests are uploaded for all files from the previous step with status 'PendingManifests'
+            3. wait validation complete - blocking step until all files from step 1 with status 'PendingManifests' transition to complete
+
+        Workflow is structured this way to minimize the amount of time to perform validation on a large number of files, with potentially multiple
+        files containing manifest elements.
 
         Args:
             files (List[str]): A single file path or a list of file paths to validate.
@@ -237,9 +246,6 @@ class NdaUploadCli:
                 self.v2_resource = v2_resource
                 self.v2_creds = v2_creds
                 self.waiting_manifest_upload = v2_resource['status'] == ValidationStatus.PENDING_MANIFESTS
-                self.manifests = [
-                    ManifestFile(m['localFileName'], m['s3Destination'], m['uuid'], m['recordNumber'], self)
-                    for m in self.v2_creds.download_manifests()['manifests']]
                 self.uuid = v2_resource['uuid']
                 self.manifest_errors = None
 
@@ -255,36 +261,36 @@ class NdaUploadCli:
         validates all files first, then uploads manifests in order to match the behavior of prev versions of the client. 
         """
         try:
-            results: List[InitiatedV2Request] = []
-            self._execute_in_threadpool(initiate_v2_request, [(pathlib.Path(x),) for x in files])
+            results: List[InitiatedV2Request] = \
+                self._execute_in_threadpool(initiate_v2_request, [(pathlib.Path(x),) for x in files])
 
-            manifest_csvs = [r for r in results if r.waiting_manifest_upload]
-            if manifest_csvs:
-                manifests = [manifest for file in manifest_csvs for manifest in file.manifests]
-                self.uploader.upload_manifests(manifests, self.manifest_dir)
-                print(f'\nManifests uploaded. Waiting for validation of manifests to complete....')
+            manifest_requests = [r for r in results if r.waiting_manifest_upload]
+            if manifest_requests:
+                self.uploader.upload_manifests([m.v2_creds for m in manifest_requests], self.manifest_dir)
+                logger.info(f'Waiting for validation of {len(manifest_requests)} files to complete....')
 
             def wait_and_update(request: InitiatedV2Request):
-                resource = self.validation_api.wait_validation_complete(request.uuid,
-                                                                        self.config.validation_timeout, True)
+                resource = \
+                    self.validation_api.wait_validation_complete(request.uuid, self.config.validation_timeout, True)
                 # update the resource on the owning request object
                 request.v2_resource = resource
                 if resource['status'] == ValidationStatus.COMPLETE_WITH_ERRORS:
                     # get manifest errors
                     request.manifest_errors = request.v2_creds.get_manifest_errors()
 
-                self._execute_in_threadpool(wait_and_update, [(r,) for r in requests])
+            self._execute_in_threadpool(wait_and_update, [(r,) for r in manifest_requests])
 
             # convert initiated v2 requests to validated files
-            return [ValidatedFile(x.file, v2_resource=x.v2_resource, v2_creds=x.v2_creds,
-                                  manifests=x.manifests, manifest_errors=x.manifest_errors) for x in results]
+            return [
+                ValidatedFile(x.file, v2_resource=x.v2_resource, v2_creds=x.v2_creds, manifest_errors=x.manifest_errors)
+                for x in results
+            ]
         except Exception as e:
             logger.error(f'An unexpected error occurred: {e}')
             logger.error(traceback.format_exc())
             exit_error()
             exit(1)
 
-    def _execute_in_threadpool(self, func: Callable, args: List[Tuple], disable_tqdm: bool = False):
-        return execute_in_threadpool(func, args,
-                                     max_workers=self.config.workerThreads,
-                                     disable_tqdm=self.config.hideProgress or disable_tqdm)
+    def _execute_in_threadpool(self, func: Callable, args: List[Tuple]):
+        return execute_in_threadpool(func, args, max_workers=self.config.workerThreads,
+                                     disable_tqdm=self.config.hideProgress)
