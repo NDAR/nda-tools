@@ -14,7 +14,7 @@ from requests import HTTPError
 import NDATools
 from NDATools import NDA_TOOLS_LOGGING_YML_FILE
 from NDATools.Utils import exit_error, HttpErrorHandlingStrategy, get_request
-from NDATools.upload.validation.api import ValidationApi
+from NDATools.upload.validation.api import ValidationV2Api
 from NDATools.upload.validation.manifests import ManifestsUploader
 
 logger = logging.getLogger(__name__)
@@ -183,7 +183,7 @@ class ClientConfiguration:
         self._save_apis()
 
     def _save_apis(self):
-        self.validation_api = ValidationApi(self.validation_api_endpoint, self.username, self.password)
+        self.validation_api = ValidationV2Api(self.validation_api_endpoint, self.username, self.password)
         self.manifests_uploader = ManifestsUploader(self.validation_api,
                                                     self.config.workerThreads,
                                                     self.config.force,

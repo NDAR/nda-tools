@@ -1,12 +1,32 @@
 import multiprocessing
 import queue
 
+from pydantic import BaseModel, Field
 from tqdm import tqdm
 
 from NDATools.Configuration import *
 from NDATools.Utils import *
 
 logger = logging.getLogger(__name__)
+
+
+class Manifests(BaseModel):
+    local_file_name: str = Field(..., alias='localFileName')
+
+
+class ValidationV1(BaseModel):
+    uuid: str = Field(..., alias='id')
+    associated_file_paths: List[str]
+    manifests: List[Manifests]
+
+
+class ValidationV1Api:
+    def __init__(self, validation_api_endpoint):
+        self.api_endpoint = f"{validation_api_endpoint}"
+
+    def get_validation(self, uuid):
+        tmp = get_request(f"{self.api_endpoint}/{uuid}")
+        return ValidationV1(**tmp)
 
 
 class Validation:

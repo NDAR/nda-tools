@@ -8,7 +8,7 @@ from typing import List, Callable, Union
 from tqdm import tqdm
 
 from NDATools.Utils import exit_error
-from NDATools.upload.validation.api import ValidationApi, ValidationV2Credentials
+from NDATools.upload.validation.api import ValidationV2Api, ValidationV2Credentials
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ def _manifests_not_found_msg(manifests: List[ManifestFile], manifests_dir: str):
 
 
 class ManifestsUploader:
-    def __init__(self, validation_api: ValidationApi, max_threads, exit_on_error=False, hide_progress=False):
+    def __init__(self, validation_api: ValidationV2Api, max_threads, exit_on_error=False, hide_progress=False):
         self.validation_api = validation_api
         self.max_threads = max_threads
         self.hide_progress = hide_progress

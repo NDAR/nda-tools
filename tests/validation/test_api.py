@@ -6,7 +6,7 @@ from botocore.exceptions import ClientError
 from pydantic import ValidationError
 
 import NDATools
-from NDATools.upload.validation.api import ValidationV2Credentials, ValidationApi, ValidationV2
+from NDATools.upload.validation.api import ValidationV2Credentials, ValidationV2Api, ValidationV2
 
 
 def test_pydantic_validation_errors(monkeypatch, validation_api):
@@ -108,7 +108,7 @@ def completed_validation(validation):
 
 @pytest.fixture
 def validation_api():
-    tmp = ValidationApi(config=MagicMock())
+    tmp = ValidationV2Api(config=MagicMock())
     tmp.get_validation = MagicMock()
     return tmp
 

@@ -8,7 +8,7 @@ from tabulate import tabulate
 
 from NDATools.Configuration import ClientConfiguration
 from NDATools.Utils import exit_error, execute_in_threadpool
-from NDATools.upload.validation.api import ManifestError
+from NDATools.upload.validation.api import ManifestError, ValidationV2
 from NDATools.upload.validation.manifests import ManifestFile
 from NDATools.upload.validation.v1 import Validation
 
@@ -43,12 +43,15 @@ class ValidationStatus(str, enum.Enum):
 
 
 class ValidatedFile:
-    def __init__(self, file: pathlib.Path, *, v1_resource=None, v2_resource=None, v2_creds=None, manifest_errors=None):
+    def __init__(self, file: pathlib.Path, *, v1_resource=None, v2_resource: ValidationV2 = None, v2_creds=None,
+                 manifest_errors=None):
         self.file = file
         assert v1_resource or v2_resource, "v1_resource or v2_resource must be specified"
         if v2_resource:
             self.status = ValidationStatus(v2_resource.status)
             self.uuid = v2_resource.uuid
+            self.short_name = v2_resource.short_name
+            self.row_count = v2_resource.rows
             self._errors = None
             self._warnings = None
             self._associated_files = None
@@ -57,6 +60,8 @@ class ValidatedFile:
         elif v1_resource:
             self.status = ValidationStatus(v1_resource['status'])
             self.uuid = v1_resource['id']
+            self.short_name = v1_resource['short_name']
+            self.row_count = v1_resource['rows']
             self._errors = [ValidationError(i.get('recordNumber'), i.get('columnName'), i.get('message'), err_type) for
                             err_type, errors
                             in v1_resource['errors'].items() for i in errors]

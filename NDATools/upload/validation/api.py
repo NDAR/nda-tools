@@ -158,7 +158,7 @@ class ValidationManifest(BaseModel):
         return self._validation_response
 
 
-class ValidationApi:
+class ValidationV2Api:
     def __init__(self, validation_api_endpoint, username, password):
         # self.config = config
         self.api_v2_endpoint = f"{validation_api_endpoint}/v2/"

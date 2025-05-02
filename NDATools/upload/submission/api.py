@@ -1,13 +1,22 @@
 from typing import List
 
 import requests
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from NDATools.Utils import get_request, exit_error
 
 
-class SubmissionVersion(BaseModel):
-    pass
+class DataStructureDetails(BaseModel):
+    short_name: str
+    rows: int
+    validation_uuids: List[str]
+    data_structure_id: int
+
+
+class SubmissionDetails(BaseModel):
+    validation_uuids: List[str]
+    submission_id: int
+    data_structure_details: List[DataStructureDetails] = Field(..., alias='pending_changes')
 
 
 class SubmissionHistory(BaseModel):
@@ -55,6 +64,6 @@ class SubmissionApi:
                     message='There was a General Error communicating with the NDA server. Please try again later')
             exit(1)
 
-    def get_latest_submission_version(self, submission_id):
+    def get_submission_details(self, submission_id):
         tmp = get_request('/'.join([self.api_endpoint, submission_id, 'pending-changes']), auth=self.auth)
-        return SubmissionVersion(**tmp)
+        return SubmissionDetails(**tmp)

@@ -4,12 +4,12 @@ from pathlib import Path
 from unittest.mock import MagicMock, ANY
 
 import pytest
+from NDATools.upload.validation.uploader import ManifestNotFoundError, ManifestsUploader
+from NDATools.upload.validation.uploader import _manifests_not_found_msg
 
 import NDATools
 from NDATools.upload.validation.api import ValidationManifest, ValidationV2Credentials, \
-    ValidationApi, ValidatedFile, ValidationV2
-from NDATools.upload.validation.uploader import ManifestNotFoundError, ManifestsUploader
-from NDATools.upload.validation.uploader import _manifests_not_found_msg
+    ValidationV2Api, ValidatedFile, ValidationV2
 
 
 def create_manifest_not_found(file_name, exception: Exception):
@@ -79,7 +79,7 @@ def test_manifests_not_found_msg(manifest_not_found_error):
 def test_upload_manifest(shared_datadir, validation_manifest):
     """Test that a manifest will be uploaded if the manifest is found"""
     vm = validation_manifest('manifest.json')
-    manifest_uploader = ManifestsUploader(MagicMock(spec=ValidationApi), 1, False, True)
+    manifest_uploader = ManifestsUploader(MagicMock(spec=ValidationV2Api), 1, False, True)
     manifest_uploader.upload_manifests([vm], shared_datadir)
     assert vm.validation_response.rw_creds.upload.call_count == 1
 
@@ -87,7 +87,7 @@ def test_upload_manifest(shared_datadir, validation_manifest):
 def test_upload_manifest_not_found_non_interactive(shared_datadir, validation_manifest, monkeypatch):
     """Test that upload_manifests exits program with error if manifest is not found and interactive is false"""
     vm = validation_manifest('notfound.json')
-    manifest_uploader = ManifestsUploader(MagicMock(spec=ValidationApi), 1, False, True)
+    manifest_uploader = ManifestsUploader(MagicMock(spec=ValidationV2Api), 1, False, True)
     with monkeypatch.context() as m, pytest.raises(SystemExit):
         m.setattr(NDATools.upload.validation.uploader, 'exit_error', MagicMock(side_effect=SystemExit))
         manifest_uploader.upload_manifests([vm], shared_datadir)
@@ -96,7 +96,7 @@ def test_upload_manifest_not_found_non_interactive(shared_datadir, validation_ma
 def test_upload_manifest_not_found_interactive(shared_datadir, validation_manifest, monkeypatch, tmp_path):
     """Test that upload_manifests prompts user if manifest is not found, and re-attempts upload if interactive is true"""
     vm = validation_manifest('manifest.json')
-    manifest_uploader = ManifestsUploader(MagicMock(spec=ValidationApi), 1, True, True)
+    manifest_uploader = ManifestsUploader(MagicMock(spec=ValidationV2Api), 1, True, True)
     manifest_uploader._handle_manifests_not_found = MagicMock(wraps=manifest_uploader._handle_manifests_not_found)
     manifest_uploader._upload_manifests_for_file = MagicMock(wraps=manifest_uploader._upload_manifests_for_file)
     with monkeypatch.context() as m:
@@ -112,7 +112,7 @@ def test_upload_manifest_not_found_interactive(shared_datadir, validation_manife
 def test_upload_manifest_unexpected_error(shared_datadir, validation_manifest, monkeypatch):
     """ Test that an unexpected error causes the program to exit early """
     vm = validation_manifest('manifest.json')
-    manifest_uploader = ManifestsUploader(MagicMock(spec=ValidationApi), 1, False, True)
+    manifest_uploader = ManifestsUploader(MagicMock(spec=ValidationV2Api), 1, False, True)
     vm.validation_response.rw_creds.upload = MagicMock(side_effect=Exception('Unexpected error'))
 
     with pytest.raises(SystemExit), monkeypatch.context() as m:
