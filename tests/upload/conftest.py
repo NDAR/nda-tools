@@ -1,16 +1,15 @@
 import json
 import uuid
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
-from NDATools.upload.submission.submission import Submission, LocalAssociatedFile
+from NDATools.upload.submission.submission import Submission, Status
 
 
 @pytest.fixture
-def config(shared_datadir, validation_config_factory):
-    file_path = (shared_datadir / 'validation/file.csv')
+def config(top_level_datadir, validation_config_factory):
+    file_path = (top_level_datadir / 'validation/file.csv')
     test_args = [str(file_path)]
     _, config = validation_config_factory(test_args)
     config.JSON = True
@@ -47,15 +46,15 @@ def new_submission(monkeypatch, config, submission_with_files, tmpdir, s3_mock):
                         MagicMock(return_value=submission_by_submission_pkg))
     monkeypatch.setattr(submission, '_get_submission_by_id', MagicMock(return_value=submission_resource))
     monkeypatch.setattr(submission, 'check_uploaded_not_complete', MagicMock(return_value=submission_resource))
-    monkeypatch.setattr(Submission, 'to_local_associated_file', MagicMock(
-        side_effect=lambda x, y: LocalAssociatedFile(Path(x['file_user_path']), 0, x['file_user_path'], x)))
-    monkeypatch.setattr(Submission, 'get_s3_client_with_config', MagicMock(return_value=s3_mock))
+    # monkeypatch.setattr(NDATools.upload.submission.submission, 'to_local_associated_file', MagicMock(
+    #    side_effect=lambda x, y: LocalAssociatedFile(Path(x['file_user_path']), 0, x['file_user_path'], x)))
+    # monkeypatch.setattr(NDATools.Utils, 'get_s3_client_with_config', MagicMock(return_value=s3_mock))
     submission.directory_list = [str(tmpdir)]
     return submission
 
 
 @pytest.fixture
-def uploading_submission(monkeypatch, new_submission, submission_with_files, batch_update_status):
+def uploading_submission(monkeypatch, new_submission, submission_with_files, batch_update_status, s3_mock):
     submission_resource, creds_resource, file_listing, _ = submission_with_files
     mock_batch_update = MagicMock(return_value=batch_update_status)
     monkeypatch.setattr(new_submission, 'get_multipart_credentials',
@@ -65,5 +64,6 @@ def uploading_submission(monkeypatch, new_submission, submission_with_files, bat
     monkeypatch.setattr(new_submission, 'get_files_from_page', MagicMock(return_value=file_listing))
     monkeypatch.setattr(new_submission, 'check_status', MagicMock())
     monkeypatch.setattr(new_submission, 'check_uploaded_not_complete', MagicMock(side_effect=lambda x: x))
-    monkeypatch.setattr(new_submission, 'status', Submission.Status.UPLOADING)
+    monkeypatch.setattr(new_submission, 'status', Status.UPLOADING)
+    # monkeypatch.setattr(NDATools.Utils, 'get_s3_client_with_config', MagicMock(return_value=s3_mock))
     return new_submission

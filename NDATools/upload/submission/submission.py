@@ -13,9 +13,8 @@ from s3transfer.constants import GB
 from tqdm import tqdm
 
 from NDATools.Configuration import *
-from NDATools.Utils import deconstruct_s3_url
 from NDATools.Utils import get_request, put_request, DeserializeHandler, post_request, get_s3_client_with_config, \
-    collect_directory_list
+    collect_directory_list, deconstruct_s3_url
 
 logger = logging.getLogger(__name__)
 

@@ -1,7 +1,22 @@
+from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
 
-def test_resume_submission(uploading_submission, s3_mock):
+import NDATools
+# from NDATools import Utils
+from NDATools.upload.submission.submission import LocalAssociatedFile
+
+
+@pytest.fixture
+def mock_upload_functions_setup(monkeypatch, s3_mock):
+    monkeypatch.setattr(NDATools.upload.submission.submission, 'get_s3_client_with_config',
+                        MagicMock(return_value=s3_mock))
+    monkeypatch.setattr(NDATools.upload.submission.submission, 'to_local_associated_file', MagicMock(
+        side_effect=lambda x, y: LocalAssociatedFile(Path(x['file_user_path']), 0, x['file_user_path'], x)))
+
+
+def test_resume_submission(mock_upload_functions_setup, uploading_submission, s3_mock, monkeypatch):
     """ Test that calling resume_submission calls expected methods in Submission """
     uploading_submission.resume_submission()
     assert uploading_submission.check_status.call_count == 2
