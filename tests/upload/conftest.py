@@ -35,7 +35,7 @@ def batch_update_status(load_from_file):
 @pytest.fixture
 def new_submission(monkeypatch, config, submission_with_files, tmpdir, s3_mock):
     submission_resource, creds_resource, file_listing, submission_by_submission_pkg = submission_with_files
-    submission = Submission(package_id=str(str(uuid.uuid4())),
+    submission = Submission(package_id=str(uuid.uuid4()),
                             thread_num=1,
                             batch_size=20,
                             allow_exit=True,

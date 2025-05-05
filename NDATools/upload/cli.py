@@ -45,6 +45,9 @@ class ValidationStatus(str, enum.Enum):
 class ValidatedFile:
     def __init__(self, file: pathlib.Path, *, v1_resource=None, v2_resource: ValidationV2 = None, v2_creds=None,
                  manifest_errors=None):
+        if not manifest_errors:
+            manifest_errors = []
+
         self.file = file
         assert v1_resource or v2_resource, "v1_resource or v2_resource must be specified"
         if v2_resource:
@@ -218,6 +221,15 @@ class NdaUploadCli:
         resource = self.validation_api.wait_validation_complete(creds.uuid, self.config.validation_timeout, False)
         if resource['status'] == ValidationStatus.PENDING_MANIFESTS:
             self.uploader.upload_manifests(creds, self.config.manifest_path)
+            resource = self.validation_api.wait_validation_complete(creds.uuid, self.config.validation_timeout, True)
+            # there must be manifest errors if the status changes from 'PendingManifests' to 'CompleteWithErrors'
+            if resource['status'] == ValidationStatus.COMPLETE_WITH_ERRORS:
+                manifests = ManifestFile.manifests_from_credentials(creds)
+                mdict = {m.uuid: m for m in manifests}
+                manifest_errors = [ManifestValidationError(mdict[e.uuid], e.errors) for e in
+                                   self.validation_api.get_manifest_errors(creds.uuid)]
+
+                return ValidatedFile(file, v2_resource=resource, v2_creds=creds, manifest_errors=manifest_errors)
 
         return ValidatedFile(file, v2_resource=resource, v2_creds=creds)
 

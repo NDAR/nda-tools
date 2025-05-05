@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import time
+from collections import defaultdict
 from typing import List
 
 from NDATools import NDA_TOOLS_VAL_FOLDER
@@ -19,10 +20,8 @@ class Extension(enum.Enum):
 
 
 def group_errors_by_key(errors: List[ValidationError]):
-    obj = {}
+    obj = defaultdict(list)
     for error in errors:
-        if error.err_code not in obj:
-            obj[error.err_code] = []
         obj[error.err_code].append(error)
     return obj
 
@@ -72,7 +71,7 @@ class JsonWriter(ResultsWriterABC):
             obj = group_errors_by_key(r.errors if is_errors else r.warnings)
 
             # add in the manifest validation errors
-            if is_errors:
+            if is_errors and r.manifest_errors:
                 obj['manifest_error'] = []
                 for error in r.manifest_errors:
                     obj['manifest_error'].append(error)
@@ -82,10 +81,10 @@ class JsonWriter(ResultsWriterABC):
                 'ID': r.uuid,
                 'Status': r.status,
                 'Expiration Date': '',
-                key: json.dumps(obj, cls=JsonValidationResultsEncoder)
+                key: obj
             })
         with open(self.errors_file if is_errors else self.warnings_file, 'w') as f:
-            json.dump(json_data, f)
+            json.dump(json_data, f, cls=JsonValidationResultsEncoder)
 
     def write_errors(self, results: List[ValidatedFile]):
         self._write(results, True)
@@ -153,7 +152,7 @@ class CsvWriter(ResultsWriterABC):
             writer.writeheader()
             for result in results:
                 r: ValidatedFile = result
-                for key, values in group_errors_by_key(r.warnings):
+                for key, values in group_errors_by_key(r.warnings).items():
                     row = {
                         'FILE': r.file.name,
                         'ID': r.uuid,
@@ -161,7 +160,7 @@ class CsvWriter(ResultsWriterABC):
                         'EXPIRATION_DATE': '',
                         'WARNINGS': key,
                         # this is how this was done originally, though this doesnt make sense to me
-                        'MESSAGE': values[0]['message'],
+                        'MESSAGE': values[0].message,
                         'COUNT': len(values)
                     }
                     writer.writerow(row)
