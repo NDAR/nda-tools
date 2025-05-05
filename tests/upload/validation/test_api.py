@@ -108,7 +108,8 @@ def completed_validation(validation):
 
 @pytest.fixture
 def validation_api():
-    tmp = ValidationV2Api(config=MagicMock())
+    tmp = ValidationV2Api(validation_api_endpoint='https://nda.nih.gov/api/validation', username='test_user',
+                          password='testpass')
     tmp.get_validation = MagicMock()
     return tmp
 
