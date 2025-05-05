@@ -80,7 +80,7 @@ class ManifestsUploader:
         count = 0
         with tqdm(disable=self.hide_progress) as progress_bar:
             for manifest_batch, creds in get_manifest_batches():
-                self._upload_manifests_batch(manifest_batch, creds, manifest_dir, lambda _: progress_bar.update(1))
+                self._upload_manifests_batch(manifest_batch, creds, manifest_dir, lambda: progress_bar.update(1))
                 count += len(manifest_batch)
 
         logger.debug(f'Finished uploading {count} manifests')
@@ -127,14 +127,13 @@ class ManifestsUploader:
             self._handle_manifests_not_found(not_found, creds, manifest_dir, progress_cb)
 
     def _handle_manifests_not_found(self,
-                                    errs: List[ManifestFile],
+                                    not_found: List[ManifestFile],
                                     creds: ValidationV2Credentials,
                                     manifest_dir: pathlib.Path,
                                     progress_cb: Callable = None):
         # ask the user if they want to continue
-        msg = _manifests_not_found_msg(errs, str(manifest_dir))
-        files_not_found = list(map(lambda x: x.manifest, errs))
-        if not self.exit_on_error:
+        msg = _manifests_not_found_msg(not_found, str(manifest_dir))
+        if self.exit_on_error:
             exit_error(msg)
         else:
             logger.info(msg)
@@ -145,4 +144,4 @@ class ManifestsUploader:
                 logger.error(f'{retry_manifests_dir} does not exist. Please try again.')
             else:
                 break
-        self._upload_manifests_batch(files_not_found, creds, retry_manifests_dir, progress_cb)
+        self._upload_manifests_batch(not_found, creds, retry_manifests_dir, progress_cb)

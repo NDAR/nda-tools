@@ -66,14 +66,14 @@ def validation_config_factory():
 
 
 @pytest.fixture
-def top_level_data_dir():
+def top_level_datadir():
     return pathlib.Path(__file__).parent.absolute() / 'data'
 
 
 @pytest.fixture
-def load_from_file(top_level_data_dir):
+def load_from_file(top_level_datadir):
     def _load_from_file(file):
-        content = (top_level_data_dir / file).read_text()
+        content = (top_level_datadir / file).read_text()
         return content
 
     return _load_from_file
@@ -107,5 +107,5 @@ def logger_mock(monkeypatch):
 
 
 @pytest.fixture
-def s3_mock(monkeypatch):
+def s3_mock():
     return MagicMock()
