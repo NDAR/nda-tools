@@ -4,7 +4,6 @@ from unittest.mock import MagicMock
 import pytest
 
 import NDATools
-# from NDATools import Utils
 from NDATools.upload.submission.submission import LocalAssociatedFile
 
 

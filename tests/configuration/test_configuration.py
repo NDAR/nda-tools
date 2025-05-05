@@ -1,40 +1,34 @@
 import builtins
 import getpass
-import os
 from unittest.mock import patch, MagicMock
 
 import keyring
+import pytest
 from keyring.errors import KeyringLocked
 
 import NDATools.Configuration
 from NDATools.Configuration import ClientConfiguration
 from tests.conftest import MockLogger
 
-config_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data/mock_settings.cfg')
 username = 'test_username'
 password = 'test_password'
 
 
-def set_username_in_config(keep_username):
-    with open(config_file_path, 'r') as file:
-        lines = file.readlines()
-    keep_lines = [line for line in lines if 'username' not in line]
-
-    with open(config_file_path, 'w') as configfile:
-        if not keep_username:
-            keep_lines.append('\nusername =')
-            configfile.writelines(keep_lines)
-        else:
-            keep_lines.append('\nusername = ' + username)
-            configfile.writelines(keep_lines)
+@pytest.fixture
+def mock_settings_with_user(shared_datadir):
+    return shared_datadir / 'mock_settings.cfg'
 
 
-def test_read_user_credentials_no_username_set():
-    set_username_in_config(False)
+@pytest.fixture
+def mock_settings_no_user(shared_datadir):
+    return shared_datadir / 'mock_settings.cfg'
+
+
+def test_read_user_credentials_no_username_set(mock_settings_no_user):
     mock_logger = MockLogger()
 
     with patch.object(NDATools.Configuration.logger, 'info', mock_logger), \
-            patch('NDATools.NDA_TOOLS_SETTINGS_CFG_FILE', config_file_path), \
+            patch('NDATools.NDA_TOOLS_SETTINGS_CFG_FILE', str(mock_settings_no_user)), \
             patch.object(ClientConfiguration, '_check_and_fix_missing_options', lambda x: None), \
             patch.object(ClientConfiguration, 'is_valid_nda_credentials', side_effect=[True]), \
             patch('builtins.input', return_value=username) as mock_get_username, \
@@ -58,13 +52,12 @@ def test_read_user_credentials_no_username_set():
         mock_get_password.assert_called_once_with('Enter your NDA account password:')
 
 
-def test_read_user_credentials_has_username_set_no_password_in_keyring():
-    set_username_in_config(True)
+def test_read_user_credentials_has_username_set_no_password_in_keyring(mock_settings_with_user):
     keyring.set_password('nda-tools', username, '')
     mock_logger = MockLogger()
 
     with patch.object(NDATools.Configuration.logger, 'info', mock_logger), \
-            patch('NDATools.NDA_TOOLS_SETTINGS_CFG_FILE', config_file_path), \
+            patch('NDATools.NDA_TOOLS_SETTINGS_CFG_FILE', str(mock_settings_with_user)), \
             patch.object(ClientConfiguration, '_check_and_fix_missing_options', lambda x: None), \
             patch.object(ClientConfiguration, 'is_valid_nda_credentials', side_effect=[True]), \
             patch('builtins.input', return_value=username) as mock_get_username, \
@@ -88,13 +81,12 @@ def test_read_user_credentials_has_username_set_no_password_in_keyring():
         mock_get_password.assert_called_once_with('Enter your NDA account password:')
 
 
-def test_read_user_credentials_has_username_set_has_password_in_keyring():
-    set_username_in_config(True)
+def test_read_user_credentials_has_username_set_has_password_in_keyring(mock_settings_with_user):
     keyring.set_password('nda-tools', username, 'test_password')
     mock_logger = MockLogger()
 
     with patch.object(NDATools.Configuration.logger, 'info', mock_logger), \
-            patch('NDATools.NDA_TOOLS_SETTINGS_CFG_FILE', config_file_path), \
+            patch('NDATools.NDA_TOOLS_SETTINGS_CFG_FILE', str(mock_settings_with_user)), \
             patch.object(ClientConfiguration, '_check_and_fix_missing_options', lambda x: None), \
             patch.object(ClientConfiguration, 'is_valid_nda_credentials', side_effect=[True]), \
             patch('builtins.input', return_value=username) as mock_get_username, \
@@ -118,12 +110,11 @@ def test_read_user_credentials_has_username_set_has_password_in_keyring():
         mock_get_password.assert_not_called()
 
 
-def test_read_user_credentials_reenter_credentials():
-    set_username_in_config(False)
+def test_read_user_credentials_reenter_credentials(mock_settings_no_user):
     mock_logger = MockLogger()
 
     with patch.object(NDATools.Configuration.logger, 'info', mock_logger), \
-            patch('NDATools.NDA_TOOLS_SETTINGS_CFG_FILE', config_file_path), \
+            patch('NDATools.NDA_TOOLS_SETTINGS_CFG_FILE', str(mock_settings_no_user)), \
             patch.object(ClientConfiguration, '_check_and_fix_missing_options', lambda x: None), \
             patch.object(ClientConfiguration, 'is_valid_nda_credentials', side_effect=[False, True]), \
             patch('builtins.input', return_value=username) as mock_get_username, \
@@ -147,10 +138,10 @@ def test_read_user_credentials_reenter_credentials():
         assert mock_get_password.call_count == 2
 
 
-def test_no_keyring(monkeypatch):
+def test_no_keyring(monkeypatch, mock_settings_with_user):
     # mock keyring not installed on client machine.
     with monkeypatch.context() as m:
-        m.setattr('NDATools.NDA_TOOLS_SETTINGS_CFG_FILE', config_file_path)
+        m.setattr('NDATools.NDA_TOOLS_SETTINGS_CFG_FILE', str(mock_settings_with_user))
         m.setattr(ClientConfiguration, '_check_and_fix_missing_options', lambda x: None)
         # keyring is set to None if there is an import error
         m.setattr(NDATools.Configuration, 'keyring', None)
@@ -169,7 +160,7 @@ def test_no_keyring(monkeypatch):
 
     # mock error retrieving password from keyring. should not cause program to crash.
     with monkeypatch.context() as m:
-        m.setattr('NDATools.NDA_TOOLS_SETTINGS_CFG_FILE', config_file_path)
+        m.setattr('NDATools.NDA_TOOLS_SETTINGS_CFG_FILE', str(mock_settings_with_user))
         m.setattr(ClientConfiguration, '_check_and_fix_missing_options', lambda x: None)
         mock_keyring = MagicMock()
         mock_keyring.get_password = MagicMock(side_effect=KeyringLocked)
