@@ -184,10 +184,17 @@ class ClientConfiguration:
 
     def _save_apis(self):
         self.validation_api = ValidationV2Api(self.validation_api_endpoint, self.username, self.password)
+        # self.force and self.hideProgress is only set in vtcmd
+        force = False
+        if hasattr(self, 'force'):
+            force = self.force
+        hide_progress = False
+        if hasattr(self, 'hideProgress'):
+            hide_progress = self.hideProgress
         self.manifests_uploader = ManifestsUploader(self.validation_api,
-                                                    self.config.workerThreads,
-                                                    self.config.force,
-                                                    self.config.hideProgress)
+                                                    self.workerThreads,
+                                                    force,
+                                                    hide_progress)
 
     def is_valid_nda_credentials(self):
         try:

@@ -34,7 +34,7 @@ def test_read_user_credentials_no_username_set():
     mock_logger = MockLogger()
 
     with patch.object(NDATools.Configuration.logger, 'info', mock_logger), \
-        patch('NDATools.NDA_TOOLS_SETTINGS_CFG_FILE', config_file_path), \
+            patch('NDATools.NDA_TOOLS_SETTINGS_CFG_FILE', config_file_path), \
             patch.object(ClientConfiguration, '_check_and_fix_missing_options', lambda x: None), \
             patch.object(ClientConfiguration, 'is_valid_nda_credentials', side_effect=[True]), \
             patch('builtins.input', return_value=username) as mock_get_username, \
@@ -64,7 +64,7 @@ def test_read_user_credentials_has_username_set_no_password_in_keyring():
     mock_logger = MockLogger()
 
     with patch.object(NDATools.Configuration.logger, 'info', mock_logger), \
-        patch('NDATools.NDA_TOOLS_SETTINGS_CFG_FILE', config_file_path), \
+            patch('NDATools.NDA_TOOLS_SETTINGS_CFG_FILE', config_file_path), \
             patch.object(ClientConfiguration, '_check_and_fix_missing_options', lambda x: None), \
             patch.object(ClientConfiguration, 'is_valid_nda_credentials', side_effect=[True]), \
             patch('builtins.input', return_value=username) as mock_get_username, \
@@ -94,11 +94,11 @@ def test_read_user_credentials_has_username_set_has_password_in_keyring():
     mock_logger = MockLogger()
 
     with patch.object(NDATools.Configuration.logger, 'info', mock_logger), \
-        patch('NDATools.NDA_TOOLS_SETTINGS_CFG_FILE', config_file_path), \
-        patch.object(ClientConfiguration, '_check_and_fix_missing_options', lambda x: None), \
-        patch.object(ClientConfiguration, 'is_valid_nda_credentials', side_effect=[True]), \
-        patch('builtins.input', return_value=username) as mock_get_username, \
-        patch('getpass.getpass', return_value=password) as mock_get_password:
+            patch('NDATools.NDA_TOOLS_SETTINGS_CFG_FILE', config_file_path), \
+            patch.object(ClientConfiguration, '_check_and_fix_missing_options', lambda x: None), \
+            patch.object(ClientConfiguration, 'is_valid_nda_credentials', side_effect=[True]), \
+            patch('builtins.input', return_value=username) as mock_get_username, \
+            patch('getpass.getpass', return_value=password) as mock_get_password:
         args = MagicMock()
         args.username = 'test_username'
         client_config = ClientConfiguration(args)
@@ -123,11 +123,11 @@ def test_read_user_credentials_reenter_credentials():
     mock_logger = MockLogger()
 
     with patch.object(NDATools.Configuration.logger, 'info', mock_logger), \
-        patch('NDATools.NDA_TOOLS_SETTINGS_CFG_FILE', config_file_path), \
-        patch.object(ClientConfiguration, '_check_and_fix_missing_options', lambda x: None), \
-        patch.object(ClientConfiguration, 'is_valid_nda_credentials', side_effect=[False, True]), \
-        patch('builtins.input', return_value=username) as mock_get_username, \
-        patch('getpass.getpass', return_value=password) as mock_get_password:
+            patch('NDATools.NDA_TOOLS_SETTINGS_CFG_FILE', config_file_path), \
+            patch.object(ClientConfiguration, '_check_and_fix_missing_options', lambda x: None), \
+            patch.object(ClientConfiguration, 'is_valid_nda_credentials', side_effect=[False, True]), \
+            patch('builtins.input', return_value=username) as mock_get_username, \
+            patch('getpass.getpass', return_value=password) as mock_get_password:
         client_config = ClientConfiguration(MagicMock())
         client_config.username = None
         client_config._use_keyring = False
@@ -183,7 +183,7 @@ def test_no_keyring(monkeypatch):
         m.setattr(client_config, 'is_valid_nda_credentials', lambda: True)
         # patch this method to avoid writing to any files
         m.setattr(client_config, '_save_username', lambda: None)
-        client_config.read_user_credentials(True)
+        client_config.read_user_credentials()
         assert builtins.input.call_count == 1
         assert getpass.getpass.call_count == 1
         assert client_config._use_keyring == False
