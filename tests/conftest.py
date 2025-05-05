@@ -1,3 +1,4 @@
+import pathlib
 import sys
 from unittest import mock
 from unittest.mock import MagicMock
@@ -65,9 +66,14 @@ def validation_config_factory():
 
 
 @pytest.fixture
-def load_from_file(shared_datadir):
+def top_level_data_dir():
+    return pathlib.Path(__file__).parent.absolute() / 'data'
+
+
+@pytest.fixture
+def load_from_file(top_level_data_dir):
     def _load_from_file(file):
-        content = (shared_datadir / file).read_text()
+        content = (top_level_data_dir / file).read_text()
         return content
 
     return _load_from_file
