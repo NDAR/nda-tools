@@ -157,9 +157,9 @@ class ClientConfiguration:
                 logger.info(
                     '\nPlease use your NIMH Data Archive (NDA) account credentials to authenticate with nda-tools')
                 logger.info(
-                    'You may already have an existing eRA commons account or a login.gov account, this is different from your NDA account')
+                    'You may already have an existing account (eRA Commons, Login.gov, or Smart Card/CAC), this is different from your NDA account')
                 logger.info(
-                    'You may retrieve your NDA account info by logging into https://nda.nih.gov/user/dashboard/profile.html using your eRA commons account or login.gov account')
+                    'You may retrieve your NDA account info by logging into https://nda.nih.gov/user/dashboard/profile.html using your RAS credentials (eRA Commons, Login.gov, or Smart Card/CAC)')
                 logger.info(
                     'Once you are logged into your profile page, you can find your NDA account username. For password retrieval, click UPDATE/RESET PASSWORD button')
 
@@ -171,8 +171,6 @@ class ClientConfiguration:
 
             # validate credentials
             while not self.is_valid_nda_credentials():
-                logger.info(
-                    'Unable to authenticate your NDA account credentials with nda-tools. Please check your NDA account credentials.\n')
                 self._use_keyring = False
                 prompt_for_username()
                 self._get_password()
@@ -186,16 +184,18 @@ class ClientConfiguration:
                         error_handler=HttpErrorHandlingStrategy.reraise_status)
             return True
         except HTTPError as e:
-            if e.response.status_code == 401:
-                if 'locked' in e.response.text:
-                    # user account is locked
-                    tmp = json.loads(e.response.text)
-                    logger.error('\nError: %s', tmp['message'])
-                    logger.error('\nPlease contact NDAHelp@mail.nih.gov for help in resolving this error')
-                    exit_error()
-                else:
-                    return False
+            if e.response.status_code == 423:
+                logger.error('\nYour account is locked, which is preventing your authorized access to nda-tools. To unlock your account, set a new password by doing the following:')
+                logger.error('\t1. Log into NDA (https://nda.nih.gov) using your RAS credentials (eRA Commons, Login.gov, or Smart Card/CAC)')
+                logger.error('\t2. Navigate to your NDA profile (https://nda.nih.gov/user/dashboard/profile)')
+                logger.error('\t3. Click on the \'Update Password\' button, found near the upper right corner of the page')
+                logger.error('\t4. Set a new password. Once your password is successfully reset, your account will be unlocked.')
+                # exit if unauthorized, users can try again later after they fix their account
+                exit_error()
+            elif e.response.status_code == 401:
+                # incorrect username/password
+                return False
             else:
-                logger.error('\nSystemError while checking credentials for user %s', self.username)
+                logger.error('\nSystem Error while checking credentials for user %s', self.username)
                 logger.error('\nPlease contact NDAHelp@mail.nih.gov for help in resolving this error')
                 exit_error()
