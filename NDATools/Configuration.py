@@ -68,6 +68,7 @@ class ClientConfiguration:
         self.collection_api_endpoint = self.config.get("Endpoints", "collection")
         self.user_api_endpoint = self.config.get("Endpoints", "user")
         self.username = self.config.get("User", "username").lower()
+        self._args = args
 
         # options that appear in both vtcmd and downloadcmd
         self.workerThreads = args.workerThreads
@@ -81,16 +82,6 @@ class ClientConfiguration:
 
         is_vtcmd = 'collectionID' in args
         if is_vtcmd:
-            self.hideProgress = args.hideProgress
-            self.force = True if args.force else False
-            self.collection_id = args.collectionID
-            self.directory_list = args.listDir
-            self.manifest_path = args.manifestPath
-            self.validation_timeout = args.validation_timeout
-            self.title = args.title
-            self.description = args.description
-            self.scope = args.scope
-            self.replace_submission = args.replace_submission
             self.v2_enabled = False
             self.validation_results_writer = ResultsWriterFactory.get_writer(file_format='json' if args.JSON else 'csv')
             self.validation_api = None
@@ -98,6 +89,46 @@ class ClientConfiguration:
             self.upload_cli = NdaUploadCli(self)
         if self.username:
             logger.info('proceeding as NDA user: {}'.format(self.username))
+
+    @property
+    def hide_progress(self):
+        return self._args.hideProgress
+
+    @property
+    def force(self):
+        return True if self._args.force else False
+
+    @property
+    def collection_id(self):
+        return self._args.collectionID
+
+    @property
+    def directory_list(self):
+        return self._args.listDir
+
+    @property
+    def manifest_path(self):
+        return self._args.manifestPath
+
+    @property
+    def validation_timeout(self):
+        return self._args.validation_timeout
+
+    @property
+    def title(self):
+        return self._args.title
+
+    @property
+    def description(self):
+        return self._args.description
+
+    @property
+    def scope(self):
+        return self._args.scope
+
+    @property
+    def replace_submission(self):
+        return self._args.replace_submission
 
     def _check_and_fix_missing_options(self):
         default_config = configparser.ConfigParser()
@@ -187,13 +218,13 @@ class ClientConfiguration:
 
     def _save_apis(self):
         self.validation_api = ValidationV2Api(self.validation_api_endpoint, self.username, self.password)
-        # self.force and self.hideProgress is only set in vtcmd
-        force = False
+        # self.force and self.hide_progress is only set in vtcmd
+        hide_progress, force = False, False
         if hasattr(self, 'force'):
             force = self.force
-        hide_progress = False
-        if hasattr(self, 'hideProgress'):
-            hide_progress = self.hideProgress
+        if hasattr(self, 'hide_progress'):
+            hide_progress = self.hide_progress
+
         self.manifests_uploader = ManifestsUploader(self.validation_api,
                                                     self.workerThreads,
                                                     force,

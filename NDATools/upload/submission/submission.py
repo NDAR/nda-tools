@@ -232,7 +232,7 @@ class Submission:
             files_to_upload_count = total_assoc_file_count - already_uploaded_count
         if not upload_progress:
             upload_progress = tqdm(total=files_to_upload_count, desc=f"Submission File Upload Progress",
-                                   disable=self.config.hideProgress)
+                                   disable=self.config.hide_progress)
 
         transfer_config = TransferConfig(multipart_threshold=multipart_threshold, use_threads=False)
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.thread_num) as executor:

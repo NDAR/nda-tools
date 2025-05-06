@@ -77,35 +77,20 @@ NDA_TOOLS_SETTINGS_CFG_FILE = os.path.join(NDA_TOOLS_SETTINGS_FOLDER, 'settings.
 
 def create_nda_folders():
     # init folder structure for program runtime files
-    if not os.path.exists(NDA_ORGINIZATION_ROOT_FOLDER):
-        os.mkdir(NDA_ORGINIZATION_ROOT_FOLDER)
+    def _create_if_not_exists(path):
+        if not os.path.exists(path):
+            os.mkdir(path)
 
-    if not os.path.exists(NDA_TOOLS_ROOT_FOLDER):
-        os.mkdir(NDA_TOOLS_ROOT_FOLDER)
-
-    if not os.path.exists(NDA_TOOLS_VTCMD_FOLDER):
-        os.mkdir(NDA_TOOLS_VTCMD_FOLDER)
-
-    if not os.path.exists(NDA_TOOLS_DOWNLOADCMD_FOLDER):
-        os.mkdir(NDA_TOOLS_DOWNLOADCMD_FOLDER)
-
-    if not os.path.exists(NDA_TOOLS_DOWNLOADS_FOLDER):
-        os.mkdir(NDA_TOOLS_DOWNLOADS_FOLDER)
-
-    if not os.path.exists(NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER):
-        os.mkdir(NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER)
-
-    if not os.path.exists(NDA_TOOLS_VTCMD_LOGS_FOLDER):
-        os.mkdir(NDA_TOOLS_VTCMD_LOGS_FOLDER)
-
-    if not os.path.exists(NDA_TOOLS_VAL_FOLDER):
-        os.mkdir(NDA_TOOLS_VAL_FOLDER)
-
-    if not os.path.exists(NDA_TOOLS_SUB_PACKAGE_FOLDER):
-        os.mkdir(NDA_TOOLS_SUB_PACKAGE_FOLDER)
-
-    if not os.path.exists(NDA_TOOLS_SETTINGS_FOLDER):
-        os.mkdir(NDA_TOOLS_SETTINGS_FOLDER)
+    _create_if_not_exists(NDA_ORGINIZATION_ROOT_FOLDER)
+    _create_if_not_exists(NDA_TOOLS_ROOT_FOLDER)
+    _create_if_not_exists(NDA_TOOLS_VTCMD_FOLDER)
+    _create_if_not_exists(NDA_TOOLS_DOWNLOADCMD_FOLDER)
+    _create_if_not_exists(NDA_TOOLS_DOWNLOADS_FOLDER)
+    _create_if_not_exists(NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER)
+    _create_if_not_exists(NDA_TOOLS_VTCMD_LOGS_FOLDER)
+    _create_if_not_exists(NDA_TOOLS_VAL_FOLDER)
+    _create_if_not_exists(NDA_TOOLS_SUB_PACKAGE_FOLDER)
+    _create_if_not_exists(NDA_TOOLS_SETTINGS_FOLDER)
 
     if not pathlib.Path(NDA_TOOLS_LOGGING_YML_FILE).is_file():
         shutil.copyfile(resource_filename(__name__, 'clientscripts/config/logging.yml'),

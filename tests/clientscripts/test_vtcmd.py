@@ -6,9 +6,10 @@ from unittest.mock import MagicMock
 import pytest
 
 import NDATools
+from NDATools.clientscripts.vtcmd import validate
 from NDATools.upload.cli import ValidatedFile
 from NDATools.upload.validation.api import ValidationV2Credentials, ValidationV2
-from NDATools.upload.validation.results_writer import ResultsWriterFactory
+from NDATools.upload.validation.results_writer import ResultsWriterABC
 from tests.conftest import MockLogger
 
 
@@ -33,6 +34,11 @@ def validation_errors(load_from_file):
 
 
 @pytest.fixture
+def validation_sys_errors(load_from_file):
+    return json.loads(load_from_file('validation_sys_errors.json'))
+
+
+@pytest.fixture
 def validation_result(monkeypatch):
     def _validation_result(filename: str = 'file.csv', warnings=None, errors=None):
         if not warnings:
@@ -48,7 +54,10 @@ def validation_result(monkeypatch):
         if not errors and not warnings:
             status = 'Complete'
         elif errors:
-            status = 'CompleteWithErrors'
+            if 'system' in errors:
+                status = 'SystemError'
+            else:
+                status = 'CompleteWithErrors'
         elif warnings:
             status = 'CompleteWithWarnings'
         return ValidatedFile(**{'file': Path(f'/path/to/{filename}'),
@@ -72,76 +81,64 @@ def config(top_level_datadir, validation_config_factory):
     return config
 
 
-@pytest.mark.parametrize('test_warnings,test_errors', [
-    (False, False),
-    (False, True),
-    (True, False),
-    (True, True),
-])
-@pytest.mark.skip
-def test_validate(test_warnings, test_errors, validation_result, monkeypatch, validation_errors,
-                  validation_warnings, config):
-    """Test that information is printed to screen as expected """
-    user_io = ResultsWriterFactory.get_writer(file_format='json')
-    mock_file_writer = MagicMock()
-    mock_logger = MockLogger()
-    result = validation_result('file1.csv',
-                               validation_warnings if test_warnings else {},
-                               validation_errors if test_errors else {})
-    with monkeypatch.context() as m:
-        # mock file writer so we dont write actual files
-        m.setattr(user_io, 'file_writer', mock_file_writer)
-        # test logging calls
-        m.setattr(NDATools.upload.validation.io.logger, 'info', mock_logger)
-        m.setattr(NDATools.upload.validation.io, 'exit_error', MagicMock(return_value=None))
+@pytest.fixture
+def validation_result_writer():
+    writer = MagicMock(spec=ResultsWriterABC)
+    writer.write_errors = MagicMock()
+    writer.write_warnings = MagicMock()
+    return writer
 
-        user_io.save_validation_errors([result], save_warnings=False)
-        validate()
+
+@pytest.mark.parametrize('test_warnings,test_errors,test_sys_errors', [
+    (False, False, False),
+    (False, True, False),
+    (True, False, False),
+    (True, True, False),
+    (False, False, True),
+])
+def test_validate(test_warnings, test_errors, test_sys_errors,
+                  validation_result, monkeypatch, validation_errors,
+                  validation_warnings, validation_sys_errors, config, validation_result_writer):
+    """Test that information is printed to screen as expected """
+    # mock important config variables, including the upload_cli
+    config.validation_results_writer = validation_result_writer
+    config.upload_cli = MagicMock()
+    config.is_authenticated = MagicMock(return_value=True)
+    config.v2_enabled = True
+
+    errors = {}
+    if test_errors:
+        errors = validation_errors
+    elif test_sys_errors:
+        errors = validation_sys_errors
+
+    config.upload_cli.validate = MagicMock(return_value=[validation_result('file1.csv',
+                                                                           validation_warnings if test_warnings else {},
+                                                                           errors)])
+
+    with monkeypatch.context() as m:
+        # set this flag to enable printout of extra messages when errors are detected in 1 or more csvs
+        m.setattr(config._args, 'buildPackage', True)
+        # set this flag when testing warnings
+        if test_warnings:
+            m.setattr(config._args, 'warning', True)
+
+        # setup mocks to test logging calls
+        mock_logger = MockLogger()
+        m.setattr(NDATools.clientscripts.vtcmd.logger, 'info', mock_logger)
+        m.setattr(NDATools.clientscripts.vtcmd, 'exit_error', MagicMock(side_effect=[SystemExit]))
+        try:
+            validate(config._args, config)
+        except SystemExit:
+            assert test_sys_errors or test_errors
+            assert NDATools.clientscripts.vtcmd.exit_error.call_count == 1
+            if test_sys_errors:
+                assert mock_logger.any_call_contains('Unexpected error occurred while validating')
 
         # check that program outputs message indicating validation completion
         assert mock_logger.any_call_contains('All files have finished validating')
-        assert mock_file_writer.write_errors.call_count == 1
+        assert validation_result_writer.write_errors.call_count == 1
 
-        # check that program doesnt indicate a system error or warnings if validation status is Complete
-        assert not mock_logger.info.any_call_contains('Unexpected error')
-        if test_warnings and not test_errors:
-            assert mock_logger.any_call_contains('Note: Your data has warnings')
-        else:
-            assert not mock_logger.any_call_contains('Note: Your data has warnings')
-        assert mock_file_writer.write_warnings.call_count == 0
-
-        # check that the program outputs files with errors
-        if test_errors:
-            assert mock_logger.any_call_contains('These files contain errors')
-            assert NDATools.upload.validation.io.exit_error.call_count == 1
-            assert not mock_logger.any_call_contains('The following files passed validation')
-        else:
-            assert mock_logger.any_call_contains('The following files passed validation')
-            assert not mock_logger.any_call_contains('These files contain errors')
-
-        # run an additional test that warnings file is created when parameter is set
-        if test_warnings and not test_errors:
-            mock_logger.reset_mock()
-            user_io.save_validation_errors([result], save_warnings=True)
-            assert mock_file_writer.write_warnings.call_count == 1
+        if test_warnings:
             assert mock_logger.any_call_contains('Warnings output to:')
-
-# def test_user_io_run_validation_step_io_sys_error(validation_result, monkeypatch):
-#     """Test that information is printed to screen as expected when system error is encountered"""
-#     user_io = ResultsWriterFactory.get_writer(file_format='json')
-#     mock_file_writer = MagicMock()
-#     mock_logger = MockLogger()
-#     result = validation_result('file1.csv', {}, {})
-#     result.validation_resource.status = 'SystemError'
-#     with monkeypatch.context() as m, pytest.raises(SystemExit):
-#         # mock file writer so we dont write actual files
-#         m.setattr(user_io, 'file_writer', mock_file_writer)
-#         # test logging calls
-#         m.setattr(NDATools.upload.validation.io.logger, 'info', mock_logger)
-#         m.setattr(NDATools.upload.validation.io, 'exit_error', MagicMock(side_effect=[SystemExit]))
-#
-#         user_io.save_validation_errors([result], save_warnings=False)
-#
-#         assert NDATools.upload.validation.io.exit_error.call_count == 1
-#         assert NDATools.upload.validation.io.exit_error.assert_called_with(
-#             'Unexpected error occurred while validating one or more of the csv files')
+            assert validation_result_writer.write_warnings.call_count == 1

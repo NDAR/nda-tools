@@ -191,7 +191,7 @@ class NdaUploadCli:
         raise NotImplementedError()
 
     def validate_v1(self, file_list, threads) -> List[ValidatedFile]:
-        validation = Validation(file_list, config=self.config, hide_progress=self.config.hideProgress,
+        validation = Validation(file_list, config=self.config, hide_progress=self.config.hide_progress,
                                 thread_num=threads,
                                 allow_exit=True)
         validation.validate()
@@ -318,4 +318,4 @@ class NdaUploadCli:
 
     def _execute_in_threadpool(self, func: Callable, args: List[Tuple]):
         return execute_in_threadpool(func, args, max_workers=self.config.workerThreads,
-                                     disable_tqdm=self.config.hideProgress)
+                                     disable_tqdm=self.config.hide_progress)

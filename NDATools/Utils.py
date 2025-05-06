@@ -89,8 +89,6 @@ def _exit_client(message=None, status_code=1):
             continue
     if message:
         logger.info('\n\n{}'.format(message))
-    else:
-        logger.info('\n\nExit signal received, shutting down...')
     os._exit(status_code)
 
 
@@ -387,7 +385,7 @@ def execute_in_threadpool(func: Callable, args: List[Tuple], max_workers: int, d
     return thread_map(func, args, max_workers=max_workers, total=len(args), disable=disable_tqdm)
     # manual implementation - keeping for now until decidedly not needed
     # results = []
-    # with tqdm(total=len(args), disable=self.config.hideProgress or disable_tqdm) as progress_bar, \
+    # with tqdm(total=len(args), disable=self.config.hide_progress or disable_tqdm) as progress_bar, \
     #         ThreadPoolExecutor(max_workers=self.config.workerThreads) as executor:
     #     # executor.map seems to block whereas executor.submit doesnt...
     #     futures = list(map(lambda arg: executor.submit(func, *arg), args))

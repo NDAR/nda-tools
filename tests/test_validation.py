@@ -11,7 +11,7 @@ from NDATools.upload.validation.v1 import Validation
 def validation(monkeypatch, validation_config_factory, load_from_file, tmp_path, shared_datadir):
     file_path = (shared_datadir / 'validation/file.csv')
     args, config = validation_config_factory([str(file_path)])
-    return Validation(args.files, config=config, hide_progress=config.hideProgress, thread_num=1,
+    return Validation(args.files, config=config, hide_progress=config.hide_progress, thread_num=1,
                       allow_exit=True)
 
 
@@ -40,4 +40,3 @@ def test_validate(validation, monkeypatch, load_from_file):
         assert result['status'] == 'Complete'
         assert result['expiration_date'] == '07/14/2021'
         assert result['errors'] == {}
-

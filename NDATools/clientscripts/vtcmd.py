@@ -1,13 +1,14 @@
 import argparse
+import logging
 import random
-import sys
 import traceback
 
+import NDATools
 from NDATools.BuildPackage import SubmissionPackage
-from NDATools.Configuration import *
-from NDATools.Utils import get_non_blank_input
+from NDATools.Utils import get_non_blank_input, exit_error
 from NDATools.upload.submission.resubmission import check_replacement_authorized, build_replacement_package
 from NDATools.upload.submission.submission import Submission
+from NDATools.upload.validation.api import ValidationV2Api
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +128,8 @@ def validate(args, config):
     if any(map(lambda x: x.system_error(), validated_files)):
         msg = 'Unexpected error occurred while validating one or more of the csv files.'
         msg += '\nPlease email NDAHelp@mail.nih.gov for help in resolving this error and include {} as an attachment to help us resolve the issue'
-        exit_error(msg)
+        logger.info(msg)
+        exit_error()
 
     # Save warnings to file (if requested)
     if args.warning:
@@ -137,8 +139,10 @@ def validate(args, config):
         logger.info('Note: Your data has warnings. To save warnings, run again with -w argument.')
 
     # Preview errors for each file
+    has_errors = False
     for file in validated_files:
         if file.has_errors():
+            has_errors = True
             if file.has_manifest_errors():
                 file.preview_manifest_errors(10)
             else:
@@ -146,14 +150,14 @@ def validate(args, config):
 
     # Exit if user intended to submit and there are any errors
     will_submit = args.buildPackage
-    if will_submit:
+    if will_submit and has_errors:
         if args.replace_submission:
             logger.error('ERROR - At least some of the files failed validation. '
                          'All files must pass validation in order to edit submission {}. Please fix these errors and try again.'.format(
                 args.replace_submission))
         else:
             logger.info('You must correct the above errors before you can submit to NDA')
-        sys.exit(1)
+        exit_error()
 
     return validated_files
 
