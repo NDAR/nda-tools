@@ -6,7 +6,6 @@ from typing import List, Callable, Tuple, Union
 
 from tabulate import tabulate
 
-from NDATools.Configuration import ClientConfiguration
 from NDATools.Utils import exit_error, execute_in_threadpool
 from NDATools.upload.validation.api import ManifestError, ValidationV2
 from NDATools.upload.validation.manifests import ManifestFile
@@ -167,7 +166,7 @@ class ValidatedFile:
 class NdaUploadCli:
     """ Higher level API for nda, meant to eventually replace existing vtmcd/downloadcmd code"""
 
-    def __init__(self, client_config: ClientConfiguration):
+    def __init__(self, client_config):
         self.config = client_config
         self.validation_api = self.config.validation_api
         self.uploader = self.config.manifests_uploader
@@ -223,8 +222,10 @@ class NdaUploadCli:
             self.uploader.upload_manifests(creds, self.config.manifest_path)
             resource = self.validation_api.wait_validation_complete(creds.uuid, self.config.validation_timeout, True)
             # there must be manifest errors if the status changes from 'PendingManifests' to 'CompleteWithErrors'
+            # TODO refactor this and set_manifest_errors into common helper method
             if resource['status'] == ValidationStatus.COMPLETE_WITH_ERRORS:
                 manifests = ManifestFile.manifests_from_credentials(creds)
+                # hash manifests by uuid for efficient lookup when creating manifest_errors
                 mdict = {m.uuid: m for m in manifests}
                 manifest_errors = [ManifestValidationError(mdict[e.uuid], e.errors) for e in
                                    self.validation_api.get_manifest_errors(creds.uuid)]

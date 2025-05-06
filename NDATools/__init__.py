@@ -130,4 +130,5 @@ def init_and_create_configuration(args, logs_folder, auth_req=True):
     config = ClientConfiguration(args)
     if auth_req:
         config.read_user_credentials()
+
     return config

@@ -54,11 +54,6 @@ class Validation:
         self.e = False
         self.w = False
         self.manifest_path = self.config.manifest_path
-        if self.config.JSON:
-            self.log_file = os.path.join(NDATools.NDA_TOOLS_VAL_FOLDER, 'validation_results_{}.json'.format(self.date))
-        else:
-            self.log_file = os.path.join(NDATools.NDA_TOOLS_VAL_FOLDER, 'validation_results_{}.csv'.format(self.date))
-
         self.field_names = ['FILE', 'ID', 'STATUS', 'EXPIRATION_DATE', 'ERRORS', 'COLUMN', 'MESSAGE', 'RECORD']
         self.validation_progress = None
         self.exit = allow_exit

@@ -14,8 +14,10 @@ from requests import HTTPError
 import NDATools
 from NDATools import NDA_TOOLS_LOGGING_YML_FILE
 from NDATools.Utils import exit_error, HttpErrorHandlingStrategy, get_request
+from NDATools.upload.cli import NdaUploadCli
 from NDATools.upload.validation.api import ValidationV2Api
 from NDATools.upload.validation.manifests import ManifestsUploader
+from NDATools.upload.validation.results_writer import ResultsWriterFactory
 
 logger = logging.getLogger(__name__)
 
@@ -88,13 +90,14 @@ class ClientConfiguration:
             self.title = args.title
             self.description = args.description
             self.scope = args.scope
-            self.JSON = args.JSON
             self.replace_submission = args.replace_submission
+            self.v2_enabled = False
+            self.validation_results_writer = ResultsWriterFactory.get_writer(file_format='json' if args.JSON else 'csv')
+            self.validation_api = None
+            self.manifests_uploader = None
+            self.upload_cli = NdaUploadCli(self)
         if self.username:
             logger.info('proceeding as NDA user: {}'.format(self.username))
-
-        self.validation_api = None
-        self.manifests_uploader = None
 
     def _check_and_fix_missing_options(self):
         default_config = configparser.ConfigParser()

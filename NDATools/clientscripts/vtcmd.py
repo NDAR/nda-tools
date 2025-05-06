@@ -1,14 +1,13 @@
 import argparse
 import random
 import sys
+import traceback
 
 from NDATools.BuildPackage import SubmissionPackage
 from NDATools.Configuration import *
 from NDATools.Utils import get_non_blank_input
-from NDATools.upload.cli import NdaUploadCli
 from NDATools.upload.submission.resubmission import check_replacement_authorized, build_replacement_package
 from NDATools.upload.submission.submission import Submission
-from NDATools.upload.validation.results_writer import ResultsWriterFactory
 
 logger = logging.getLogger(__name__)
 
@@ -108,29 +107,20 @@ def check_args(args, config):
 
 
 def validate(args, config):
-    api_config = get_request(f'{config.validation_api_endpoint}/config')
-    percent = api_config['v2Routing']['percent']
-    logger.debug('v2_routing percent: {}'.format(percent))
-    # route X% of traffic to the new validation API
-    v2_api = random.randint(1, 100) <= (percent * 100)
-
     logger.info(f'\nValidating {len(args.files)} files...')
-    nda = NdaUploadCli(config)  # only object to contain urls
     # Perform the validation using v1 or v2 endpoints. Errors and warnings are streamed or saved in memory for v2 and v1 respectively
-    if v2_api:
+    if config.v2_enabled:
         logger.debug('Using the new validation API.')
         if not config.is_authenticated():
             config.read_user_credentials()
-        validated_files = nda.validate(args.files)
+        validated_files = config.upload_cli.validate(args.files)
     else:
         logger.debug('Using the old validation API.')
-        validated_files = nda.validate_v1(args.files, args.workerThreads)
+        validated_files = config.upload_cli.validate_v1(args.files, args.workerThreads)
 
     # Save errors to file
-    writer = ResultsWriterFactory.get_writer(file_format='json' if args.JSON else 'csv')
+    errors_file = config.validation_results_writer.write_errors(validated_files)
 
-    # TODO update this to include manifest errors
-    errors_file = writer.write_errors(validated_files)
     logger.info(
         '\nAll files have finished validating. Validation report output to: {}'.format(
             errors_file))
@@ -141,7 +131,7 @@ def validate(args, config):
 
     # Save warnings to file (if requested)
     if args.warning:
-        warnings_file = writer.write_warnings(validated_files)
+        warnings_file = config.validation_results_writer.write_warnings(validated_files)
         logger.info('Warnings output to: {}'.format(warnings_file))
     elif any(map(lambda x: x.has_warnings(), validated_files)):
         logger.info('Note: Your data has warnings. To save warnings, run again with -w argument.')
@@ -156,12 +146,11 @@ def validate(args, config):
 
     # Exit if user intended to submit and there are any errors
     will_submit = args.buildPackage
-    replace_submission = args.replace_submission
     if will_submit:
-        if replace_submission:
+        if args.replace_submission:
             logger.error('ERROR - At least some of the files failed validation. '
                          'All files must pass validation in order to edit submission {}. Please fix these errors and try again.'.format(
-                replace_submission))
+                args.replace_submission))
         else:
             logger.info('You must correct the above errors before you can submit to NDA')
         sys.exit(1)
@@ -244,12 +233,29 @@ def _finish_submission(submission, replacement=False):
         print_submission_complete_message(submission, replacement=replacement)
 
 
+def set_validation_api_version(config):
+    """Enable v2 of validation svc for some percentage of requests"""
+    try:
+        api = ValidationV2Api(config.validation_api_endpoint, None, None)
+        percent = api.get_v2_routing_percent()
+        logger.debug('v2_routing percent: {}'.format(percent))
+        # route X% of traffic to the new validation API
+        config.v2_enabled = random.randint(1, 100) <= (percent * 100)
+    except:
+        traceback.print_exc()
+        logger.warning('Could not get v2_routing percent. Using the old validation API.')
+        config.v2_enabled = False
+
+
 def main():
     # confirm most up-to-date version of nda-tools is installed
     args = parse_args()
     auth_req = True if args.buildPackage or args.resume or args.replace_submission or args.username else False
     config = NDATools.init_and_create_configuration(args, NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER, auth_req=auth_req)
     check_args(args, config)
+
+    # route some percentage of requests to the new validation endpoints
+    set_validation_api_version(config)
 
     if args.resume:
         submission_id = args.files[0]

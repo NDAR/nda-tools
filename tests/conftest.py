@@ -7,7 +7,6 @@ import keyring
 import pytest
 
 import NDATools
-from NDATools.Configuration import ClientConfiguration
 from NDATools.clientscripts.downloadcmd import parse_args as download_parse_args
 from NDATools.clientscripts.vtcmd import parse_args as validation_parse_args
 
@@ -40,10 +39,8 @@ def download_config_factory(monkeypatch):
             test_args.insert(0, 'downloadcmd')
             m.setattr(sys, 'argv', test_args)
             m.setattr(keyring, 'get_password', mock_get_password)
-            m.setattr(ClientConfiguration, 'is_valid_nda_credentials', mock_is_valid_credentials)
             args = download_parse_args()
             config = NDATools.init_and_create_configuration(args, NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER, auth_req=False)
-            # monkey patch is_valid_nda_credentials
             config.is_valid_nda_credentials = lambda _: True
             return args, config
 
@@ -57,7 +54,6 @@ def validation_config_factory():
             test_args.insert(0, 'vtcmd')
             args = validation_parse_args()
             config = NDATools.init_and_create_configuration(args, NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER, auth_req=False)
-            # monkey patch is_valid_nda_credentials
             config.is_valid_nda_credentials = lambda _: True
 
         return args, config

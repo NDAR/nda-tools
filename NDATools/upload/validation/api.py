@@ -161,6 +161,7 @@ class ValidationManifest(BaseModel):
 class ValidationV2Api:
     def __init__(self, validation_api_endpoint, username, password):
         # self.config = config
+        self.api_v1_endpoint = f"{validation_api_endpoint}"
         self.api_v2_endpoint = f"{validation_api_endpoint}/v2/"
         self.auth = requests.auth.HTTPBasicAuth(username, password)
         self._refresh_creds_lock = RLock()
@@ -230,3 +231,7 @@ class ValidationV2Api:
                     logger.error(f"Validation timed out for uuid {uuid}")
                     exit_error()
         return validation
+
+    def get_v2_routing_percent(self):
+        api_config = get_request(f'{self.api_v1_endpoint}/config')
+        return api_config['v2Routing']['percent']
