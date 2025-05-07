@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 def check_replacement_authorized(config, submission_id):
-    api = SubmissionApi(config)
+    api = SubmissionApi(config.submission_api_endpoint, config.username, config.password)
     submission_history = api.get_submission_history(submission_id)
 
     # check to see if the submission was already replaced?
@@ -49,6 +49,7 @@ def _check_missing_data_for_resubmission(validated_files: List[ValidatedFile], s
         if submitted_data and row_count < provided_row_counts[short_name]:
             data_structures_with_missing_rows.append((short_name, row_count, provided_row_counts[short_name]))
 
+    # TODO need to accomodate non-interactive mode
     if data_structures_with_missing_rows:
         logger.warning('\nWARNING - Detected missing information in the following files: ')
 
@@ -83,22 +84,17 @@ class ReplacementPackageInfo():
         self.validation_uuids = validation_uuids
 
 
-def build_replacement_package_info(validated_files, args, config) -> ReplacementPackageInfo:
-    submission_api = SubmissionApi(config)
+def build_replacement_package_info(validated_files: List[ValidatedFile], args, config) -> ReplacementPackageInfo:
+    submission_api = SubmissionApi(config.submission_api_endpoint, config.username, config.password)
 
     submission: Submission = submission_api.get_submission(args.replacement_submission)
-
-    submission_id = submission.submission_id
-    config.title = submission.dataset_title
-    config.description = submission.dataset_description
-    config.collection_id = submission.collection.id
-
-    submission_details = submission_api.get_submission_details(submission_id)
+    submission_details: SubmissionDetails = submission_api.get_submission_details(submission.submission_id)
     # perform some checks before attempting to build the package
     _check_unrecognized_datastructures(validated_files, submission_details)
     _check_missing_data_for_resubmission(validated_files, submission_details)
+
     validation_uuid = _generate_uuids_for_qa_workflow(validated_files, submission_details)
-    return ReplacementPackageInfo(submission_id, submission.collection.id, submission.dataset_title,
+    return ReplacementPackageInfo(submission.submission_id, submission.collection.id, submission.dataset_title,
                                   submission.dataset_description, validation_uuid)
 
 
@@ -119,3 +115,13 @@ def _generate_uuids_for_qa_workflow(validated_files: List[ValidatedFile], submis
         new_uuids.update({res for res in validation_uuids_by_short_name[short_name]})
 
     return list(new_uuids)
+
+
+'''
+Submission 100 
+fmriresults01 - 2 files - 
+ndar_subject01 - 1 file
+
+vtcmd ndar_subject01-edited.csv -b -rs 100
+
+'''

@@ -1,6 +1,6 @@
 import enum
 import time
-from typing import List
+from typing import List, Union
 
 import requests
 from pydantic import BaseModel, Field
@@ -9,16 +9,15 @@ from NDATools.Utils import get_request, exit_error, post_request
 
 
 class DataStructureDetails(BaseModel):
-    short_name: str
+    short_name: str = Field(..., alias='shortName')
     rows: int
-    validation_uuids: List[str]
-    data_structure_id: int
+    validation_uuids: List[str] = Field(..., alias='validationUuids')
 
 
 class SubmissionDetails(BaseModel):
     validation_uuids: List[str]
-    submission_id: int
-    data_structure_details: List[DataStructureDetails] = Field(..., alias='pending_changes')
+    submission_id: int = Field(..., alias='submissionId')
+    data_structure_details: List[DataStructureDetails] = Field(..., alias='pendingChanges')
 
     def get_data_structure_details(self, short_name):
         for data_structure in self.data_structure_details:
@@ -29,7 +28,7 @@ class SubmissionDetails(BaseModel):
 
 class SubmissionHistory(BaseModel):
     replacement_authorized: bool
-    created_by: int
+    created_by: str
     created_date: str
 
 
@@ -43,24 +42,23 @@ class Submission(BaseModel):
     dataset_title: str
     dataset_description: str
     dataset_created_date: str
-    dataset_modified_date: str
+    dataset_modified_date: Union[str, None]
     submission_id: int
     collection: NdaCollection
 
 
 class SubmissionApi:
-    def __init__(self, config):
-        self.config = config
-        self.api_endpoint = self.config.submission_api_endpoint
-        self.auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
+    def __init__(self, submission_api_endpoint, username, password):
+        self.api_endpoint = submission_api_endpoint
+        self.auth = requests.auth.HTTPBasicAuth(username, password)
 
-    def get_submission(self, submission_id):
-        tmp = get_request("/".join([self.api_endpoint, submission_id]), auth=self.auth)
+    def get_submission(self, submission_id: int):
+        tmp = get_request("/".join([self.api_endpoint, str(submission_id)]), auth=self.auth)
         return Submission(**tmp)
 
-    def get_submission_history(self, submission_id) -> List[SubmissionHistory]:
+    def get_submission_history(self, submission_id: int) -> List[SubmissionHistory]:
         try:
-            tmp = get_request('/'.join([self.api_endpoint, submission_id, 'change-history']), auth=self.auth)
+            tmp = get_request('/'.join([self.api_endpoint, str(submission_id), 'change-history']), auth=self.auth)
             return [SubmissionHistory(**t) for t in tmp]
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 403:
@@ -72,8 +70,8 @@ class SubmissionApi:
                     message='There was a General Error communicating with the NDA server. Please try again later')
             exit(1)
 
-    def get_submission_details(self, submission_id):
-        tmp = get_request('/'.join([self.api_endpoint, submission_id, 'pending-changes']), auth=self.auth)
+    def get_submission_details(self, submission_id: int):
+        tmp = get_request('/'.join([self.api_endpoint, str(submission_id), 'pending-changes']), auth=self.auth)
         return SubmissionDetails(**tmp)
 
 
@@ -83,15 +81,11 @@ class PackagingStatus(str, enum.Enum):
     PROCESSING = 'processing'
 
 
-class SubmissionPackageInfo(BaseModel):
-    status: PackagingStatus
-
-
 class SubmissionPackage(BaseModel):
-    package_info: SubmissionPackageInfo
     submission_package_uuid: str
     created_date: str
     expiration_date: str
+    status: PackagingStatus
 
 
 class SubmissionPackageApi:
@@ -122,7 +116,7 @@ class SubmissionPackageApi:
         while True:
             time.sleep(1.1)
             response = get_request("/".join([self.api_endpoint, package_id]), auth=self.auth)
-            package_status = PackagingStatus(response['package_info']['status'])
+            package_status = PackagingStatus(response['status'])
             if package_status != PackagingStatus.PROCESSING:
                 # done processing. Check for erors...
                 if package_status != PackagingStatus.COMPLETE:
@@ -137,11 +131,9 @@ class SubmissionPackageApi:
 
 
 class CollectionApi:
-    def __init__(self, config):
-        self.config = config
-        self.vt_api_endpoint = self.config.validationtool_api_endpoint
-        self.collection_api_endpoint = self.config.collection_api_endpoint
-        self.auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
+    def __init__(self, vt_api_endpoint, username, password):
+        self.vt_api_endpoint = vt_api_endpoint
+        self.auth = requests.auth.HTTPBasicAuth(username, password)
 
     def get_user_collections(self):
         collections = get_request("/".join([self.vt_api_endpoint, "user/collection"]), auth=self.auth,

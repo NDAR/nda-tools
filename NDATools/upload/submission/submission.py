@@ -15,7 +15,7 @@ from tqdm import tqdm
 from NDATools.Configuration import *
 from NDATools.Utils import get_request, put_request, DeserializeHandler, post_request, get_s3_client_with_config, \
     collect_directory_list, deconstruct_s3_url
-from NDATools.upload.submission.api import SubmissionPackageApi, CollectionApi, PackagingStatus
+from NDATools.upload.submission.api import SubmissionPackageApi, PackagingStatus
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,6 @@ class SubmissionPackage:
         self.config = config
         self.api = SubmissionPackageApi(self.config.submission_package_api_endpoint, self.config.username,
                                         self.config.password)
-        self.collection_api = CollectionApi(config)
 
     def build_package(self, validation_uuid, collection, name, description, replacement_submission_id=None):
         package = self.api.build_package(collection, name, description, validation_uuid, replacement_submission_id)

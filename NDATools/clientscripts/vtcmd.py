@@ -170,9 +170,10 @@ def resume_submission(sub_id, batch, config=None):
 
 
 def build_package(validated_files, args, config):
+    coll_api = CollectionApi(config.validationtool_api_endpoint, config.username, config.password)
+
     def get_collection_id():
-        api = CollectionApi(config)
-        collections = api.get_user_collections()
+        collections = coll_api.get_user_collections()
         if not collections:
             message = 'The user {} does not have permission to submit to any collections.'.format(config.username)
             exit_error(message=message)

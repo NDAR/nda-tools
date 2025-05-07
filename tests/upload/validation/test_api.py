@@ -39,6 +39,7 @@ def test_refresh_credentials(monkeypatch):
     with monkeypatch.context() as m:
         mock_boto3 = MagicMock()
         m.setattr(NDATools.upload.validation.api, 'boto3', mock_boto3)
+        m.setattr(time, 'sleep', Mock(side_effect=[None]))
 
         # create mock for a successful get_object response
         mock_stream = Mock()
@@ -144,6 +145,7 @@ def test_wait_validation_complete_status_pending_wait_for_manifest_timeout(pendi
 
     with monkeypatch.context() as m:
         m.setattr(NDATools.upload.validation.api, 'exit_error', MagicMock(side_effect=[SystemExit]))
+        m.setattr(time, 'sleep', lambda x: None)
 
         # catch SystemExit here so the test doesn't fail
         with pytest.raises(SystemExit) as exit_info:
@@ -159,8 +161,10 @@ def test_wait_validation_complete_status_error_wait_for_manifest(pending_validat
                                                                  monkeypatch):
     """Test that 'wait_validation_complete' raises a systemExit exception if validation status indicates unexpected backend error"""
     validation_api.get_validation = MagicMock(side_effect=[pending_validation, pending_validation, error_validation])
-    with patch('NDATools.upload.validation.api.exit_error') as mock_exit:
+    with patch('NDATools.upload.validation.api.exit_error') as mock_exit, \
+            patch('time.sleep') as mock_sleep:
         mock_exit.side_effect = SystemExit(1)
+        mock_sleep.side_effect = lambda x: None
 
         # catch SystemExit here so the test doesn't fail
         with pytest.raises(SystemExit) as exit_info:
