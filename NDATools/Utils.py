@@ -356,8 +356,8 @@ def collect_directory_list():
 
 def get_non_blank_input(prompt, input_name):
     while True:
-        user_input = input(prompt)
-        if user_input.strip():
+        user_input = input(prompt).strip()
+        if user_input:
             return user_input
         else:
             print('{} cannot be blank. Please try again'.format(input_name))
@@ -365,7 +365,7 @@ def get_non_blank_input(prompt, input_name):
 
 def get_int_input(prompt, input_name):
     while True:
-        user_input = get_non_blank_input(prompt)
+        user_input = get_non_blank_input(prompt, input_name)
         try:
             return int(user_input)
         except ValueError:

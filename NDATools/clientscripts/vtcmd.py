@@ -3,12 +3,11 @@ import logging
 import random
 import traceback
 
-from NDATools.BuildPackage import SubmissionPackage
-
 import NDATools
 from NDATools.Utils import get_non_blank_input, exit_error, get_int_input
-from NDATools.upload.submission.resubmission import check_replacement_authorized
-from NDATools.upload.submission.submission import Submission
+from NDATools.upload.submission.api import CollectionApi
+from NDATools.upload.submission.resubmission import check_replacement_authorized, build_replacement_package_info
+from NDATools.upload.submission.submission import Submission, SubmissionPackage
 from NDATools.upload.validation.api import ValidationV2Api
 
 logger = logging.getLogger(__name__)
@@ -171,18 +170,28 @@ def resume_submission(sub_id, batch, config=None):
 
 
 def build_package(validated_files, args, config):
+    def get_collection_id():
+        api = CollectionApi(config)
+        id = config.collection_id or get_int_input('Enter collection ID:', 'Collection ID')
+        if not api.can_user_submit_to_collection(config.username, id):
+            logger.info('Invalid collection ID')
+            return get_collection_id()
+        return id
+
     package = SubmissionPackage(config=config)
-    # if args.replace_submission:
-    #    package = build_replacement_package(validated_files, args, config)
-    collection_id = config.collection_id or get_int_input('Enter collection ID:', 'Collection ID')
-    name = config.title or get_non_blank_input('Enter title for dataset name:', 'Title')
-    description = config.description or get_non_blank_input('Enter description for the dataset submission:',
-                                                            'Description')
+
     logger.info('Building Package')
-    package_id = package.build_package(collection_id, name, description, [v.uuid for v in validated_files],
-                                       args.replace_submission)
-    logger.info('\nPackage finished building.\n')
-    return package_id
+    if args.replace_submission:
+        pkg = build_replacement_package_info(validated_files, args, config)
+        return package.build_package(pkg.collection_id, pkg.title, pkg.description, pkg.validation_uuids,
+                                     pkg.submission_id)
+    else:
+        validation_uuids = [v.uuid for v in validated_files]
+        collection_id = get_collection_id()
+        name = config.title or get_non_blank_input('Enter title for dataset name:', 'Title')
+        description = config.description or get_non_blank_input('Enter description for the dataset submission:',
+                                                                'Description')
+        return package.build_package(collection_id, name, description, validation_uuids)
 
 
 def print_submission_complete_message(submission, replacement):
@@ -246,7 +255,7 @@ def set_validation_api_version(config):
 
 
 def main():
-    # confirm most up-to-date version of nda-tools is installed
+    # confirm latest version of nda-tools is installed
     args = parse_args()
     auth_req = True if args.buildPackage or args.resume or args.replace_submission or args.username else False
     config = NDATools.init_and_create_configuration(args, NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER, auth_req=auth_req)

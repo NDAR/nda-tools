@@ -139,11 +139,12 @@ class SubmissionPackageApi:
 class CollectionApi:
     def __init__(self, config):
         self.config = config
-        self.api_endpoint = self.config.submission_api_endpoint
+        self.vt_api_endpoint = self.config.validationtool_api_endpoint
+        self.collection_api_endpoint = self.config.collection_api_endpoint
         self.auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
 
     def get_collections(self):
-        collections = get_request("/".join([self.validationtool_api, "user/collection"]), auth=self.auth,
+        collections = get_request("/".join([self.vt_api_endpoint, "user/collection"]), auth=self.auth,
                                   headers={'Accept': 'application/json'})
         return {int(c['id']): c['title'] for c in collections}
 

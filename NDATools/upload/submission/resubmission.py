@@ -5,7 +5,6 @@ from typing import List
 
 from NDATools.Utils import exit_error, evaluate_yes_no_input
 from NDATools.upload.cli import ValidatedFile
-from NDATools.upload.submission import SubmissionPackage
 from NDATools.upload.submission.api import SubmissionApi, Submission, SubmissionDetails
 
 logger = logging.getLogger(__name__)
@@ -75,7 +74,16 @@ def _check_unrecognized_datastructures(validated_files: List[ValidatedFile], sub
         exit_error(message=message)
 
 
-def build_replacement_package(validated_files, args, config) -> SubmissionPackage:
+class ReplacementPackageInfo():
+    def __init__(self, submission_id, collection_id, title, description, validation_uuids):
+        self.submission_id = submission_id
+        self.collection_id = collection_id
+        self.title = title
+        self.description = description
+        self.validation_uuids = validation_uuids
+
+
+def build_replacement_package_info(validated_files, args, config) -> ReplacementPackageInfo:
     submission_api = SubmissionApi(config)
 
     submission: Submission = submission_api.get_submission(args.replacement_submission)
@@ -89,10 +97,9 @@ def build_replacement_package(validated_files, args, config) -> SubmissionPackag
     # perform some checks before attempting to build the package
     _check_unrecognized_datastructures(validated_files, submission_details)
     _check_missing_data_for_resubmission(validated_files, submission_details)
-    updated_uuids = _generate_uuids_for_qa_workflow(validated_files, submission_details)
-
-    # get list of associated-files that have already been uploaded for each data-structure
-    return SubmissionPackage(updated_uuids, config=config)
+    validation_uuid = _generate_uuids_for_qa_workflow(validated_files, submission_details)
+    return ReplacementPackageInfo(submission_id, submission.collection.id, submission.dataset_title,
+                                  submission.dataset_description, validation_uuid)
 
 
 def _generate_uuids_for_qa_workflow(validated_files: List[ValidatedFile], submission_details: SubmissionDetails):
