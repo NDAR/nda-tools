@@ -172,9 +172,19 @@ def resume_submission(sub_id, batch, config=None):
 def build_package(validated_files, args, config):
     def get_collection_id():
         api = CollectionApi(config)
+        collections = api.get_user_collections()
+        if not collections:
+            message = 'The user {} does not have permission to submit to any collections.'.format(config.username)
+            exit_error(message=message)
         id = config.collection_id or get_int_input('Enter collection ID:', 'Collection ID')
-        if not api.can_user_submit_to_collection(config.username, id):
+        c_ids = {c.id for c in collections}
+        if not id in c_ids:
             logger.info('Invalid collection ID')
+            logger.error(f'You do not have access to submit to the collection: {id} ')
+            logger.info(f'Please choose from one of the following collections: ')
+            for coll in collections:
+                logger.info('{}: {}'.format(coll.id, coll.title))
+
             return get_collection_id()
         return id
 
