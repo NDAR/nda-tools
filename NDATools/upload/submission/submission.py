@@ -15,8 +15,29 @@ from tqdm import tqdm
 from NDATools.Configuration import *
 from NDATools.Utils import get_request, put_request, DeserializeHandler, post_request, get_s3_client_with_config, \
     collect_directory_list, deconstruct_s3_url
+from NDATools.upload.submission.api import SubmissionPackageApi, CollectionApi, PackagingStatus
 
 logger = logging.getLogger(__name__)
+
+
+class SubmissionPackage:
+    def __init__(self, config):
+        self.config = config
+        self.api = SubmissionPackageApi(self.config.submission_package_api_endpoint, self.config.username,
+                                        self.config.password)
+        self.collection_api = CollectionApi(config)
+
+    def build_package(self, validation_uuid, collection, name, description, replacement_submission_id=None):
+        package = self.api.build_package(collection, name, description, validation_uuid, replacement_submission_id)
+        if package.status == PackagingStatus.PROCESSING:
+            self.api.wait_package_complete(package.submission_package_uuid)
+        # print package info to console
+        logger.info('\n\nPackage Information:')
+        logger.info('validation results: {}'.format(validation_uuid))
+        logger.info('submission_package_uuid: {}'.format(package.submission_package_uuid))
+        logger.info('created date: {}'.format(package.created_date))
+        logger.info('expiration date: {}'.format(package.expiration_date))
+        return package.submission_package_uuid
 
 
 class Status:
@@ -88,8 +109,7 @@ class Submission:
         self.no_read_access = set()
         self.exit = allow_exit
         self.all_mpus = []
-        if not self.config.directory_list:
-            self.config.directory_list = [os.getcwd()]
+        self.directory_list = self.config.directory_list or [os.getcwd()]
 
     def get_submission_versions(self):
         return get_request("/".join([self.api, self.submission_id, 'change-history']), auth=self.auth)
@@ -249,7 +269,7 @@ class Submission:
                 futures = []
                 for file in submission_file_batch:
                     if not file['file_user_path'].startswith('s3://'):
-                        local_file = to_local_associated_file(file, self.config.directory_list)
+                        local_file = to_local_associated_file(file, self.directory_list)
                         if not local_file:
                             if len(files_not_found) < 20:
                                 files_not_found.append(file['file_user_path'])
@@ -286,12 +306,12 @@ class Submission:
         if files_not_found or errors_uploading_files:
             if files_not_found:
 
-                logger.error(f'Some files could not be found in {" ".join(self.config.directory_list)}:\n')
+                logger.error(f'Some files could not be found in {" ".join(self.directory_list)}:\n')
                 for file in files_not_found:
                     logger.error(file)
                 if file_not_found_count > 20:
                     logger.error(f'and {file_not_found_count - 20} more files.')
-                self.config.directory_list = collect_directory_list()
+                self.directory_list = collect_directory_list()
                 self.upload_associated_files(upload_progress, files_to_upload_count, check_uploaded_not_complete)
             else:
                 logger.error(f'There were errors uploading files. \r\n'

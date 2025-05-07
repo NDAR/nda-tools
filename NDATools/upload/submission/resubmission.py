@@ -3,9 +3,9 @@ import logging
 from collections import defaultdict
 from typing import List
 
-from NDATools.BuildPackage import SubmissionPackage
 from NDATools.Utils import exit_error, evaluate_yes_no_input
 from NDATools.upload.cli import ValidatedFile
+from NDATools.upload.submission import SubmissionPackage
 from NDATools.upload.submission.api import SubmissionApi, Submission, SubmissionDetails
 
 logger = logging.getLogger(__name__)

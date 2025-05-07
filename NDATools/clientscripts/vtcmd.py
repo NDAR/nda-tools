@@ -3,10 +3,11 @@ import logging
 import random
 import traceback
 
-import NDATools
 from NDATools.BuildPackage import SubmissionPackage
-from NDATools.Utils import get_non_blank_input, exit_error
-from NDATools.upload.submission.resubmission import check_replacement_authorized, build_replacement_package
+
+import NDATools
+from NDATools.Utils import get_non_blank_input, exit_error, get_int_input
+from NDATools.upload.submission.resubmission import check_replacement_authorized
 from NDATools.upload.submission.submission import Submission
 from NDATools.upload.validation.api import ValidationV2Api
 
@@ -170,25 +171,18 @@ def resume_submission(sub_id, batch, config=None):
 
 
 def build_package(validated_files, args, config):
-    if args.replace_submission:
-        package = build_replacement_package(validated_files, args, config)
-    else:
-        if not config.title:
-            config.title = get_non_blank_input('Enter title for dataset name:', 'Title')
-        if not config.description:
-            config.description = get_non_blank_input('Enter description for the dataset submission:', 'Description')
-        package = SubmissionPackage([v.uuid for v in validated_files], config=config)
-
+    package = SubmissionPackage(config=config)
+    # if args.replace_submission:
+    #    package = build_replacement_package(validated_files, args, config)
+    collection_id = config.collection_id or get_int_input('Enter collection ID:', 'Collection ID')
+    name = config.title or get_non_blank_input('Enter title for dataset name:', 'Title')
+    description = config.description or get_non_blank_input('Enter description for the dataset submission:',
+                                                            'Description')
     logger.info('Building Package')
-    package.build_package()
-    logger.info('\n\nPackage Information:')
-    logger.info('validation results: {}'.format(package.validation_results))
-    logger.info('submission_package_uuid: {}'.format(package.submission_package_uuid))
-    logger.info('created date: {}'.format(package.create_date))
-    logger.info('expiration date: {}'.format(package.expiration_date))
+    package_id = package.build_package(collection_id, name, description, [v.uuid for v in validated_files],
+                                       args.replace_submission)
     logger.info('\nPackage finished building.\n')
-
-    return package
+    return package_id
 
 
 def print_submission_complete_message(submission, replacement):
@@ -200,8 +194,8 @@ def print_submission_complete_message(submission, replacement):
 
 
 def replace_submission(validated_files, args, config):
-    package = build_package(validated_files, args, config)
-    submission = Submission(package_id=package.package_id,
+    package_id = build_package(validated_files, args, config)
+    submission = Submission(package_id=package_id,
                             submission_id=args.replace_submission,
                             thread_num=args.threads,
                             batch_size=args.batch,
@@ -213,8 +207,8 @@ def replace_submission(validated_files, args, config):
 
 
 def submit(validated_files, args, config):
-    package = build_package(validated_files, args, config)
-    submission = Submission(package_id=package.package_id,
+    package_id = build_package(validated_files, args, config)
+    submission = Submission(package_id=package_id,
                             submission_id=args.replace_submission,
                             thread_num=args.threads,
                             batch_size=args.batch,

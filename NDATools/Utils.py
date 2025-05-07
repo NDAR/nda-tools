@@ -363,6 +363,15 @@ def get_non_blank_input(prompt, input_name):
             print('{} cannot be blank. Please try again'.format(input_name))
 
 
+def get_int_input(prompt, input_name):
+    while True:
+        user_input = get_non_blank_input(prompt)
+        try:
+            return int(user_input)
+        except ValueError:
+            print('{} must be an integer. Please try again'.format(input_name))
+
+
 def get_object(s3_url, /, access_key_id, secret_access_key, session_token):
     # split the s3_url to get a bucket and key
     bucket, key = s3_url.replace("s3://", "").split("/", 1)
