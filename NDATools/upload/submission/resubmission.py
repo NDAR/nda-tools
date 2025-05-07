@@ -46,10 +46,10 @@ def _check_missing_data_for_resubmission(validated_files: List[ValidatedFile], s
     for short_name, row_count in submission_row_counts.items():
         # Users only need to submit data for structures with changed data, so dont flag structures that the user submit changes for.
         submitted_data = short_name in provided_row_counts
-        if submitted_data and row_count < provided_row_counts[short_name]:
+        if submitted_data and row_count > provided_row_counts[short_name]:
             data_structures_with_missing_rows.append((short_name, row_count, provided_row_counts[short_name]))
 
-    # TODO need to accomodate non-interactive mode
+    # TODO need to accommodate non-interactive mode
     if data_structures_with_missing_rows:
         logger.warning('\nWARNING - Detected missing information in the following files: ')
 
@@ -99,7 +99,7 @@ def build_replacement_package_info(validated_files: List[ValidatedFile], args, c
 
 
 def _generate_uuids_for_qa_workflow(validated_files: List[ValidatedFile], submission_details: SubmissionDetails):
-    new_uuids = set(submission_details.validation_uuids)
+    new_uuids = {vf.uuid for vf in validated_files}
     # create a dictionary containing validation-uuids per datastructure in validated_files
     validation_uuids_by_short_name = defaultdict(set)
     for file in validated_files:
@@ -115,13 +115,3 @@ def _generate_uuids_for_qa_workflow(validated_files: List[ValidatedFile], submis
         new_uuids.update({res for res in validation_uuids_by_short_name[short_name]})
 
     return list(new_uuids)
-
-
-'''
-Submission 100 
-fmriresults01 - 2 files - 
-ndar_subject01 - 1 file
-
-vtcmd ndar_subject01-edited.csv -b -rs 100
-
-'''
