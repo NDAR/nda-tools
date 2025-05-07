@@ -4,7 +4,8 @@ from unittest.mock import MagicMock
 import pytest
 
 import NDATools
-from NDATools.upload.submission.submission import LocalAssociatedFile
+from NDATools.upload.submission.api import PackagingStatus
+from NDATools.upload.submission.submission import LocalAssociatedFile, SubmissionPackage
 
 
 @pytest.fixture
@@ -52,3 +53,53 @@ def test_replace_submission(monkeypatch, uploading_submission):
     uploading_submission.replace_submission()
     assert uploading_submission.get_submission_versions.call_count == 2
     assert uploading_submission._replace_submission.call_count == 1
+
+
+@pytest.fixture
+def config(top_level_datadir, validation_config_factory):
+    file_path = (top_level_datadir / 'validation/file.csv')
+    test_args = [str(file_path)]
+    _, config = validation_config_factory(test_args)
+    return config
+
+
+@pytest.fixture
+def processing_package(package_json):
+    sp = NDATools.upload.submission.api.SubmissionPackage(**package_json)
+    sp.status = PackagingStatus.PROCESSING
+    return sp
+
+
+@pytest.fixture
+def complete_package(package_json):
+    sp = NDATools.upload.submission.api.SubmissionPackage(**package_json)
+    sp.status = PackagingStatus.COMPLETE
+    return sp
+
+
+@pytest.fixture
+def submission_package(monkeypatch, config):
+    sp = SubmissionPackage(config)
+    # mock apis for testing
+    monkeypatch.setattr(sp, 'api', MagicMock())
+    return sp
+
+
+def test_build_package(submission_package, monkeypatch, processing_package, complete_package):
+    """ Test that calling build_package completes successfully"""
+    validation_uuids = ['asdfasdf']
+    monkeypatch.setattr(submission_package.api, 'build_package',
+                        MagicMock(return_value=processing_package))
+    uuid = submission_package.build_package(validation_uuids, 1860, 'test', 'test')
+    assert uuid == complete_package.submission_package_uuid
+    assert submission_package.api.wait_package_complete.call_count == 1
+    assert submission_package.api.build_package.call_count == 1
+
+    # test success if package returns immediately with complete status
+    submission_package.api.reset_mock()
+    monkeypatch.setattr(submission_package.api, 'build_package',
+                        MagicMock(return_value=complete_package))
+    uuid = submission_package.build_package(validation_uuids, 1860, 'test', 'test')
+    assert uuid == complete_package.submission_package_uuid
+    assert submission_package.api.wait_for_package_build.call_count == 0
+    assert submission_package.api.build_package.call_count == 1
