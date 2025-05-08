@@ -86,18 +86,18 @@ class ManifestsUploader:
         logger.debug(f'Finished uploading {count} manifests')
 
     def _upload_manifests_batch(self,
-                                manifests_found: List[ManifestFile],
+                                manifests: List[ManifestFile],
                                 creds: ValidationV2Credentials,
                                 manifest_dir: pathlib.Path,
                                 progress_cb: Callable):
 
-        assert len(manifests_found) > 0, "no manifests passed to _upload_manifests method"
+        assert len(manifests) > 0, "no manifests passed to _upload_manifests method"
 
         # group manifests by whether the path exists
         def group_manifests_by_path_exists():
             exists = []
             not_exists = []
-            for m in manifests_found:
+            for m in manifests:
                 if m.resolve_local_path(manifest_dir).exists():
                     exists.append(m)
                 else:

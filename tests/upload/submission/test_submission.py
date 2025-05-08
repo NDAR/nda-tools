@@ -20,7 +20,7 @@ def test_resume_submission(mock_upload_functions_setup, uploading_submission, s3
     """ Test that calling resume_submission calls expected methods in Submission """
     uploading_submission.resume_submission()
     assert uploading_submission.check_status.call_count == 2
-    assert uploading_submission.get_multipart_credentials.call_count == 1
+    assert uploading_submission.get_upload_credentials.call_count == 1
     assert uploading_submission.get_upload_progress.call_count == 1
     assert uploading_submission._get_files_from_page.call_count == 1
     assert uploading_submission._check_uploaded_not_complete.call_count == 1

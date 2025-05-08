@@ -82,8 +82,30 @@ class UploadProgress(BaseModel):
     uploaded_file_count: int
 
 
+class BatchError:
+    def __init__(self, file: AssociatedFile, message: str):
+        self.file = file
+        self.message = message
+
+
+class BatchUpdate:
+    def __init__(self, file: AssociatedFile, status: AssociatedFileStatus, size: None):
+        self.status = status
+        self.file = file
+        self.size = size
+
+    def to_payload(self):
+        payload = {
+            "id": self.file.id,
+            "status": str(self.status),
+        }
+        if self.size:
+            payload["size"] = self.size
+        return payload
+
+
 class SubmissionApi:
-    def __init__(self, submission_api_endpoint, username, password, create_submission_timeout=300):
+    def __init__(self, submission_api_endpoint, username, password, create_submission_timeout=300, batch_size=50):
         self.api_endpoint = submission_api_endpoint
         self.auth = requests.auth.HTTPBasicAuth(username, password)
         self.create_submission_timeout = create_submission_timeout
@@ -115,34 +137,20 @@ class SubmissionApi:
                      deserialize_handler=DeserializeHandler.none)
         return self._wait_submission_complete(package_id)
 
-    def get_multipart_credentials(self, submission_id, file_ids) -> List[AssociatedFileUploadCreds]:
+    def get_upload_credentials(self, submission_id, file_ids) -> List[AssociatedFileUploadCreds]:
         credentials_list = post_request("/".join(
             [self.api_endpoint, submission_id, 'files/batchMultipartUploadCredentials']),
             payload=json.dumps(file_ids), auth=self.auth)
         return [AssociatedFileUploadCreds(**c) for c in credentials_list['credentials']]
 
-    def batch_update_associated_file_status(self, submission_id, files, status: AssociatedFileStatus):
-        errors = []
-
-        def to_payload(file):
-            payload = {
-                "id": file['id'],
-                "status": status,
-            }
-            if 'size' in file:
-                payload["size"] = file['size']
-            return payload
-
-        list_data = list(map(to_payload, files))
+    def batch_update_associated_file_status(self, submission_id, updates: List[BatchUpdate]):
+        list_data = list(map(lambda x: x.to_payload(), updates))
         url = "/".join([self.api_endpoint, submission_id, 'files/batchUpdate'])
-        data = json.dumps(list_data)
+        data = json.dumps(list_data)89
         response = put_request(url, payload=data, auth=self.auth)
-        errors.extend(response['errors'])
-
-        return errors
-
-    def associated_files_iter(self, submission_id):
-        pass
+        # hash files by id to make searching easier
+        lookup = {update.file.id: update.file for update in updates}
+        return [BatchError(lookup[e.id], e['errorMessage']) for e in response['errors']]
 
     def get_upload_progress(self, submission_id):
         response = get_request("/".join([self.api_endpoint, submission_id, "upload-progress"]), auth=self.auth)
@@ -164,7 +172,7 @@ class SubmissionApi:
                 return self.get_submission(submission_id)
             time.sleep(10)
 
-    def _get_files_from_page(self, submission_id, page_number, page_size, exclude_uploaded=False):
+    def get_files_by_page(self, submission_id, page_number, page_size, exclude_uploaded=True):
         excluded_q_param = f'&omitCompleted=true' if exclude_uploaded else ''
         try:
             get_files_url = "/".join([self.api_endpoint, submission_id,
@@ -172,7 +180,7 @@ class SubmissionApi:
             response = get_request(get_files_url, auth=self.auth, error_handler=HttpErrorHandlingStrategy.ignore,
                                    deserialize_handler=DeserializeHandler.none)
             response.raise_for_status()
-            return response.json()
+            return [AssociatedFile(**f) for f in response.json()]
         except requests.exceptions.HTTPError as error:
             if error.response.status_code == 400 and 'Cannot navigate past last page' in error.response.text:
                 # we got passed the last page
@@ -181,12 +189,6 @@ class SubmissionApi:
                 logger.error(error.response.text)
                 logger.error('\nPlease email NDAHelp@mail.nih.gov for help in resolving this error')
                 exit_error()
-
-    def _query_submissions_by_package_id(self, package_id):
-        tmp = get_request(f"{self.api_endpoint}?packageUuid={package_id}", auth=self.auth)
-        if tmp:
-            return Submission(**tmp[0])
-        return None
 
     def _wait_submission_complete(self, package_id):
         # poll the versions endpoint until a new one is created or until we timeout
@@ -201,6 +203,12 @@ class SubmissionApi:
                 logger.debug("Submission successfully created.")
                 return submission
             time.sleep(10)
+
+    def _query_submissions_by_package_id(self, package_id):
+        tmp = get_request(f"{self.api_endpoint}?packageUuid={package_id}", auth=self.auth)
+        if tmp:
+            return Submission(**tmp[0])
+        return None
 
 
 class PackagingStatus(str, enum.Enum):

@@ -121,6 +121,10 @@ class ClientConfiguration:
         default_value = min(max([1, multiprocessing.cpu_count() - 1]), 20)
         return self._args.workerThreads or default_value
 
+    @property
+    def batch_size(self):
+        return self._args.batch_size
+
     def _check_and_fix_missing_options(self):
         default_config = configparser.ConfigParser()
         default_file_path = resource_filename(__name__, 'clientscripts/config/settings.cfg')
