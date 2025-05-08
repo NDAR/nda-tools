@@ -6,7 +6,7 @@ import pytest
 import requests
 
 import NDATools
-from NDATools.upload.submission.api import SubmissionApi, CollectionApi, SubmissionPackageApi, PackagingStatus
+from NDATools.upload.submission.api import SubmissionApi, CollectionApi, SubmissionPackageApi, PackagingStatus, UserApi
 
 
 @pytest.fixture
@@ -169,3 +169,76 @@ def test_sub_package_api_wait_package_complete(submission_package_api, package_j
         assert package.status == package_json['package_info']['status']
         assert package.created_date == package_json['created_date']
         assert package.expiration_date == package_json['expiration_date']
+
+
+@pytest.fixture
+def user_json():
+    return {
+        "collections": [
+            {
+                "id": 2573,
+                "altEndpoint": None
+            },
+            {
+                "id": 3705,
+                "altEndpoint": "PROD-AMPSCZ"
+            }
+        ],
+        "username": "ndar_administrator",
+        "id": 21826,
+        "permissions": [
+            {
+                "permissionGroupTitle": "Open Access Data",
+                "expirationDate": "9999-12-31",
+                "status": "Approved",
+                "hasPermission": True
+            }
+        ],
+        "roles": [
+            {
+                "name": "ROLE_ADMIN",
+                "description": "Administrator"
+            },
+        ]
+    }
+
+
+def test_user_api(monkeypatch, user_json):
+    api = UserApi('https://nda.nih.gov/api/user')
+    with monkeypatch.context() as m:
+        m.setattr(NDATools.upload.submission.api, "get_request", MagicMock(return_value=user_json))
+        is_valid = api.is_valid_nda_credentials('testusername', 'testpassword')
+        assert is_valid == True
+
+    Response = namedtuple("Response", ["status_code", "text"])
+
+    unauthenticated_error = requests.exceptions.HTTPError()
+    unauthenticated_error.response = Response(status_code=401, text=None)
+
+    with monkeypatch.context() as m:
+        m.setattr(NDATools.upload.submission.api, "get_request", MagicMock(side_effect=[unauthenticated_error]))
+        is_valid = api.is_valid_nda_credentials('testusername', 'testpassword')
+        assert is_valid == False
+
+    def fake_exit(*args, **kwargs):
+        raise SystemExit()
+
+    m.setattr(NDATools.upload.submission.api, 'exit_error', MagicMock(wraps=fake_exit))
+
+    locked_account_error = requests.exceptions.HTTPError()
+    locked_account_error.response = Response(status_code=423, text=None)
+    with monkeypatch.context() as m:
+        m.setattr(NDATools.upload.submission.api, "get_request", MagicMock(side_effect=[locked_account_error]))
+        with pytest.raises(SystemExit):
+            api.is_valid_nda_credentials('testusername', 'testpassword')
+    message = NDATools.upload.submission.api.exit_error.call_args.kwargs['message']
+    assert 'Your account is locked' in message
+
+    server_error = requests.exceptions.HTTPError()
+    server_error.response = Response(status_code=500, text=None)
+    with monkeypatch.context() as m:
+        m.setattr(NDATools.upload.submission.api, "get_request", MagicMock(side_effect=[server_error]))
+        with pytest.raises(SystemExit):
+            api.is_valid_nda_credentials('testusername', 'testpassword')
+    message = NDATools.upload.submission.api.exit_error.call_args.kwargs['message']
+    assert 'System Error' in message

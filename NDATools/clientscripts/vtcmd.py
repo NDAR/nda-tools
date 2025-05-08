@@ -59,7 +59,7 @@ def parse_args():
     parser.add_argument('-rs', '--replace-submission', metavar='<arg>', type=str, action='store', default=0,
                         help='Use this argument to replace a submission that has QA errors or that NDA staff has authorized manually to replace.')
 
-    parser.add_argument('-r', '--resume', action='store_true',
+    parser.add_argument('-r', '--resume', type=int, action='store',
                         help='Restart an in-progress submission, resuming from the last successful part in a multi-part'
                              'upload. Must enter a valid submission ID.')
 
@@ -113,7 +113,7 @@ def validate(args, config):
     if config.v2_enabled:
         logger.debug('Using the new validation API.')
         if not config.is_authenticated():
-            config.read_user_credentials()
+            config._get_user_credentials()
         validated_files = config.upload_cli.validate(args.files)
     else:
         logger.debug('Using the old validation API.')
@@ -276,8 +276,7 @@ def main():
     set_validation_api_version(config)
 
     if args.resume:
-        submission_id = args.files[0]
-        resume_submission(submission_id, batch=args.batch, config=config)
+        resume_submission(args.resume, batch=args.batch, config=config)
     else:
         validated_files = validate(args, config)
         if args.buildPackage:

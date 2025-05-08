@@ -1,11 +1,15 @@
 import enum
+import logging
 import time
 from typing import List, Union
 
 import requests
 from pydantic import BaseModel, Field
+from requests import HTTPError
 
-from NDATools.Utils import get_request, exit_error, post_request
+from NDATools.Utils import get_request, exit_error, post_request, HttpErrorHandlingStrategy
+
+logger = logging.getLogger(__name__)
 
 
 class DataStructureDetails(BaseModel):
@@ -139,3 +143,34 @@ class CollectionApi:
         collections = get_request("/".join([self.vt_api_endpoint, "user/collection"]), auth=self.auth,
                                   headers={'Accept': 'application/json'})
         return sorted([NdaCollection(**c) for c in collections], key=lambda x: x.id)
+
+
+class UserApi:
+    def __init__(self, user_api_endpoint):
+        self.user_api_endpoint = user_api_endpoint
+
+    def is_valid_nda_credentials(self, username, password):
+        auth = requests.auth.HTTPBasicAuth(username, password)
+        try:
+            # will raise HTTP error 401 if invalid creds
+            get_request(self.user_api_endpoint, headers={'content-type': 'application/json'},
+                        auth=auth,
+                        error_handler=HttpErrorHandlingStrategy.reraise_status)
+            return True
+        except HTTPError as e:
+            if e.response.status_code == 423:
+                msg = '''
+Your account is locked, which is preventing your authorized access to nda-tools. To unlock your account, set a new password by doing the following:
+1. Log into NDA (https://nda.nih.gov) using your RAS credentials (eRA Commons, Login.gov, or Smart Card/CAC)')
+2. Navigate to your NDA profile (https://nda.nih.gov/user/dashboard/profile)')
+3. Click on the 'Update Password' button, found near the upper right corner of the page')
+4. Set a new password. Once your password is successfully reset, your account will be unlocked.'''
+                # exit if unauthorized, users can try again later after they fix their account
+                exit_error(message=msg)
+            elif e.response.status_code == 401:
+                # incorrect username/password
+                return False
+            else:
+                msg = f'\nSystem Error while checking credentials for user {username}'
+                msg += '\nPlease contact NDAHelp@mail.nih.gov for help in resolving this error'
+                exit_error(message=msg)

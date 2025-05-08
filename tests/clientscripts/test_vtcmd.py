@@ -1,4 +1,5 @@
 import json
+import sys
 import uuid
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -142,3 +143,37 @@ def test_validate(test_warnings, test_errors, test_sys_errors,
         if test_warnings:
             assert mock_logger.any_call_contains('Warnings output to:')
             assert validation_result_writer.write_warnings.call_count == 1
+
+
+def test_check_args(monkeypatch):
+    with monkeypatch.context() as m:
+        m.setattr(sys, 'argv',
+                  ['vtcmd', 'ndarsubject01.csv', '-b', '-c', '1860', '-t', 'test', '-d', 'test', '-rs', 123123])
+        m.setattr(NDATools.clientscripts.vtcmd, 'exit_error', MagicMock(side_effect=[SystemExit]))
+        m.setattr(NDATools.Configuration, 'get_request', MagicMock(side_effect=[SystemExit]))
+
+        try:
+            NDATools.clientscripts.vtcmd.main()
+        except SystemExit:
+            pass
+        assert NDATools.clientscripts.vtcmd.exit_error.call_count == 1
+        assert NDATools.clientscripts.vtcmd.exit_error.call_args[0][0] == 'Please provide a subcommand.'
+
+
+def test_submit(monkeypatch):
+    with monkeypatch.context() as m:
+        m.setattr(sys, 'argv', ['vtcmd', 'ndarsubject01.csv', '-b', '-c', '1860', '-t', 'test', '-d', 'test'])
+        try:
+            NDATools.clientscripts.vtcmd.main()
+        except SystemExit:
+            pass
+        assert NDATools.clientscripts.vtcmd.exit_error.call_count == 1
+        assert NDATools.clientscripts.vtcmd.exit_error.call_args[0][0] == 'Please provide a subcommand.'
+
+
+def test_resume():
+    pass
+
+
+def test_replace_submission():
+    pass

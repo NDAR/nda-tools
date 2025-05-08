@@ -1,31 +1,20 @@
 import configparser
-import getpass
-import json
 import logging
 import logging.config
 import os
 import time
 
-import requests
 import yaml
 from pkg_resources import resource_filename
-from requests import HTTPError
 
 import NDATools
 from NDATools import NDA_TOOLS_LOGGING_YML_FILE
-from NDATools.Utils import exit_error, HttpErrorHandlingStrategy, get_request
 from NDATools.upload.cli import NdaUploadCli
 from NDATools.upload.validation.api import ValidationV2Api
 from NDATools.upload.validation.manifests import ManifestsUploader
 from NDATools.upload.validation.results_writer import ResultsWriterFactory
 
 logger = logging.getLogger(__name__)
-
-try:
-    import keyring
-except Exception as e:
-    logger.debug(f'Error while importing keyring module: {str(e)}')
-    keyring = None
 
 
 class LoggingConfiguration:
@@ -50,10 +39,8 @@ class LoggingConfiguration:
 
 
 class ClientConfiguration:
-    SERVICE_NAME = 'nda-tools'
 
     def __init__(self, args):
-        self._use_keyring = True if keyring is not None else False
         self.config = configparser.ConfigParser()
         logger.info('Using configuration file from {}'.format(NDATools.NDA_TOOLS_SETTINGS_CFG_FILE))
         self.config.read(NDATools.NDA_TOOLS_SETTINGS_CFG_FILE)
@@ -155,66 +142,16 @@ class ClientConfiguration:
     def is_authenticated(self):
         return self.username and self.password
 
-    def _get_password(self):
-        try:
-            if self._use_keyring:
-                self.password = keyring.get_password(self.SERVICE_NAME, self.username)
-                if not self.password:
-                    logger.debug('no password found in keyring')
-                    self._use_keyring = False
-                    self._get_password()
-                logger.debug('retrieved password from keyring')
-            else:
-                self.password = getpass.getpass('Enter your NDA account password:')
-        except Exception as e:
-            logger.warning(f'could not retrieve password from keyring: {str(e)}')
-            self._use_keyring = False
-            self._get_password()
-
-    def _try_save_password_keyring(self):
-        try:
-            if self._use_keyring:
-                keyring.set_password(self.SERVICE_NAME, self.username, self.password)
-        except Exception as e:
-            logger.warning(f'could not save password to keyring: {str(e)}')
+    def update_with_auth(self, username, password):
+        self.username = username
+        self.password = password
+        self._save_username()
+        self._save_apis()
 
     def _save_username(self):
         with open(NDATools.NDA_TOOLS_SETTINGS_CFG_FILE, 'w') as configfile:
             self.config.set('User', 'username', self.username)
             self.config.write(configfile)
-
-    def read_user_credentials(self):
-        def prompt_for_username():
-            self.username = str(input('Enter your NDA account username:')).lower()
-            self._save_username()
-
-        # username is fetched from settings.cfg, and it is not present at the first time use of nda-tools
-        # display NDA account instructions
-        if not self.username:
-            logger.info(
-                '\nPlease use your NIMH Data Archive (NDA) account credentials to authenticate with nda-tools')
-            logger.info(
-                'You may already have an existing eRA commons account or a login.gov account, this is different from your NDA account')
-            logger.info(
-                'You may retrieve your NDA account info by logging into https://nda.nih.gov/user/dashboard/profile.html using your eRA commons account or login.gov account')
-            logger.info(
-                'Once you are logged into your profile page, you can find your NDA account username. For password retrieval, click UPDATE/RESET PASSWORD button')
-
-        while not self.username:
-            prompt_for_username()
-
-        while not self.password:
-            self._get_password()
-
-        # validate credentials
-        while not self.is_valid_nda_credentials():
-            logger.info(
-                'Unable to authenticate your NDA account credentials with nda-tools. Please check your NDA account credentials.\n')
-            self._use_keyring = False
-            prompt_for_username()
-            self._get_password()
-        self._try_save_password_keyring()
-        self._save_apis()
 
     def _save_apis(self):
         self.validation_api = ValidationV2Api(self.validation_api_endpoint, self.username, self.password)
@@ -229,25 +166,3 @@ class ClientConfiguration:
                                                     self.workerThreads,
                                                     force,
                                                     hide_progress)
-
-    def is_valid_nda_credentials(self):
-        try:
-            # will raise HTTP error 401 if invalid creds
-            get_request(self.user_api_endpoint, headers={'content-type': 'application/json'},
-                        auth=requests.auth.HTTPBasicAuth(self.username, self.password),
-                        error_handler=HttpErrorHandlingStrategy.reraise_status)
-            return True
-        except HTTPError as e:
-            if e.response.status_code == 401:
-                if 'locked' in e.response.text:
-                    # user account is locked
-                    tmp = json.loads(e.response.text)
-                    logger.error('\nError: %s', tmp['message'])
-                    logger.error('\nPlease contact NDAHelp@mail.nih.gov for help in resolving this error')
-                    exit_error()
-                else:
-                    return False
-            else:
-                logger.error('\nSystemError while checking credentials for user %s', self.username)
-                logger.error('\nPlease contact NDAHelp@mail.nih.gov for help in resolving this error')
-                exit_error()
