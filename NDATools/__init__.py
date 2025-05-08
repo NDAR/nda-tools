@@ -10,12 +10,11 @@ import sys
 
 __version__ = '0.5.0.dev9'
 
-from typing import Tuple
-
 from pkg_resources import resource_filename
 
 from NDATools.Utils import exit_error, get_request, HttpErrorHandlingStrategy
 from NDATools.upload.submission.api import UserApi
+from typing import Tuple
 
 pypi_version = None
 initialization_complete = False
