@@ -158,16 +158,19 @@ class UserApi:
                         error_handler=HttpErrorHandlingStrategy.reraise_status)
             return True
         except HTTPError as e:
-            if e.response.status_code == 401:
-                # if 'locked' in e.response.text:
-                #     # user account is locked
-                #     tmp = json.loads(e.response.text)
-                #     logger.error('\nError: %s', tmp['message'])
-                #     logger.error('\nPlease contact NDAHelp@mail.nih.gov for help in resolving this error')
-                #     exit_error()
-                # else:
+            if e.response.status_code == 423:
+                msg = '''
+Your account is locked, which is preventing your authorized access to nda-tools. To unlock your account, set a new password by doing the following:
+1. Log into NDA (https://nda.nih.gov) using your RAS credentials (eRA Commons, Login.gov, or Smart Card/CAC)')
+2. Navigate to your NDA profile (https://nda.nih.gov/user/dashboard/profile)')
+3. Click on the 'Update Password' button, found near the upper right corner of the page')
+4. Set a new password. Once your password is successfully reset, your account will be unlocked.'''
+                # exit if unauthorized, users can try again later after they fix their account
+                exit_error(message=msg)
+            elif e.response.status_code == 401:
+                # incorrect username/password
                 return False
             else:
-                logger.error('\nSystemError while checking credentials for user %s', username)
-                logger.error('\nPlease contact NDAHelp@mail.nih.gov for help in resolving this error')
-                exit_error()
+                msg = f'\nSystem Error while checking credentials for user {username}'
+                msg += '\nPlease contact NDAHelp@mail.nih.gov for help in resolving this error'
+                exit_error(message=msg)

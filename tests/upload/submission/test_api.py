@@ -225,12 +225,14 @@ def test_user_api(monkeypatch, user_json):
 
     m.setattr(NDATools.upload.submission.api, 'exit_error', MagicMock(wraps=fake_exit))
 
-    # locked_account_error = requests.exceptions.HTTPError()
-    # locked_account_error.response = Response(status_code=423)
-    # with monkeypatch.context() as m:
-    #     m.setattr(NDATools.upload.submission.api, "get_request", MagicMock(side_effect=[locked_account_error]))
-    #     with pytest.raises(SystemExit):
-    #         api.is_valid_nda_credentials('testusername', 'testpassword')
+    locked_account_error = requests.exceptions.HTTPError()
+    locked_account_error.response = Response(status_code=423, text=None)
+    with monkeypatch.context() as m:
+        m.setattr(NDATools.upload.submission.api, "get_request", MagicMock(side_effect=[locked_account_error]))
+        with pytest.raises(SystemExit):
+            api.is_valid_nda_credentials('testusername', 'testpassword')
+    message = NDATools.upload.submission.api.exit_error.call_args.kwargs['message']
+    assert 'Your account is locked' in message
 
     server_error = requests.exceptions.HTTPError()
     server_error.response = Response(status_code=500, text=None)
@@ -238,3 +240,5 @@ def test_user_api(monkeypatch, user_json):
         m.setattr(NDATools.upload.submission.api, "get_request", MagicMock(side_effect=[server_error]))
         with pytest.raises(SystemExit):
             api.is_valid_nda_credentials('testusername', 'testpassword')
+    message = NDATools.upload.submission.api.exit_error.call_args.kwargs['message']
+    assert 'System Error' in message

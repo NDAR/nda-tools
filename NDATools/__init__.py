@@ -160,9 +160,9 @@ def _get_user_credentials(config) -> Tuple[str, str]:
         logger.info(
             '\nPlease use your NIMH Data Archive (NDA) account credentials to authenticate with nda-tools')
         logger.info(
-            'You may already have an existing eRA commons account or a login.gov account, this is different from your NDA account')
+            'You may already have an existing account (eRA Commons, Login.gov, or Smart Card/CAC), this is different from your NDA account')
         logger.info(
-            'You may retrieve your NDA account info by logging into https://nda.nih.gov/user/dashboard/profile.html using your eRA commons account or login.gov account')
+            'You may retrieve your NDA account info by logging into https://nda.nih.gov/user/dashboard/profile.html using your RAS credentials (eRA Commons, Login.gov, or Smart Card/CAC)')
         logger.info(
             'Once you are logged into your profile page, you can find your NDA account username. For password retrieval, click UPDATE/RESET PASSWORD button')
     get_username = lambda: str(input('Enter your NDA account username:')).lower()
@@ -177,8 +177,6 @@ def _get_user_credentials(config) -> Tuple[str, str]:
     # validate credentials
     api = UserApi(config.user_api_endpoint)
     while not api.is_valid_nda_credentials(username, password):
-        logger.info(
-            'Unable to authenticate your NDA account credentials with nda-tools. Please check your NDA account credentials.\n')
         _use_keyring = False
         username = get_username()
         _get_password(username)
