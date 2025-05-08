@@ -1,4 +1,6 @@
+import datetime
 import enum
+import json
 import logging
 import time
 from typing import List, Union
@@ -7,7 +9,8 @@ import requests
 from pydantic import BaseModel, Field
 from requests import HTTPError
 
-from NDATools.Utils import get_request, exit_error, post_request, HttpErrorHandlingStrategy
+from NDATools.Utils import get_request, exit_error, post_request, HttpErrorHandlingStrategy, DeserializeHandler, \
+    put_request
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +44,29 @@ class NdaCollection(BaseModel):
     title: str
 
 
+class AssociatedFileUploadCreds(BaseModel):
+    id: int = Field(..., alias='submissionFileId')
+    destination_uri: str
+    source_uri: str
+    access_key: str
+    secret_key: str
+    session_token: str
+
+
+class AssociatedFileStatus(str, enum.Enum):
+    READY = "Ready",
+    INPROGRESS = "In Progress"
+    COMPLETE = "Complete"
+
+
+class AssociatedFile(BaseModel):
+    id: int
+    file_user_path: str
+    file_remote_path: str
+    status: AssociatedFileStatus
+    size: int
+
+
 class Submission(BaseModel):
     submission_status: str
     dataset_title: str
@@ -51,10 +77,16 @@ class Submission(BaseModel):
     collection: NdaCollection
 
 
+class UploadProgress(BaseModel):
+    associated_file_count: int
+    uploaded_file_count: int
+
+
 class SubmissionApi:
-    def __init__(self, submission_api_endpoint, username, password):
+    def __init__(self, submission_api_endpoint, username, password, create_submission_timeout=300):
         self.api_endpoint = submission_api_endpoint
         self.auth = requests.auth.HTTPBasicAuth(username, password)
+        self.create_submission_timeout = create_submission_timeout
 
     def get_submission(self, submission_id: int):
         tmp = get_request("/".join([self.api_endpoint, str(submission_id)]), auth=self.auth)
@@ -74,9 +106,101 @@ class SubmissionApi:
                     message='There was a General Error communicating with the NDA server. Please try again later')
             exit(1)
 
-    def get_submission_details(self, submission_id: int):
+    def get_submission_details(self, submission_id: int) -> SubmissionDetails:
         tmp = get_request('/'.join([self.api_endpoint, str(submission_id), 'pending-changes']), auth=self.auth)
         return SubmissionDetails(**tmp)
+
+    def create_submission(self, package_id: str) -> Submission:
+        post_request("/".join([self.api_endpoint, package_id]) + "?async=true", auth=self.auth,
+                     deserialize_handler=DeserializeHandler.none)
+        return self._wait_submission_complete(package_id)
+
+    def get_multipart_credentials(self, submission_id, file_ids) -> List[AssociatedFileUploadCreds]:
+        credentials_list = post_request("/".join(
+            [self.api_endpoint, submission_id, 'files/batchMultipartUploadCredentials']),
+            payload=json.dumps(file_ids), auth=self.auth)
+        return [AssociatedFileUploadCreds(**c) for c in credentials_list['credentials']]
+
+    def batch_update_associated_file_status(self, submission_id, files, status: AssociatedFileStatus):
+        errors = []
+
+        def to_payload(file):
+            payload = {
+                "id": file['id'],
+                "status": status,
+            }
+            if 'size' in file:
+                payload["size"] = file['size']
+            return payload
+
+        list_data = list(map(to_payload, files))
+        url = "/".join([self.api_endpoint, submission_id, 'files/batchUpdate'])
+        data = json.dumps(list_data)
+        response = put_request(url, payload=data, auth=self.auth)
+        errors.extend(response['errors'])
+
+        return errors
+
+    def associated_files_iter(self, submission_id):
+        pass
+
+    def get_upload_progress(self, submission_id):
+        response = get_request("/".join([self.api_endpoint, submission_id, "upload-progress"]), auth=self.auth)
+        return UploadProgress(**response)
+
+    def replace_submission(self, submission_id, package_id):
+        version_count = len(self.get_submission_history(submission_id))
+        put_request(
+            f"{self.api_endpoint}/{submission_id}/?submissionPackageUuid={package_id}&async=true", auth=self.auth)
+        # poll the versions endpoint until a new one is created or until we timeout
+        end_time = datetime.timedelta(seconds=self.create_submission_timeout) + datetime.datetime.now()
+        while True:
+            if datetime.datetime.now() > end_time:
+                logger.error("Timed out waiting for submission to replace.")
+                logger.error('\nPlease email NDAHelp@mail.nih.gov for help in resolving this error')
+                exit_error()
+            new_version_count = len(self.get_submission_history(submission_id))
+            if new_version_count > version_count:
+                return self.get_submission(submission_id)
+            time.sleep(10)
+
+    def _get_files_from_page(self, submission_id, page_number, page_size, exclude_uploaded=False):
+        excluded_q_param = f'&omitCompleted=true' if exclude_uploaded else ''
+        try:
+            get_files_url = "/".join([self.api_endpoint, submission_id,
+                                      f'file-listing?pageNumber={page_number}&pageSize={page_size}{excluded_q_param}'])
+            response = get_request(get_files_url, auth=self.auth, error_handler=HttpErrorHandlingStrategy.ignore,
+                                   deserialize_handler=DeserializeHandler.none)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.HTTPError as error:
+            if error.response.status_code == 400 and 'Cannot navigate past last page' in error.response.text:
+                # we got passed the last page
+                return []
+            else:
+                logger.error(error.response.text)
+                logger.error('\nPlease email NDAHelp@mail.nih.gov for help in resolving this error')
+                exit_error()
+
+    def _query_submissions_by_package_id(self, package_id):
+        tmp = get_request(f"{self.api_endpoint}?packageUuid={package_id}", auth=self.auth)
+        if tmp:
+            return Submission(**tmp[0])
+        return None
+
+    def _wait_submission_complete(self, package_id):
+        # poll the versions endpoint until a new one is created or until we timeout
+        end_time = datetime.timedelta(seconds=self.create_submission_timeout) + datetime.datetime.now()
+        while True:
+            if datetime.datetime.now() > end_time:
+                logger.error("Timed out waiting for submission to get created.")
+                logger.error('\nPlease email NDAHelp@mail.nih.gov for help in resolving this error')
+                exit_error()
+            submission = self._query_submissions_by_package_id(package_id)
+            if submission:
+                logger.debug("Submission successfully created.")
+                return submission
+            time.sleep(10)
 
 
 class PackagingStatus(str, enum.Enum):

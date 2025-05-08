@@ -33,11 +33,7 @@ def batch_update_status(load_from_file):
 @pytest.fixture
 def new_submission(monkeypatch, config, submission_with_files, tmpdir, s3_mock):
     submission_resource, creds_resource, file_listing, submission_by_submission_pkg = submission_with_files
-    submission = Submission(package_id=str(uuid.uuid4()),
-                            thread_num=1,
-                            batch_size=20,
-                            allow_exit=True,
-                            config=config)
+    submission = Submission(package_id=str(uuid.uuid4()), config=config)
     # monkeypatch some of the methods that make API calls
     monkeypatch.setattr(submission, 'get_multipart_credentials', MagicMock(return_value=creds_resource['credentials']))
     monkeypatch.setattr(submission, '_create_submission', MagicMock(return_value={'status': 'success'}))

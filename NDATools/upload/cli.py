@@ -317,5 +317,5 @@ class NdaUploadCli:
             exit(1)
 
     def _execute_in_threadpool(self, func: Callable, args: List[Tuple]):
-        return execute_in_threadpool(func, args, max_workers=self.config.workerThreads,
+        return execute_in_threadpool(func, args, max_workers=self.config.worker_threads,
                                      disable_tqdm=self.config.hide_progress)

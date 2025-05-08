@@ -1,7 +1,6 @@
 import copy
 import csv
 import gzip
-import multiprocessing
 import os.path
 import pathlib
 import platform
@@ -115,7 +114,7 @@ class Download(Protocol):
         self.inline_s3_links = args.paths
         self.package_id = args.package
         self.data_structure = args.datastructure
-        self.thread_num = args.workerThreads if args.workerThreads else max([1, multiprocessing.cpu_count() - 1])
+        self.thread_num = download_config.worker_threads
         self.regex_file_filter = args.file_regex
         if self.s3_links_file:
             self.download_mode = 'text'

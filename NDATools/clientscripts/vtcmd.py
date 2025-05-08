@@ -4,6 +4,7 @@ import random
 import traceback
 
 import NDATools
+from NDATools import authenticate
 from NDATools.Utils import get_non_blank_input, exit_error, get_int_input
 from NDATools.upload.submission.api import CollectionApi
 from NDATools.upload.submission.resubmission import check_replacement_authorized, build_replacement_package_info
@@ -103,21 +104,21 @@ def check_args(args, config):
             message = 'Title, description, and collection ID are not allowed when replacing a submission' \
                       ' using -rs flag. Please remove -t, -d and -c when using -rs. Exiting...'
             logger.error(message)
-            exit(1)
+            exit_error()
         check_replacement_authorized(config, args.replace_submission)
 
 
 def validate(args, config):
     logger.info(f'\nValidating {len(args.files)} files...')
-    # Perform the validation using v1 or v2 endpoints. Errors and warnings are streamed or saved in memory for v2 and v1 respectively
+    # Perform the validation using v1 or v2 endpoints.
     if config.v2_enabled:
         logger.debug('Using the new validation API.')
         if not config.is_authenticated():
-            config._get_user_credentials()
+            authenticate(config)
         validated_files = config.upload_cli.validate(args.files)
     else:
         logger.debug('Using the old validation API.')
-        validated_files = config.upload_cli.validate_v1(args.files, args.workerThreads)
+        validated_files = config.upload_cli.validate_v1(args.files, config.worker_threads)
 
     # Save errors to file
     errors_file = config.validation_results_writer.write_errors(validated_files)
@@ -162,9 +163,9 @@ def validate(args, config):
     return validated_files
 
 
-def resume_submission(sub_id, batch, config=None):
-    submission = Submission(config, submission_id=sub_id, batch_size=batch, thread_num=config.workerThreads)
-    submission.resume_submission()
+def resume_submission(sub_id, config=None):
+    submission = Submission(config)
+    submission.resume_submission(sub_id)
     if submission.status != Status.UPLOADING:
         print_submission_complete_message(submission, False)
 
@@ -215,38 +216,27 @@ def print_submission_complete_message(submission, replacement):
 
 def replace_submission(validated_files, args, config):
     package_id = build_package(validated_files, args, config)
-    submission = Submission(package_id=package_id,
-                            submission_id=args.replace_submission,
-                            thread_num=args.threads,
-                            batch_size=args.batch,
-                            allow_exit=True,
-                            config=config)
-    logger.info('Requesting submission for package: {}'.format(submission.package_id))
-    submission.replace_submission()
+    submission = Submission(config=config)
+    logger.info('Requesting submission for package: {}'.format(package_id))
+    submission.replace_submission(args.replacement_submission, package_id)
+    logger.info("Submission replaced successfully.")
     _finish_submission(submission, replacement=True)
 
 
 def submit(validated_files, args, config):
     package_id = build_package(validated_files, args, config)
-    submission = Submission(package_id=package_id,
-                            submission_id=args.replace_submission,
-                            thread_num=args.threads,
-                            batch_size=args.batch,
-                            allow_exit=True,
-                            config=config)
+    submission = Submission(config=config)
     logger.info('Requesting submission for package: {}'.format(submission.package_id))
-    submission.submit()
+    submission.submit(package_id)
     _finish_submission(submission)
 
 
 def _finish_submission(submission, replacement=False):
-    submission.check_status()
     if submission.submission_id:
         logger.info('Submission ID: {}'.format(str(submission.submission_id)))
     if submission.status == Status.UPLOADING:
         logger.info('Preparing to upload associated files.')
         submission.upload_associated_files()
-        submission.check_status()
     if submission.status != Status.UPLOADING:
         print_submission_complete_message(submission, replacement=replacement)
 

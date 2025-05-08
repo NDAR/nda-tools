@@ -1,6 +1,7 @@
 import configparser
 import logging
 import logging.config
+import multiprocessing
 import os
 import time
 
@@ -56,9 +57,6 @@ class ClientConfiguration:
         self.user_api_endpoint = self.config.get("Endpoints", "user")
         self.username = self.config.get("User", "username").lower()
         self._args = args
-
-        # options that appear in both vtcmd and downloadcmd
-        self.workerThreads = args.workerThreads
 
         if args.username:
             self.username = args.username
@@ -117,6 +115,12 @@ class ClientConfiguration:
     def replace_submission(self):
         return self._args.replace_submission
 
+    @property
+    def worker_threads(self):
+        # default value between 1 and 20, based on cpu_count
+        default_value = min(max([1, multiprocessing.cpu_count() - 1]), 20)
+        return self._args.workerThreads or default_value
+
     def _check_and_fix_missing_options(self):
         default_config = configparser.ConfigParser()
         default_file_path = resource_filename(__name__, 'clientscripts/config/settings.cfg')
@@ -163,6 +167,6 @@ class ClientConfiguration:
             hide_progress = self.hide_progress
 
         self.manifests_uploader = ManifestsUploader(self.validation_api,
-                                                    self.workerThreads,
+                                                    self.worker_threads,
                                                     force,
                                                     hide_progress)
