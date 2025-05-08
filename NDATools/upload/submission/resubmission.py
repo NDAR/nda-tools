@@ -33,7 +33,7 @@ def _check_missing_data_for_resubmission(validated_files: List[ValidatedFile], s
             d[v.short_name] += v.row_count
         else:
             d[v.short_name] += v.rows
-        return {**d}
+        return d
 
     # create a dictionary containing row counts per datastructure in validated_files
     provided_row_counts = functools.reduce(add, validated_files, defaultdict(int))
