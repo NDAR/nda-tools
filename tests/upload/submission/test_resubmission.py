@@ -111,9 +111,10 @@ def test_check_replacement_authorized_authorized(monkeypatch, mock_config, get_s
 
 def test_build_replacement_package_info_happy_path(monkeypatch, mock_config, mock_args, get_submission):
     data_structure_details = DataStructureDetails(shortName=short_name, rows=2, validationUuids=[validation_uuid])
+    data_structure_details1 = DataStructureDetails(shortName=short_name1, rows=2, validationUuids=[validation_uuid1])
 
     submission_details = SubmissionDetails(validation_uuids=[validation_uuid], submissionId=submission_id,
-                                           pendingChanges=[data_structure_details])
+                                           pendingChanges=[data_structure_details, data_structure_details1])
 
     mock_submission_api = MagicMock(spec=SubmissionApi)
     mock_submission_api.get_submission.return_value = get_submission
@@ -127,22 +128,30 @@ def test_build_replacement_package_info_happy_path(monkeypatch, mock_config, moc
     validated_file.row_count = 2
     validated_file.uuid = new_validation_uuid
 
-    replacement_package_info: ReplacementPackageInfo = build_replacement_package_info(validated_files=[validated_file],
+    validated_file1 = MagicMock(spec=ValidatedFile)
+    validated_file1.short_name = short_name1
+    validated_file1.row_count = 2
+    validated_file1.uuid = new_validation_uuid1
+
+    replacement_package_info: ReplacementPackageInfo = build_replacement_package_info(validated_files=[validated_file, validated_file1],
                                                                                       args=mock_args,
                                                                                       config=mock_config)
     assert replacement_package_info.submission_id == submission_id
     assert replacement_package_info.collection_id == collection_id
     assert replacement_package_info.title == get_submission.dataset_title
     assert replacement_package_info.description == get_submission.dataset_description
-    assert replacement_package_info.validation_uuids == [new_validation_uuid]
+    assert new_validation_uuid in replacement_package_info.validation_uuids
+    assert new_validation_uuid1 in replacement_package_info.validation_uuids
 
 
 def test_build_replacement_package_info_unrecognized_ds(monkeypatch, mock_config, mock_args, get_submission):
     new_short_name = 'Flapjack01'
 
     data_structure_details = DataStructureDetails(shortName=short_name, rows=2, validationUuids=[validation_uuid])
+    data_structure_details1 = DataStructureDetails(shortName=short_name1, rows=2, validationUuids=[validation_uuid1])
+
     submission_details = SubmissionDetails(validation_uuids=[validation_uuid], submissionId=submission_id,
-                                           pendingChanges=[data_structure_details])
+                                           pendingChanges=[data_structure_details, data_structure_details1])
 
     mock_submission_api = MagicMock(spec=SubmissionApi)
     mock_submission_api.get_submission.return_value = get_submission
@@ -152,16 +161,21 @@ def test_build_replacement_package_info_unrecognized_ds(monkeypatch, mock_config
                         MagicMock(return_value=mock_submission_api))
 
     validated_file = MagicMock(spec=ValidatedFile)
-    validated_file.short_name = new_short_name
+    validated_file.short_name = short_name
     validated_file.row_count = 2
     validated_file.uuid = new_validation_uuid
+
+    validated_file1 = MagicMock(spec=ValidatedFile)
+    validated_file1.short_name = new_short_name
+    validated_file1.row_count = 2
+    validated_file1.uuid = new_validation_uuid1
 
     mock_exit = MagicMock(side_effect=fake_exit)
     monkeypatch.setattr('NDATools.upload.submission.resubmission.exit_error', mock_exit)
 
     # catch the exit, so the assert can run
     with pytest.raises(SystemExit):
-        build_replacement_package_info(validated_files=[validated_file], args=mock_args, config=mock_config)
+        build_replacement_package_info(validated_files=[validated_file, validated_file1], args=mock_args, config=mock_config)
 
     expected_msg = (
                        'ERROR - The following datastructures were not included in the original submission and therefore cannot '
