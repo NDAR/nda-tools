@@ -236,7 +236,7 @@ def _finish_submission(submission, replacement=False):
         logger.info('Submission ID: {}'.format(str(submission.submission_id)))
     if submission.status == Status.UPLOADING:
         logger.info('Preparing to upload associated files.')
-        submission.upload_associated_files()
+        submission.upload_submission_files()
     if submission.status != Status.UPLOADING:
         print_submission_complete_message(submission, replacement=replacement)
 
