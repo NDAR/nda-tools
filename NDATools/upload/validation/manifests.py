@@ -1,13 +1,14 @@
 import logging
-import os
 import pathlib
 import traceback
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Callable, Union
+from typing import List, Union
 
 from tqdm import tqdm
 
-from NDATools.Utils import exit_error
+from NDATools import exit_error
+from NDATools.Utils import get_directory_input
+from NDATools.upload.batch_file_uploader import BatchFileUploader, Uploadable, BatchContextABC, UploadError, \
+    UploadContextABC, files_not_found_msg
 from NDATools.upload.validation.api import ValidationV2Api, ValidationV2Credentials
 
 logger = logging.getLogger(__name__)
@@ -40,108 +41,82 @@ class ManifestFile:
         return self.uuid
 
 
-class ManifestUploadError(Exception):
-    def __init__(self, manifest: ManifestFile, unexpected_error: Exception = None):
+class MFUploadable(Uploadable):
+    def __init__(self, manifest: ManifestFile, creds: ValidationV2Credentials):
+        super().__init__()
         self.manifest = manifest
-        self.error = unexpected_error
+        self.creds = creds
+
+    @property
+    def search_name(self):
+        return self.manifest.name
+
+    def __hash__(self):
+        return hash(self.manifest.uuid)
+
+    def __eq__(self, other):
+        if isinstance(other, MFUploadable):
+            return other.manifest.uuid == self.manifest.uuid
+        return False
 
 
-def _manifests_not_found_msg(manifests: List[ManifestFile], manifests_dir: str):
-    files_not_found = [m.name for m in manifests]
-    msg = f'The following manifests could not be found in {manifests_dir}:\n'
-    msg += '\n'.join(files_not_found[:20])
-    if len(files_not_found) > 20:
-        msg += f'\n... and {len(files_not_found) - 20} more'
-    return msg
+class MFBatchContext(BatchContextABC):
+    def __init__(self, files_found: List[Uploadable], files_not_found: List[Uploadable]):
+        super().__init__(files_found, files_not_found)
 
 
-class ManifestsUploader:
+class MFUploadContext(UploadContextABC):
+    def __init__(self, credentials_list: List[ValidationV2Credentials]):
+        self.credentials_list = credentials_list
+
+
+class _ManifestFileBatchUploader(BatchFileUploader):
     def __init__(self, validation_api: ValidationV2Api, max_threads, exit_on_error=False, hide_progress=False):
-        self.validation_api = validation_api
-        self.max_threads = max_threads
-        self.hide_progress = hide_progress
-        self.exit_on_error = exit_on_error
+        super().__init__(max_threads, exit_on_error, hide_progress)
+        self.api = validation_api
 
-    def upload_manifests(self, creds: Union[List[ValidationV2Credentials], ValidationV2Credentials],
-                         manifest_dir: pathlib.Path):
+    def _get_file_batches(self):
+        for c in self.upload_context.credentials_list:
+            manifests = ManifestFile.manifests_from_credentials(c)
+            yield [MFUploadable(m, c) for m in manifests]
+
+    def _upload_file(self, file: MFUploadable):
+        try:
+            creds = file.creds
+            creds.upload(str(file.path), file.manifest.s3_destination)
+        except Exception as e:
+            logger.error(f'Unexpected error occurred while uploading {m}: {e}')
+            logger.error(traceback.format_exc())
+            raise UploadError(file, e)
+
+    def _construct_tqdm(self):
+        """Use the default tqdm but insert into the UploadContext to use inside _post_batch_hook"""
+        progressbar = tqdm(disable=self.hide_progress)
+        self.upload_context.progress_bar = progressbar
+        return progressbar
+
+    def _post_batch_hook(self):
+        """Handle missing manifests at the end of each batch. Don't proceed until all manifests from batch are processed"""
+        while self.not_found_list:
+            msg = files_not_found_msg(self.not_found_list, self.batch_context.search_folders)
+            if self.exit_on_error:
+                exit_error(msg)
+            else:
+                logger.info(msg)
+            new_dir = get_directory_input('Press the "Enter" key to specify location for manifest files and try again:')
+            self._upload_batch(self.not_found_list, [new_dir], self.upload_context.progress_bar)
+
+
+class ManifestFileUploader:
+    def __init__(self, validation_api: ValidationV2Api, max_threads, exit_on_error=False, hide_progress=False):
+        self.api = validation_api
+        self.uploader = _ManifestFileBatchUploader(validation_api, max_threads, exit_on_error, hide_progress)
+
+    def start_upload(self, creds: Union[List[ValidationV2Credentials], ValidationV2Credentials],
+                     manifest_dir: pathlib.Path):
         # normalize parameter to list
         if isinstance(creds, ValidationV2Credentials):
             creds = [creds]
 
-        # generator for manifest files
-        def get_manifest_batches():
-            for c in creds:
-                yield ManifestFile.manifests_from_credentials(c), c
-
-        logger.info(f'\nUploading manifests...')
-        if not manifest_dir:
-            manifest_dir = os.getcwd()
-
-        count = 0
-        with tqdm(disable=self.hide_progress) as progress_bar:
-            for manifest_batch, creds in get_manifest_batches():
-                self._upload_manifests_batch(manifest_batch, creds, manifest_dir, lambda: progress_bar.update(1))
-                count += len(manifest_batch)
-
-        logger.debug(f'Finished uploading {count} manifests')
-
-    def _upload_manifests_batch(self,
-                                manifests: List[ManifestFile],
-                                creds: ValidationV2Credentials,
-                                manifest_dir: pathlib.Path,
-                                progress_cb: Callable):
-
-        assert len(manifests) > 0, "no manifests passed to _upload_manifests method"
-
-        # group manifests by whether the path exists
-        def group_manifests_by_path_exists():
-            exists = []
-            not_exists = []
-            for m in manifests:
-                if m.resolve_local_path(manifest_dir).exists():
-                    exists.append(m)
-                else:
-                    not_exists.append(m)
-            return exists, not_exists
-
-        manifests_found, not_found = group_manifests_by_path_exists()
-
-        def upload(m):
-            try:
-                creds.upload(str(m.resolve_local_path(manifest_dir)), m.s3_destination)
-            except Exception as e:
-                logger.error(f'Unexpected error occurred while uploading {m}: {e}')
-                logger.error(traceback.format_exc())
-                raise ManifestUploadError(m, e)
-
-        with ThreadPoolExecutor(max_workers=self.max_threads) as executor:
-            futures = [executor.submit(upload, man) for man in manifests_found]
-
-        for f in as_completed(futures):
-            if f.exception():
-                exit_error()
-            else:
-                progress_cb()
-
-        if not_found:
-            self._handle_manifests_not_found(not_found, creds, manifest_dir, progress_cb)
-
-    def _handle_manifests_not_found(self,
-                                    not_found: List[ManifestFile],
-                                    creds: ValidationV2Credentials,
-                                    manifest_dir: pathlib.Path,
-                                    progress_cb: Callable = None):
-        # ask the user if they want to continue
-        msg = _manifests_not_found_msg(not_found, str(manifest_dir))
-        if self.exit_on_error:
-            exit_error(msg)
-        else:
-            logger.info(msg)
-        while True:
-            retry_manifests_dir = pathlib.Path(input(
-                'Press the "Enter" key to specify location for manifest files and try again:'))
-            if not retry_manifests_dir.exists():
-                logger.error(f'{retry_manifests_dir} does not exist. Please try again.')
-            else:
-                break
-        self._upload_manifests_batch(not_found, creds, retry_manifests_dir, progress_cb)
+        cxt = MFUploadContext(creds)
+        self.uploader.start_upload(cxt, [manifest_dir])

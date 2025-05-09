@@ -9,7 +9,6 @@ from typing import List, Callable, Union
 from tqdm import tqdm
 
 from NDATools import exit_error
-from NDATools.upload.submission.api import SubmissionApi
 
 logger = logging.getLogger(__name__)
 
@@ -56,9 +55,11 @@ class UploadError(Exception):
 
 
 class BatchContextABC(ABC):
-    def __init__(self, files_found: List[Uploadable], files_not_found: List[Uploadable]):
+    def __init__(self, files_found: List[Uploadable], files_not_found: List[Uploadable],
+                 search_folders: List[pathlib.Path]):
         self.files_found = files_found
         self.files_not_found = files_not_found
+        self.search_folders = search_folders
 
 
 class UploadContextABC(ABC):
@@ -66,8 +67,7 @@ class UploadContextABC(ABC):
 
 
 class BatchFileUploader(ABC):
-    def __init__(self, api, max_threads, exit_on_error=False, hide_progress=False, batch_size=50):
-        self.api: SubmissionApi = api
+    def __init__(self, max_threads, exit_on_error=False, hide_progress=False, batch_size=50):
         self.max_threads = max_threads
         self.hide_progress = hide_progress
         self.exit_on_error = exit_on_error
@@ -111,7 +111,7 @@ class BatchFileUploader(ABC):
             return exists, not_exists
 
         files_found, not_found = group_files_by_path_exists()
-        self.batch_context = BatchContextABC(files_found, not_found)
+        self.batch_context = BatchContextABC(files_found, not_found, search_folders)
         self._pre_batch_hook()
 
         with ThreadPoolExecutor(max_workers=self.max_threads) as executor:

@@ -8,7 +8,7 @@ from boto3.s3.transfer import TransferConfig
 from tqdm import tqdm
 
 from NDATools import exit_error
-from NDATools.Utils import get_s3_client_with_config, deconstruct_s3_url
+from NDATools.Utils import get_s3_client_with_config, deconstruct_s3_url, get_directory_input
 from NDATools.upload.batch_file_uploader import BatchFileUploader, UploadContextABC, BatchContextABC, \
     Uploadable, UploadError, files_not_found_msg
 from NDATools.upload.submission.api import Submission, AssociatedFile, AssociatedFileStatus, BatchUpdate, \
@@ -136,13 +136,7 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
             exit_error(msg)
         else:
             logger.info(msg)
-        while True:
-            retry_associated_files_dir = pathlib.Path(input(
-                'Press the "Enter" key to specify location for associated files and try again:'))
-            if not retry_associated_files_dir.exists():
-                logger.error(f'{retry_associated_files_dir} does not exist. Please try again.')
-            else:
-                return retry_associated_files_dir
+        return get_directory_input('Press the "Enter" key to specify location for associated files and try again:')
 
 
 KB = 1024
