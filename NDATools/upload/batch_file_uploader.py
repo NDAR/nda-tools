@@ -3,6 +3,7 @@ import os
 import pathlib
 from abc import ABC, abstractmethod
 from concurrent.futures import as_completed, ThreadPoolExecutor
+from threading import RLock
 from typing import List, Callable, Union
 
 from tqdm import tqdm
@@ -13,12 +14,12 @@ from NDATools.upload.submission.api import SubmissionApi
 logger = logging.getLogger(__name__)
 
 
-def files_not_found_msg(not_found, dirs):
+def files_not_found_msg(not_found, dirs, limit=20):
     files_not_found = [m.name for m in not_found]
     msg = f'The following files could not be found in {dirs}:\n'
-    msg += '\n'.join(files_not_found[:20])
-    if len(files_not_found) > 20:
-        msg += f'\n... and {len(files_not_found) - 20} more'
+    msg += '\n'.join(files_not_found[:limit])
+    if len(files_not_found) > limit:
+        msg += f'\n... and {len(files_not_found) - limit} more'
     return msg
 
 
@@ -74,19 +75,21 @@ class BatchFileUploader(ABC):
         self.not_found_list: List[Uploadable] = []
         self.upload_context = None
         self.batch_context = None
+        self.upload_lock = RLock()  # lock to prevent concurrent uploads
 
     def start_upload(self, ctx: UploadContextABC, search_folders: List[pathlib.Path]):
-        if not search_folders:
-            search_folders = os.getcwd()
-        self.upload_context = ctx
-        self._pre_upload_hook()
+        with self.upload_lock:
+            if not search_folders:
+                search_folders = os.getcwd()
+            self.upload_context = ctx
+            self._pre_upload_hook()
 
-        with self._construct_tqdm() as progress_bar:
-            for file_batch in self._get_file_batches():
-                self._upload_batch(file_batch, search_folders, lambda: progress_bar.update(1))
-            self._process_not_found_files(search_folders)
+            with self._construct_tqdm() as progress_bar:
+                for file_batch in self._get_file_batches():
+                    self._upload_batch(file_batch, search_folders, lambda: progress_bar.update(1))
+                self._process_not_found_files(search_folders, progress_bar)
 
-        self._post_upload_hook()
+            self._post_upload_hook()
 
     def _upload_batch(self, files: List[Uploadable], search_folders: List[pathlib.Path],
                       progress_cb: Callable):
@@ -133,7 +136,7 @@ class BatchFileUploader(ABC):
     def _upload_file(self, file: Uploadable):
         ...
 
-    def _process_not_found_files(self, search_folders: List[pathlib.Path]):
+    def _process_not_found_files(self, search_folders: List[pathlib.Path], progress_bar):
         """Default method to handle missing files. Will print and exit. Can be overridden in subclasses"""
         msg = files_not_found_msg(self.not_found_list, search_folders)
         exit_error(msg)
