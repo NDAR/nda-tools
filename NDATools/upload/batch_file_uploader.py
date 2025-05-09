@@ -3,7 +3,7 @@ import os
 import pathlib
 from abc import ABC, abstractmethod
 from concurrent.futures import as_completed, ThreadPoolExecutor
-from typing import List, Callable
+from typing import List, Callable, Union
 
 from tqdm import tqdm
 
@@ -22,36 +22,40 @@ def files_not_found_msg(not_found, dirs):
     return msg
 
 
-class SubmissionFileWithCreds:
-    '''Represents a file that needs to be uploaded for a submission, but has not yet been matched with a file on the users computer'''
+class Uploadable(ABC):
+    """Represents a file that needs to be uploaded but has not yet been matched with a file on the user''s computer"""
 
-    def __init__(self, file_name: str, s3_url: str, creds):
-        self.file_name = file_name
-        self.s3_url = s3_url
-        self.creds = creds
+    def __init__(self):
+        self._path: Union[pathlib.Path, None] = None
 
+    @property
+    @abstractmethod
+    def search_name(self):
+        ...
 
-class LocalFileUpload:
-    ''' Represents a SubmissionFileWithCreds that was found on user''s computer'''
+    @property
+    def path(self):
+        return self._path
 
-    def __init__(self, path: pathlib.Path, submission_file: SubmissionFileWithCreds):
-        self.path = path
-        self.size = 0
-        self.submission_file = submission_file
+    @path.setter
+    @abstractmethod
+    def path(self, new_value):
+        self._path = new_value
 
     def calculate_size(self):
-        if self.size == 0:
-            self.size = self.path.stat().st_size
+        if not self.path.exists():
+            raise Exception(f'Cannot calculate size because File {self.path} does not exist')
+        return self.path.stat().st_size
 
 
 class UploadError(Exception):
-    def __init__(self, file: LocalFileUpload, unexpected_error: Exception = None):
+    def __init__(self, file: Uploadable, unexpected_error: Exception = None):
         self.file = file
         self.error = unexpected_error
 
 
 class BatchContextABC(ABC):
-    def __init__(self, files_found: List[LocalFileUpload], files_not_found: List[SubmissionFileWithCreds]):
+    def __init__(self, files_found: List[Uploadable], files_not_found: List[Uploadable]):
         self.files_found = files_found
         self.files_not_found = files_not_found
 
@@ -60,40 +64,44 @@ class UploadContextABC(ABC):
     ...
 
 
-class FileUploaderABC(ABC):
+class BatchFileUploader(ABC):
     def __init__(self, api, max_threads, exit_on_error=False, hide_progress=False, batch_size=50):
         self.api: SubmissionApi = api
         self.max_threads = max_threads
         self.hide_progress = hide_progress
         self.exit_on_error = exit_on_error
         self.batch_size = batch_size
-        self.not_found_list: List[SubmissionFileWithCreds] = []
+        self.not_found_list: List[Uploadable] = []
         self.upload_context = None
         self.batch_context = None
 
-    def start_upload(self, upload_context: UploadContextABC, search_folders: List[pathlib.Path]):
+    def start_upload(self, ctx: UploadContextABC, search_folders: List[pathlib.Path]):
         if not search_folders:
             search_folders = os.getcwd()
+        self.upload_context = ctx
+        self._pre_upload_hook()
 
         with self._construct_tqdm() as progress_bar:
             for file_batch in self._get_file_batches():
                 self._upload_batch(file_batch, search_folders, lambda: progress_bar.update(1))
-
             self._process_not_found_files(search_folders)
 
-    def _upload_batch(self, files: List[SubmissionFileWithCreds], search_folders: List[pathlib.Path],
+        self._post_upload_hook()
+
+    def _upload_batch(self, files: List[Uploadable], search_folders: List[pathlib.Path],
                       progress_cb: Callable):
         assert len(files) > 0, "no files passed to _upload_batch method"
 
         # group files by whether the path exists
         def group_files_by_path_exists():
-            exists: List[LocalFileUpload] = []
-            not_exists: List[SubmissionFileWithCreds] = []
+            exists: List[Uploadable] = []
+            not_exists: List[Uploadable] = []
             for m in files:
                 for folder in search_folders:
-                    path = pathlib.Path(folder, m.file_name)
+                    path = pathlib.Path(folder, m.search_name)
                     if path.exists():
-                        exists.append(LocalFileUpload(path, m))
+                        m.path = path
+                        exists.append(m)
                         break
                 else:
                     not_exists.append(m)
@@ -116,6 +124,15 @@ class FileUploaderABC(ABC):
             self.not_found_list.extend(not_found)
         self._post_batch_hook()
 
+    # generator for file batches
+    @abstractmethod
+    def _get_file_batches(self):
+        ...
+
+    @abstractmethod
+    def _upload_file(self, file: Uploadable):
+        ...
+
     def _process_not_found_files(self, search_folders: List[pathlib.Path]):
         """Default method to handle missing files. Will print and exit. Can be overridden in subclasses"""
         msg = files_not_found_msg(self.not_found_list, search_folders)
@@ -124,15 +141,6 @@ class FileUploaderABC(ABC):
     def _construct_tqdm(self):
         """Default method to construct progress bar. Can be overridden in subclasses"""
         return tqdm(disable=self.hide_progress)
-
-    # generator for file batches
-    @abstractmethod
-    def _get_file_batches(self):
-        ...
-
-    @abstractmethod
-    def _upload_file(self, file: LocalFileUpload):
-        ...
 
     def _pre_batch_hook(self):
         pass

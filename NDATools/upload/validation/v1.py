@@ -1,4 +1,3 @@
-import multiprocessing
 import queue
 
 from pydantic import BaseModel, Field
@@ -141,23 +140,23 @@ class Validation:
             uploaded_count = 0
             for validation_manifest in self.validation_result.manifests:
                 for m in self.manifest_path:
-                    if validation_manifest.local_file_name not in yes_manifest:
+                    if validation_manifest.search_name not in yes_manifest:
                         try:
-                            manifest_path = os.path.join(m, validation_manifest.local_file_name)
+                            manifest_path = os.path.join(m, validation_manifest.search_name)
                             validation_manifest.upload_manifest(open(manifest_path, 'rb'))
-                            yes_manifest.add(validation_manifest.local_file_name)
-                            no_manifest.discard(validation_manifest.local_file_name)
+                            yes_manifest.add(validation_manifest.search_name)
+                            no_manifest.discard(validation_manifest.search_name)
                             uploaded_count += 1
                             sys.stdout.write(
                                 '\rUploaded manifest file {} of {}\n'.format(uploaded_count, files_to_upload))
                             sys.stdout.flush()
                             break
                         except IOError:
-                            no_manifest.add(validation_manifest.local_file_name)
+                            no_manifest.add(validation_manifest.search_name)
 
                         except json.decoder.JSONDecodeError as e:
                             error = 'JSON Error: There was an error in your json file: {}\nPlease review and try again: {}\n'.format \
-                                (validation_manifest.local_file_name, e)
+                                (validation_manifest.search_name, e)
                             raise Exception(error)
 
         for file in no_manifest:
@@ -180,7 +179,7 @@ class Validation:
             for m in self.validation_result.manifests:
                 if m.status == Status.ERROR:
                     error = 'JSON Error: There was an error in your json file: {}\nPlease review and try again: {}\n'.format(
-                        m.local_file_name, m.errors[0])
+                        m.search_name, m.errors[0])
                     raise Exception(error)
 
     class ValidationManifest:
