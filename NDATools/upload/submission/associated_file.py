@@ -30,12 +30,25 @@ def _associated_files_not_found_msg(not_found, dirs):
     return msg
 
 
+class SubmissionFileWithCreds:
+    '''Represents a file that needs to be uploaded for a submission, but has not yet been matched with a file on the users computer'''
+
+    def __init__(self, submission_file: AssociatedFile, creds):
+        self.file = submission_file
+        self.creds = creds
+
+    @property
+    def relative_path(self):
+        return self.file.file_user_path
+
+
 class LocalFileUpload:
-    def __init__(self, path: pathlib.Path, submission_file: AssociatedFile, creds):
+    ''' Represents a SubmissionFileWithCreds that was found on user''s computer'''
+
+    def __init__(self, path: pathlib.Path, submission_file: SubmissionFileWithCreds):
         self.path = path
         self.size = 0
         self.file = submission_file
-        self.creds = creds
 
     def calculate_size(self):
         if self.size == 0:
@@ -43,7 +56,7 @@ class LocalFileUpload:
 
 
 class BatchContext:
-    def __init__(self, files_found: List[LocalFileUpload], files_not_found: List[AssociatedFile]):
+    def __init__(self, files_found: List[LocalFileUpload], files_not_found: List[SubmissionFileWithCreds]):
         self.files_found = files_found
         self.files_not_found = files_not_found
         self.batch_updates = []
@@ -74,53 +87,28 @@ class AssociatedFileUploader:
         self.upload_context = UploadContext(submission, resuming_upload)
         total_results = self.api.get_upload_progress(submission.submission_id).associated_file_count
 
-        # generator for file batches
-        def get_file_batches():
-            last_page = math.ceil(total_results / self.batch_size)
-            page_number = last_page - 1  # pages are 0 based
-            while page_number >= 0:
-                files: List[AssociatedFile] = self.api.get_files_by_page(submission.submission_id, page_number,
-                                                                         self.batch_size)
-                if not files:
-                    break
-                # hash  files by id to make searching easier
-                lookup = {file.id: file for file in files}
-                creds: List[AssociatedFileUploadCreds] = self.api.get_upload_credentials(submission.submission_id,
-                                                                                         [m.id for m in files])
-                # TODO what to return here? LocalFileUpload expects a path
-                yield [LocalFileUpload() for f in files]
-                page_number -= 1
-
         if not associated_file_dirs:
             associated_file_dirs = os.getcwd()
 
-        def batch_not_found_files():
-            raise NotImplementedError()
-
-        def process_not_found_files():
-            new_dir = self._handle_files_not_found(self.not_found_list, associated_file_dirs)
-            for file_batch, creds in batch_not_found_files():
-                self._upload_associated_files_batch(file_batch, new_dir, lambda: progress_bar.update(1))
-
         with tqdm(disable=self.hide_progress, total=total_results) as progress_bar:
-            for file_batch, creds in get_file_batches():
+            for file_batch in self._get_file_batches():
                 self._upload_associated_files_batch(file_batch, associated_file_dirs, lambda: progress_bar.update(1))
 
-            process_not_found_files()
+            self.process_not_found_files()
 
     def _upload_associated_files_batch(self,
-                                       associated_files: List[AssociatedFile],
+                                       associated_files: List[SubmissionFileWithCreds],
                                        associated_file_dirs: List[pathlib.Path],
                                        progress_cb: Callable):
         assert len(associated_files) > 0, "no associated files passed to _upload_associated_files_batch method"
 
         # group files by whether the path exists
         def group_files_by_path_exists():
-            exists = []
-            not_exists = []
+            exists: List[LocalFileUpload] = []
+            not_exists: List[SubmissionFileWithCreds] = []
             for m in associated_files:
                 for folder in associated_file_dirs:
-                    path = pathlib.Path(folder, m.file_user_path)
+                    path = pathlib.Path(folder, m.relative_path)
                     if path.exists():
                         exists.append(LocalFileUpload(path, m))
                         break
@@ -182,3 +170,27 @@ class AssociatedFileUploader:
                 logger.error(f'{retry_associated_files_dir} does not exist. Please try again.')
             else:
                 return retry_associated_files_dir
+
+    # generator for file batches
+    def _get_file_batches(self):
+        last_page = math.ceil(total_results / self.batch_size)
+        page_number = last_page - 1  # pages are 0 based
+        while page_number >= 0:
+            files: List[AssociatedFile] = self.api.get_files_by_page(submission.submission_id, page_number,
+                                                                     self.batch_size)
+            if not files:
+                break
+            # hash files by id to make searching easier
+            lookup = {file.id: file for file in files}
+            creds: List[AssociatedFileUploadCreds] = self.api.get_upload_credentials(submission.submission_id,
+                                                                                     [m.id for m in files])
+            yield [SubmissionFileWithCreds(lookup[c.id], c) for c in creds]
+            page_number -= 1
+
+    def process_not_found_files(self):
+        def batch_not_found_files():
+            raise NotImplementedError()
+
+        new_dir = self._handle_files_not_found(self.not_found_list, associated_file_dirs)
+        for file_batch in batch_not_found_files():
+            self._upload_associated_files_batch(file_batch, [new_dir], lambda: progress_bar.update(1))

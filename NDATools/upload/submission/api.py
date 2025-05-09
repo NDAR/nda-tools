@@ -146,7 +146,7 @@ class SubmissionApi:
     def batch_update_associated_file_status(self, submission_id, updates: List[BatchUpdate]):
         list_data = list(map(lambda x: x.to_payload(), updates))
         url = "/".join([self.api_endpoint, submission_id, 'files/batchUpdate'])
-        data = json.dumps(list_data)89
+        data = json.dumps(list_data)
         response = put_request(url, payload=data, auth=self.auth)
         # hash files by id to make searching easier
         lookup = {update.file.id: update.file for update in updates}
