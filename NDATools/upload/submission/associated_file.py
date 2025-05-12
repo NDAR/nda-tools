@@ -38,11 +38,13 @@ class AFUploadable(Uploadable):
 
 class AFUploadContext(UploadContext):
     def __init__(self, submission: Submission, resuming_upload: bool, upload_progress: UploadProgress,
-                 transfer_config: TransferConfig):
+                 transfer_config: TransferConfig, search_folders: List[pathlib.Path]):
         self.submission = submission
         self.resuming_upload = resuming_upload
         self.upload_progress = upload_progress
         self.transfer_config = transfer_config
+        self.files_not_found = []
+        self.search_folders = search_folders
 
     @property
     def total_files(self):
@@ -52,18 +54,17 @@ class AFUploadContext(UploadContext):
     def remaining_file_count(self):
         return self.upload_progress.associated_file_count - self.upload_progress.uploaded_file_count
 
-    def update_upload_progress(self, upload_progress):
-        self.upload_progress = upload_progress
-
 
 class _AssociatedBatchFileUploader(BatchFileUploader):
     def __init__(self, api, max_threads, exit_on_error=False, hide_progress=False, batch_size=50):
-        super().__init__(api, max_threads, exit_on_error, hide_progress, batch_size)
+        super().__init__(max_threads, exit_on_error, hide_progress, batch_size)
         self.api = api
 
     def _construct_tqdm(self):
-        """Override progress bar to display total number of files"""
-        return tqdm(disable=self.hide_progress, total=self.upload_context.total_files)
+        """Override progress bar to display total number of files and save to upload ctx"""
+        progress_bar = tqdm(disable=self.hide_progress, total=self.upload_context.total_files)
+        self.upload_context.progress_bar = progress_bar
+        return progress_bar
 
     def _get_file_batches(self):
         last_page = math.ceil(self.upload_context.remaining_file_count / self.batch_size)
@@ -90,7 +91,6 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
             access_key, secret_key, session_token = creds.access_key, creds.secret_key, creds.session_token
             s3 = get_s3_client_with_config(access_key, secret_key, session_token)
             s3.upload_file(file_name, bucket, key, Config=self.upload_context.transfer_config)
-            update = BatchUpdate(up.af_file, AssociatedFileStatus.COMPLETE, up.calculate_size())
         except Exception as e:
             logger.error(f'Unexpected error occurred while uploading {up.search_name}: {e}')
             logger.error(traceback.format_exc())
@@ -109,20 +109,23 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
                          f'Please try resuming the submission by running vtcmd -r {submission_id}\r\n'
                          f'If the error persists, contact NDAHelp@mail.nih.gov for help.')
             exit_error()
+        self.upload_context.files_not_found.extend(batch_results.files_not_found)
 
-    def _process_not_found_files(self, searched_folders: List[pathlib.Path], progress_bar):
-        upload_progress = self.api.get_upload_progress(self.upload_context.submission.id)
-        self.upload_context.update_upload_progress(upload_progress)
-
-        while self.not_found_list:
+    def _post_upload_hook(self):
+        while self.upload_context.files_not_found:
+            # reset files_not_found
+            self.upload_context.files_not_found = []
+            progress_bar = self.upload_context.progress_bar
+            searched_folders = self.upload_context.search_folders
             new_dir = self._prompt_for_file_directory(searched_folders)
+            self.upload_context.search_folders = [new_dir]
             for file_batch in self._get_file_batches():
-                self._upload_batch(file_batch, [new_dir], lambda: progress_bar.update(1))
+                self._upload_batch(file_batch, self.upload_context.search_folders, lambda: progress_bar.update(1))
 
-    def _prompt_for_file_directory(self, search_folders: List[pathlib.Path]) -> pathlib.Path:
+    def _prompt_for_file_directory(self, searched_folders: List[pathlib.Path]) -> pathlib.Path:
         # ask the user if they want to continue
-        not_found: List[Uploadable] = self.not_found_list
-        msg = files_not_found_msg(not_found, search_folders)
+        not_found: List[Uploadable] = self.upload_context.files_not_found
+        msg = files_not_found_msg(not_found, searched_folders)
         if self.exit_on_error:
             exit_error(msg)
         else:
@@ -143,5 +146,5 @@ class AssociatedFileUploader:
     def start_upload(self, submission: Submission, search_folders: List[pathlib.Path], resuming_submission: bool):
         upload_progress = self.api.get_upload_progress(submission.submission_id)
         transfer_config = TransferConfig(multipart_threshold=5 * GB, use_threads=False)
-        cxt = AFUploadContext(submission, resuming_submission, upload_progress, transfer_config)
-        self.uploader.start_upload(cxt, search_folders)
+        ctx = AFUploadContext(submission, resuming_submission, upload_progress, transfer_config, search_folders)
+        self.uploader.start_upload(search_folders, ctx)

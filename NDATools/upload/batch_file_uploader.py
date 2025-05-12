@@ -77,6 +77,7 @@ class BatchFileUploader(ABC):
                     self._pre_batch_hook(file_batch, search_folders)
                     results = self._upload_batch(file_batch, search_folders, lambda: progress_bar.update(1))
                     self._post_batch_hook(results)
+                self._post_upload_hook()
 
     def _upload_batch(self, files: List[Uploadable], search_folders: List[pathlib.Path], progress_cb: Callable):
         assert len(files) > 0, "no files passed to _upload_batch method"
@@ -107,7 +108,7 @@ class BatchFileUploader(ABC):
             else:
                 progress_cb()
 
-        return BatchResults(files_found, [], not_found, search_folders)
+        return BatchResults(files_found, not_found, search_folders)
 
     # generator for file batches
     @abstractmethod
@@ -132,6 +133,9 @@ class BatchFileUploader(ABC):
         """Default method to handle missing files. Will print and exit. Can be overridden in subclasses"""
         msg = files_not_found_msg(not_found_list, search_folders)
         exit_error(msg)
+
+    def _post_upload_hook(self):
+        pass
 
 
 def files_not_found_msg(not_found: List[Uploadable], dirs, limit=20):
