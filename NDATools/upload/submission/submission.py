@@ -42,22 +42,22 @@ class Submission:
         self.file_uploader = AssociatedFileUploader(self.api, config.worker_threads, config.force,
                                                     config.hide_progress,
                                                     self.config.batch_size)
-        self.submission = None
 
     def replace_submission(self, submission_id, package_id):
-        self.submission = self.api.replace_submission(submission_id, package_id)
+        return self.api.replace_submission(submission_id, package_id)
 
     def submit(self, package_id):
-        self.submission = self.api.create_submission(package_id)
+        return self.api.create_submission(package_id)
 
     def resume_submission(self, submission_id):
-        self.submission = self.api.get_submission(submission_id)
+        submission = self.api.get_submission(submission_id)
 
-        if self.submission.status == Status.UPLOADING:
-            self.upload_associated_files(resuming_upload=True)
+        if submission.status == Status.UPLOADING:
+            return self.upload_associated_files(submission, resuming_upload=True)
+        else:
+            return submission
 
-    def upload_associated_files(self, resuming_upload=False):
-        assert self.submission is not None, 'Must call submit/resume/replace before calling this method'
+    def upload_associated_files(self, submission, resuming_upload=False):
         associated_file_dirs = list(map(lambda x: pathlib.Path(x), self.config.directory_list or [os.getcwd()]))
-        self.file_uploader.start_upload(self.submission, associated_file_dirs, resuming_upload)
-        self.submission = self.api.get_submission(self.submission.submission_id)
+        self.file_uploader.start_upload(submission, associated_file_dirs, resuming_upload)
+        return self.api.get_submission(submission.submission_id)

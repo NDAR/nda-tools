@@ -151,6 +151,10 @@ def _try_save_password_keyring(username, password):
         logger.warning(f'could not save password to keyring: {str(e)}')
 
 
+def get_username():
+    return str(input('Enter your NDA account username:')).lower().strip()
+
+
 def _get_user_credentials(config) -> Tuple[str, str]:
     # username is fetched from settings.cfg, and it is not present at the first time use of nda-tools
     # display NDA account instructions
@@ -164,7 +168,6 @@ def _get_user_credentials(config) -> Tuple[str, str]:
             'You may retrieve your NDA account info by logging into https://nda.nih.gov/user/dashboard/profile.html using your RAS credentials (eRA Commons, Login.gov, or Smart Card/CAC)')
         logger.info(
             'Once you are logged into your profile page, you can find your NDA account username. For password retrieval, click UPDATE/RESET PASSWORD button')
-    get_username = lambda: str(input('Enter your NDA account username:')).lower()
     username = config.username
     while not username:
         username = get_username()

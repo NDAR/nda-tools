@@ -168,8 +168,6 @@ class NdaUploadCli:
 
     def __init__(self, client_config):
         self.config = client_config
-        self.validation_api = self.config.validation_api
-        self.uploader = self.config.manifests_uploader
         # add warning if more than 1 manifest dir was detected. in later versions of the tool, we are only going to allow users to specify one manifest dir
         if isinstance(self.config.manifest_path, list):
             if len(self.config.manifest_path) > 1:
@@ -180,6 +178,14 @@ class NdaUploadCli:
             # should be NoneType
             self.manifest_dir = self.config.manifest_path
         ...
+
+    @property
+    def validation_api(self):
+        return self.config.validation_api
+
+    @property
+    def uploader(self):
+        return self.config.manifests_uploader
 
     def submit(self, collection_id: int, title: str, description: str, ) -> NdaSubmission:
         raise NotImplementedError()
@@ -197,42 +203,50 @@ class NdaUploadCli:
         validation.validate()
         return [ValidatedFile(v[1], v1_resource=v[0]) for v in validation.responses]
 
-    def validate(self, file_name: Union[List[str], str]) -> Union[List[ValidatedFile], ValidatedFile]:
+    def validate(self, file_name: Union[List[str], str]) -> Union[List[ValidatedFile]]:
         """
-        Validates the passed in files.
+        Validates one or multiple files by interacting with a validation API and handling csv uploads,
+        and manifest uploads (if necessary), and validation statuses. If a list of files is provided, csv and manifest
+        files uploads are performed concurrently using the max-threads setting in the nda configuration. 
 
-        Args:
-            file_name (str): The path to the file to be validated.
+        Parameters
+        ----------
+        file_name : Union[List[str], str]
+            The name of the file to validate as a string or a list of file names.
 
-        Returns:
-            ValidatedFile: A `ValidatedFile` object representing the validation results for the input file.
-
-        Raises:
-            Exception: If there are unexpected issues during the validation or upload process.
+        Returns
+        -------
+        Union[List[ValidatedFile]]
+            A list of ValidatedFile objects, which include information about the uploaded and validated
+            files, associated resources, and any manifest errors encountered during the validation
+            process.
         """
         if isinstance(file_name, list):
-            # this method is optimized for multiple files
-            return self._validate_multiple(file_name)
+            if len(file_name) > 1:
+                # this method is optimized for multiple files
+                return self._validate_multiple(file_name)
+            else:
+                file_name = file_name[0]
 
         file = pathlib.Path(file_name)
         creds = self.validation_api.request_upload_credentials(file.name, self.config.scope)
         creds.upload_csv(file)
         resource = self.validation_api.wait_validation_complete(creds.uuid, self.config.validation_timeout, False)
-        if resource['status'] == ValidationStatus.PENDING_MANIFESTS:
+        if resource.status == ValidationStatus.PENDING_MANIFESTS:
             self.uploader.upload_manifests(creds, self.config.manifest_path)
             resource = self.validation_api.wait_validation_complete(creds.uuid, self.config.validation_timeout, True)
             # there must be manifest errors if the status changes from 'PendingManifests' to 'CompleteWithErrors'
             # TODO refactor this and set_manifest_errors into common helper method
-            if resource['status'] == ValidationStatus.COMPLETE_WITH_ERRORS:
+            if resource.status == ValidationStatus.COMPLETE_WITH_ERRORS:
                 manifests = ManifestFile.manifests_from_credentials(creds)
                 # hash manifests by uuid for efficient lookup when creating manifest_errors
                 mdict = {m.uuid: m for m in manifests}
                 manifest_errors = [ManifestValidationError(mdict[e.uuid], e.errors) for e in
                                    self.validation_api.get_manifest_errors(creds.uuid)]
 
-                return ValidatedFile(file, v2_resource=resource, v2_creds=creds, manifest_errors=manifest_errors)
+                return [ValidatedFile(file, v2_resource=resource, v2_creds=creds, manifest_errors=manifest_errors)]
 
-        return ValidatedFile(file, v2_resource=resource, v2_creds=creds)
+        return [ValidatedFile(file, v2_resource=resource, v2_creds=creds)]
 
     def _validate_multiple(self, files: List[str]) -> List[ValidatedFile]:
         """

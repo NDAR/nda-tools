@@ -123,7 +123,7 @@ class ClientConfiguration:
 
     @property
     def batch_size(self):
-        return self._args.batch_size
+        return self._args.batch
 
     def _check_and_fix_missing_options(self):
         default_config = configparser.ConfigParser()

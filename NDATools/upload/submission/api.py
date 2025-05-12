@@ -67,8 +67,13 @@ class AssociatedFile(BaseModel):
     size: int
 
 
+class SubmissionStatus(str, enum.Enum):
+    UPLOADING = 'Uploading'
+    SUBMITTED = 'Submitted_Prototype'
+
+
 class Submission(BaseModel):
-    submission_status: str
+    status: SubmissionStatus = Field(..., alias='submission_status')
     dataset_title: str
     dataset_description: str
     dataset_created_date: str

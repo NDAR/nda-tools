@@ -38,7 +38,7 @@ class NdaCredentials(BaseModel):
     def upload(self, file: Union[pathlib.Path, str], s3_url: str):
         assert s3_url.startswith('s3://')
         bucket, key = s3_url.replace("s3://", "").split("/", 1)
-        self._s3_transfer._upload_file(str(file), bucket, key)
+        self._s3_transfer.upload_file(str(file), bucket, key)
         logger.debug(f'Finished uploading {file} to {s3_url}')
 
 
