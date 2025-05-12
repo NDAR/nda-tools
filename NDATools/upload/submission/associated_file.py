@@ -9,8 +9,8 @@ from tqdm import tqdm
 
 from NDATools import exit_error
 from NDATools.Utils import get_s3_client_with_config, deconstruct_s3_url, get_directory_input
-from NDATools.upload.batch_file_uploader import BatchFileUploader, UploadContextABC, BatchContextABC, \
-    Uploadable, UploadError, files_not_found_msg
+from NDATools.upload.batch_file_uploader import BatchFileUploader, UploadContext, Uploadable, UploadError, \
+    files_not_found_msg, BatchResults
 from NDATools.upload.submission.api import Submission, AssociatedFile, AssociatedFileStatus, BatchUpdate, \
     AssociatedFileUploadCreds, SubmissionApi, UploadProgress
 
@@ -36,16 +36,7 @@ class AFUploadable(Uploadable):
         return False
 
 
-class AFBatchContext(BatchContextABC):
-    def __init__(self, files_found: List[Uploadable], files_not_found: List[Uploadable]):
-        super().__init__(files_found, files_not_found)
-        self.batch_updates = []
-
-    def add_batch_update(self, update: BatchUpdate):
-        self.batch_updates.append(update)
-
-
-class AFUploadContext(UploadContextABC):
+class AFUploadContext(UploadContext):
     def __init__(self, submission: Submission, resuming_upload: bool, upload_progress: UploadProgress,
                  transfer_config: TransferConfig):
         self.submission = submission
@@ -100,16 +91,16 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
             s3 = get_s3_client_with_config(access_key, secret_key, session_token)
             s3.upload_file(file_name, bucket, key, Config=self.upload_context.transfer_config)
             update = BatchUpdate(up.af_file, AssociatedFileStatus.COMPLETE, up.calculate_size())
-            self.batch_context.add_batch_update(update)
         except Exception as e:
             logger.error(f'Unexpected error occurred while uploading {up.search_name}: {e}')
             logger.error(traceback.format_exc())
             raise UploadError(up, e)
 
-    def _post_batch_hook(self):
+    def _post_batch_hook(self, batch_results: BatchResults):
         """ REST endpoint to update status of files to COMPLETE"""
         submission_id = self.upload_context.submission.id
-        updates = self.batch_context.batch_updates
+        updates = [BatchUpdate(file.af_file, AssociatedFileStatus.COMPLETE, file.calculate_size()) for file in
+                   batch_results.success]
         errors = self.api.batch_update_associated_file_status(submission_id, updates, AssociatedFileStatus.COMPLETE)
         if errors:
             for error in errors:
@@ -136,7 +127,7 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
             exit_error(msg)
         else:
             logger.info(msg)
-        return get_directory_input('Press the "Enter" key to specify location for associated files and try again:')
+        return get_directory_input('Specify the folder containing the associated files and try again:')
 
 
 KB = 1024

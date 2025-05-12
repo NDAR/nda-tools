@@ -7,8 +7,8 @@ from tqdm import tqdm
 
 from NDATools import exit_error
 from NDATools.Utils import get_directory_input
-from NDATools.upload.batch_file_uploader import BatchFileUploader, Uploadable, BatchContextABC, UploadError, \
-    UploadContextABC, files_not_found_msg
+from NDATools.upload.batch_file_uploader import BatchFileUploader, Uploadable, BatchResults, UploadError, \
+    UploadContext, files_not_found_msg
 from NDATools.upload.validation.api import ValidationV2Api, ValidationV2Credentials
 
 logger = logging.getLogger(__name__)
@@ -21,9 +21,6 @@ class ManifestFile:
         self.uuid = uuid
         self.record_number = record_number
         self.column = column
-
-    def resolve_local_path(self, manifest_dir: pathlib.Path):
-        return manifest_dir / self.name
 
     @staticmethod
     def manifests_from_credentials(creds):
@@ -60,12 +57,12 @@ class MFUploadable(Uploadable):
         return False
 
 
-class MFBatchContext(BatchContextABC):
+class MFBatchResults(BatchResults):
     def __init__(self, files_found: List[Uploadable], files_not_found: List[Uploadable]):
         super().__init__(files_found, files_not_found)
 
 
-class MFUploadContext(UploadContextABC):
+class MFUploadContext(UploadContext):
     def __init__(self, credentials_list: List[ValidationV2Credentials]):
         self.credentials_list = credentials_list
 
@@ -85,7 +82,7 @@ class _ManifestFileBatchUploader(BatchFileUploader):
             creds = file.creds
             creds.upload(str(file.path), file.manifest.s3_destination)
         except Exception as e:
-            logger.error(f'Unexpected error occurred while uploading {m}: {e}')
+            logger.error(f'Unexpected error occurred while uploading {file}: {e}')
             logger.error(traceback.format_exc())
             raise UploadError(file, e)
 
@@ -95,16 +92,17 @@ class _ManifestFileBatchUploader(BatchFileUploader):
         self.upload_context.progress_bar = progressbar
         return progressbar
 
-    def _post_batch_hook(self):
-        """Handle missing manifests at the end of each batch. Don't proceed until all manifests from batch are processed"""
-        while self.not_found_list:
-            msg = files_not_found_msg(self.not_found_list, self.batch_context.search_folders)
+    def _post_batch_hook(self, batch_results: BatchResults):
+        """Handle missing manifests at the end of each batch. Don't proceed until all manifests from the batch are processed"""
+        br = batch_results
+        while br.files_not_found:
+            msg = files_not_found_msg(br.files_not_found, br.search_folders)
             if self.exit_on_error:
                 exit_error(msg)
             else:
                 logger.info(msg)
-            new_dir = get_directory_input('Press the "Enter" key to specify location for manifest files and try again:')
-            self._upload_batch(self.not_found_list, [new_dir], self.upload_context.progress_bar)
+            new_dir = get_directory_input('Specify the folder containing the manifest files and try again:')
+            br = self._upload_batch(br.files_not_found, [new_dir], self.upload_context.progress_bar)
 
 
 class ManifestFileUploader:
@@ -118,5 +116,4 @@ class ManifestFileUploader:
         if isinstance(creds, ValidationV2Credentials):
             creds = [creds]
 
-        cxt = MFUploadContext(creds)
-        self.uploader.start_upload(cxt, [manifest_dir])
+        self.uploader.start_upload([manifest_dir], MFUploadContext(creds))
