@@ -226,14 +226,14 @@ def test_submit_no_files(monkeypatch):
         # collection api for building package step
         m.setattr(NDATools.upload.submission.api.CollectionApi, 'get_user_collections', MagicMock(return_value=1))
         m.setattr(NDATools.upload.submission.api.SubmissionPackageApi, 'build_package', MagicMock(return_value=1))
-        # TODO update the Submission class to make it use a Submission API
-
-        try:
-            NDATools.clientscripts.vtcmd.main()
-        except SystemExit:
-            pass
-        assert NDATools.clientscripts.vtcmd.exit_error.call_count == 1
-        assert NDATools.clientscripts.vtcmd.exit_error.call_args[0][0] == 'Please provide a subcommand.'
+        # mock the submission api calls
+        m.setattr(NDATools.upload.submission.api.SubmissionApi, 'create_submission', MagicMock(return_value=1))
+        # set mock logger so we can run tests on logged stmts
+        m.setattr(NDATools.clientscripts.vtcmd, 'logger', MockLogger())
+        NDATools.clientscripts.vtcmd.main()
+        NDATools.clientscripts.vtcmd.logger.any_call_contains('Submission ID:')
+        NDATools.clientscripts.vtcmd.logger.any_call_contains(
+            'You have successfully completed uploading files for submission')
 
 
 def test_resume():

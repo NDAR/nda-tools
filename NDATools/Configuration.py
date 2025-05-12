@@ -12,7 +12,7 @@ import NDATools
 from NDATools import NDA_TOOLS_LOGGING_YML_FILE
 from NDATools.upload.cli import NdaUploadCli
 from NDATools.upload.validation.api import ValidationV2Api
-from NDATools.upload.validation.manifests import ManifestsUploader
+from NDATools.upload.validation.manifests import ManifestFileUploader
 from NDATools.upload.validation.results_writer import ResultsWriterFactory
 
 logger = logging.getLogger(__name__)
@@ -170,7 +170,7 @@ class ClientConfiguration:
         if hasattr(self, 'hide_progress'):
             hide_progress = self.hide_progress
 
-        self.manifests_uploader = ManifestsUploader(self.validation_api,
-                                                    self.worker_threads,
-                                                    force,
-                                                    hide_progress)
+        self.manifests_uploader = ManifestFileUploader(self.validation_api,
+                                                       self.worker_threads,
+                                                       force,
+                                                       hide_progress)

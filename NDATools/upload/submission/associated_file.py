@@ -93,7 +93,7 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
             s3 = get_s3_client_with_config(access_key, secret_key, session_token)
             if self.upload_context.resuming_upload:
                 try:
-                    # check to see if the file has already been uploaded to s3
+                    # REV-1389 check to see if the file has already been uploaded to s3
                     s3.head_object(Bucket=bucket, Key=key)
                 except client.exceptions.NoSuchKey:
                     # only upload the file if it hasn't already been uploaded to s3

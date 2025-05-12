@@ -164,8 +164,8 @@ def validate(args, config):
 
 
 def resume_submission(sub_id, config=None):
-    submission = Submission(config)
-    submission.resume_submission(sub_id)
+    submission_svc = Submission(config)
+    submission = submission_svc.resume_submission(sub_id)
     if submission.status != Status.UPLOADING:
         print_submission_complete_message(submission, False)
 
@@ -216,18 +216,18 @@ def print_submission_complete_message(submission, replacement):
 
 def replace_submission(validated_files, args, config):
     package_id = build_package(validated_files, args, config)
-    submission = Submission(config=config)
+    submission_svc = Submission(config=config)
     logger.info('Requesting submission for package: {}'.format(package_id))
-    submission.replace_submission(args.replacement_submission, package_id)
+    submission = submission_svc.replace_submission(args.replacement_submission, package_id)
     logger.info("Submission replaced successfully.")
     _finish_submission(submission, replacement=True)
 
 
 def submit(validated_files, args, config):
     package_id = build_package(validated_files, args, config)
-    submission = Submission(config=config)
-    logger.info('Requesting submission for package: {}'.format(submission.package_id))
-    submission.submit(package_id)
+    logger.info('Requesting submission for package: {}'.format(package_id))
+    submission_srv = Submission(config=config)
+    submission = submission_srv.submit(package_id)
     _finish_submission(submission)
 
 
@@ -266,7 +266,7 @@ def main():
     set_validation_api_version(config)
 
     if args.resume:
-        resume_submission(args.resume, batch=args.batch, config=config)
+        resume_submission(args.resume, config=config)
     else:
         validated_files = validate(args, config)
         if args.buildPackage:
