@@ -227,7 +227,7 @@ def test_submit_no_files(monkeypatch, upload_creds, ndar_subject01, user_collect
         NDATools.clientscripts.vtcmd.logger.any_call_contains(
             'You have successfully completed uploading files for submission')
         # run verifications against mock methods
-        ndar_subject01_creds.upload_csv.assert_called_once()
+        ndar_subject01_creds._s3_transfer.upload_file.assert_called_once()
         results_writer.write_errors.assert_called_once()
         results_writer.write_warnings.assert_not_called()
 

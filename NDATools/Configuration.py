@@ -11,6 +11,8 @@ from pkg_resources import resource_filename
 import NDATools
 from NDATools import NDA_TOOLS_LOGGING_YML_FILE
 from NDATools.upload.cli import NdaUploadCli
+from NDATools.upload.submission.api import SubmissionPackageApi, SubmissionApi, CollectionApi
+from NDATools.upload.submission.associated_file import AssociatedFileUploader
 from NDATools.upload.validation.api import ValidationV2Api
 from NDATools.upload.validation.manifests import ManifestFileUploader
 from NDATools.upload.validation.results_writer import ResultsWriterFactory
@@ -70,7 +72,11 @@ class ClientConfiguration:
             self.v2_enabled = False
             self.validation_results_writer = ResultsWriterFactory.get_writer(file_format='json' if args.JSON else 'csv')
             self.validation_api = None
+            self.submission_api = None
+            self.submission_package_api = None
+            self.collection_api = None
             self.manifests_uploader = None
+            self.associated_files_uploader = None
             self.upload_cli = NdaUploadCli(self)
         if self.username:
             logger.info('proceeding as NDA user: {}'.format(self.username))
@@ -163,6 +169,12 @@ class ClientConfiguration:
 
     def _save_apis(self):
         self.validation_api = ValidationV2Api(self.validation_api_endpoint, self.username, self.password)
+        self.submission_package_api = SubmissionPackageApi(self.config.submission_package_api_endpoint,
+                                                           self.config.username,
+                                                           self.config.password)
+        self.submission_api = SubmissionApi(self.config.submission_api_endpoint, self.config.username,
+                                            self.config.password)
+        self.collection_api = CollectionApi(config.validationtool_api_endpoint, config.username, config.password)
         # self.force and self.hide_progress is only set in vtcmd
         hide_progress, force = False, False
         if hasattr(self, 'force'):
@@ -174,3 +186,8 @@ class ClientConfiguration:
                                                        self.worker_threads,
                                                        force,
                                                        hide_progress)
+        self.associated_files_uploader = AssociatedFileUploader(self.submission_api,
+                                                                self.worker_threads,
+                                                                force,
+                                                                hide_progress,
+                                                                self.config.batch_size)

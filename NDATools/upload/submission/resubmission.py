@@ -84,11 +84,8 @@ class ReplacementPackageInfo():
         self.validation_uuids = validation_uuids
 
 
-def build_replacement_package_info(validated_files: List[ValidatedFile], args, config) -> ReplacementPackageInfo:
-    submission_api = SubmissionApi(config.submission_api_endpoint, config.username, config.password)
-
-    submission: Submission = submission_api.get_submission(args.replacement_submission)
-    submission_details: SubmissionDetails = submission_api.get_submission_details(submission.submission_id)
+def build_replacement_package_info(validated_files: List[ValidatedFile], submission: Submission,
+                                   submission_details: SubmissionDetails) -> ReplacementPackageInfo:
     # perform some checks before attempting to build the package
     _check_unrecognized_datastructures(validated_files, submission_details)
     _check_missing_data_for_resubmission(validated_files, submission_details)
