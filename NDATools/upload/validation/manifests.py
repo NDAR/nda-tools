@@ -57,11 +57,6 @@ class MFUploadable(Uploadable):
         return False
 
 
-class MFBatchResults(BatchResults):
-    def __init__(self, files_found: List[Uploadable], files_not_found: List[Uploadable]):
-        super().__init__(files_found, files_not_found)
-
-
 class MFUploadContext(UploadContext):
     def __init__(self, credentials_list: List[ValidationV2Credentials]):
         self.credentials_list = credentials_list
@@ -108,7 +103,7 @@ class _ManifestFileBatchUploader(BatchFileUploader):
 class ManifestFileUploader:
     def __init__(self, validation_api: ValidationV2Api, max_threads, exit_on_error=False, hide_progress=False):
         self.api = validation_api
-        self.uploader = _ManifestFileBatchUploader(validation_api, max_threads, exit_on_error, hide_progress)
+        self.uploader = _ManifestFileBatchUploader(max_threads, exit_on_error, hide_progress)
 
     def start_upload(self, creds: Union[List[ValidationV2Credentials], ValidationV2Credentials],
                      manifest_dir: pathlib.Path):

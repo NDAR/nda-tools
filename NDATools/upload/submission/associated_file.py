@@ -5,6 +5,7 @@ import traceback
 from typing import List
 
 from boto3.s3.transfer import TransferConfig
+from botocore import client
 from tqdm import tqdm
 
 from NDATools import exit_error
@@ -90,7 +91,15 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
             creds = up.upload_creds
             access_key, secret_key, session_token = creds.access_key, creds.secret_key, creds.session_token
             s3 = get_s3_client_with_config(access_key, secret_key, session_token)
-            s3.upload_file(file_name, bucket, key, Config=self.upload_context.transfer_config)
+            if self.upload_context.resuming_upload:
+                try:
+                    # check to see if the file has already been uploaded to s3
+                    s3.head_object(Bucket=bucket, Key=key)
+                except client.exceptions.NoSuchKey:
+                    # only upload the file if it hasn't already been uploaded to s3
+                    s3.upload_file(file_name, bucket, key, Config=self.upload_context.transfer_config)
+            else:
+                s3.upload_file(file_name, bucket, key, Config=self.upload_context.transfer_config)
         except Exception as e:
             logger.error(f'Unexpected error occurred while uploading {up.search_name}: {e}')
             logger.error(traceback.format_exc())
@@ -113,12 +122,13 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
 
     def _post_upload_hook(self):
         while self.upload_context.files_not_found:
-            # reset files_not_found
-            self.upload_context.files_not_found = []
-            progress_bar = self.upload_context.progress_bar
             searched_folders = self.upload_context.search_folders
             new_dir = self._prompt_for_file_directory(searched_folders)
-            self.upload_context.search_folders = [new_dir]
+            progress_bar = self.upload_context.progress_bar
+            # update upload_context variables
+            self.upload_context.files_not_found.clear()
+            self.upload_context.search_folders.clear()
+            self.upload_context.search_folders.append(new_dir)
             for file_batch in self._get_file_batches():
                 self._upload_batch(file_batch, self.upload_context.search_folders, lambda: progress_bar.update(1))
 
@@ -143,8 +153,8 @@ class AssociatedFileUploader:
         self.api = api
         self.uploader = _AssociatedBatchFileUploader(api, max_threads, exit_on_error, hide_progress, batch_size)
 
-    def start_upload(self, submission: Submission, search_folders: List[pathlib.Path], resuming_submission: bool):
+    def start_upload(self, submission: Submission, search_folders: List[pathlib.Path], resuming_upload: bool):
         upload_progress = self.api.get_upload_progress(submission.submission_id)
         transfer_config = TransferConfig(multipart_threshold=5 * GB, use_threads=False)
-        ctx = AFUploadContext(submission, resuming_submission, upload_progress, transfer_config, search_folders)
+        ctx = AFUploadContext(submission, resuming_upload, upload_progress, transfer_config, search_folders)
         self.uploader.start_upload(search_folders, ctx)

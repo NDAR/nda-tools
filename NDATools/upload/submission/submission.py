@@ -2,7 +2,7 @@ import pathlib
 
 from NDATools.Configuration import *
 from NDATools.upload.submission.api import SubmissionPackageApi, PackagingStatus, SubmissionApi
-from NDATools.upload.submission.associated_file import AssociatedFileUploaderABC
+from NDATools.upload.submission.associated_file import AssociatedFileUploader
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +39,9 @@ class Submission:
     def __init__(self, config):
         self.config = config
         self.api = SubmissionApi(self.config.submission_api_endpoint, self.config.username, self.config.password)
-        self.file_uploader = AssociatedFileUploaderABC(self.api, config.worker_threads, config.force,
-                                                       config.hide_progress,
-                                                       self.config.batch_size)
+        self.file_uploader = AssociatedFileUploader(self.api, config.worker_threads, config.force,
+                                                    config.hide_progress,
+                                                    self.config.batch_size)
         self.submission = None
 
     def replace_submission(self, submission_id, package_id):
@@ -59,5 +59,5 @@ class Submission:
     def upload_associated_files(self, resuming_upload=False):
         assert self.submission is not None, 'Must call submit/resume/replace before calling this method'
         associated_file_dirs = list(map(lambda x: pathlib.Path(x), self.config.directory_list or [os.getcwd()]))
-        self.file_uploader.upload_associated_files(associated_file_dirs, resuming_upload=resuming_upload)
+        self.file_uploader.start_upload(self.submission, associated_file_dirs, resuming_upload)
         self.submission = self.api.get_submission(self.submission.submission_id)

@@ -127,15 +127,16 @@ class BatchFileUploader(ABC):
         pass
 
     def _post_batch_hook(self, batch_results: BatchResults):
-        self._process_not_found_files(batch_results.files_not_found, batch_results.search_folders)
-
-    def _process_not_found_files(self, not_found_list: List[Uploadable], search_folders: List[pathlib.Path]):
-        """Default method to handle missing files. Will print and exit. Can be overridden in subclasses"""
-        msg = files_not_found_msg(not_found_list, search_folders)
-        exit_error(msg)
+        _process_not_found_files(batch_results.files_not_found, batch_results.search_folders)
 
     def _post_upload_hook(self):
         pass
+
+
+def _process_not_found_files(not_found_list: List[Uploadable], search_folders: List[pathlib.Path]):
+    """Default method to handle missing files. Will print and exit. Can be overridden in subclasses"""
+    msg = files_not_found_msg(not_found_list, search_folders)
+    exit_error(msg)
 
 
 def files_not_found_msg(not_found: List[Uploadable], dirs, limit=20):
