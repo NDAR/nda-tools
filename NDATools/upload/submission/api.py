@@ -71,7 +71,7 @@ class SubmissionStatus(str, enum.Enum):
     UPLOADING = 'Uploading'
     SUBMITTED_PROTOTYPE = 'Submitted_Prototype'
     SUBMITTED = 'Submitted'
-    PROCESSING = 'PROCESSING'
+    PROCESSING = 'Processing'
     COMPLETE = 'Upload Completed'
     ERROR_ON_DATA_LOAD = 'Error on Data Load'
 
