@@ -1,21 +1,22 @@
 import enum
 import logging
+import os
 import pathlib
 import traceback
+from os import PathLike
 from typing import List, Callable, Tuple, Union
 
 from tabulate import tabulate
 
 from NDATools.Utils import exit_error, execute_in_threadpool
+from NDATools.upload.submission.api import SubmissionPackage, Submission, SubmissionDetails, PackagingStatus, \
+    SubmissionStatus
+from NDATools.upload.submission.resubmission import build_replacement_package_info
 from NDATools.upload.validation.api import ManifestError, ValidationV2
 from NDATools.upload.validation.manifests import ManifestFile
 from NDATools.upload.validation.v1 import Validation
 
 logger = logging.Logger(__name__)
-
-
-class NdaSubmission:
-    pass
 
 
 class ManifestValidationError:
@@ -163,6 +164,16 @@ class ValidatedFile:
             logger.info('\n...and {} more errors'.format(len(self.manifest_errors) - limit))
 
 
+class NdaSubmission:
+    def __init__(self, collection_id: int, title: str, description: str, validated_files: List[ValidatedFile],
+                 status: str):
+        self.collection_id = collection_id
+        self.title = title
+        self.description = description
+        self.validated_files = validated_files
+        self.status = status
+
+
 class NdaUploadCli:
     """ Higher level API for nda, meant to eventually replace existing vtmcd/downloadcmd code"""
 
@@ -180,34 +191,77 @@ class NdaUploadCli:
         ...
 
     @property
+    def submission_package_api(self):
+        return self.config.submission_package_api
+
+    @property
+    def submission_api(self):
+        return self.config.submission_api
+
+    @property
     def validation_api(self):
         return self.config.validation_api
 
     @property
-    def uploader(self):
+    def collection_api(self):
+        return self.config.collection_api
+
+    @property
+    def manifests_uploader(self):
         return self.config.manifests_uploader
 
-    def submit(self, collection_id: int, title: str, description: str, ) -> NdaSubmission:
-        raise NotImplementedError()
+    @property
+    def associated_files_uploader(self):
+        return self.config.associated_files_uploader
 
-    def resume(self, submission_id: int, associated_file_dir: pathlib.Path) -> NdaSubmission:
-        raise NotImplementedError()
+    def submit(self, collection_id: int, title: str, description: str,
+               validated_files: List[ValidatedFile], associated_file_dirs: List[PathLike] = None) -> NdaSubmission:
+        """Submits data from validated files. A new submission will be created in NDA after this operation succeeds"""
+        sub_package = self._build_package(collection_id, title, description, validated_files)
+        logger.info('Requesting submission for package: {}'.format(sub_package.submission_package_uuid))
+        submission = self.submission_api.create_submission(sub_package.submission_package_uuid)
+        logger.info('Submission ID: {}'.format(str(submission.submission_id)))
+        if submission.status == SubmissionStatus.UPLOADING:
+            self._upload_associated_files(submission, associated_file_dirs, resuming_upload=True)
+            submission = self.submission_api.get_submission(submission.submission_id)
+        return NdaSubmission(submission.collection.id, submission.dataset_title, submission.dataset_description,
+                             validated_files, submission.status)
 
-    def resubmit(self, submission_id: int, validated_files: List[ValidatedFile]) -> NdaSubmission:
-        raise NotImplementedError()
+    def resume(self, submission_id: int, associated_file_dirs: List[PathLike] = None) -> NdaSubmission:
+        """Resumes an in-progress submission by uploading any remaining Associated Files."""
+        submission = self.submission_api.get_submission(submission_id)
+        if submission.status == SubmissionStatus.UPLOADING:
+            self._upload_associated_files(submission, associated_file_dirs, resuming_upload=True)
+            submission = self.submission_api.get_submission(submission_id)
+        return NdaSubmission(submission.collection.id, submission.dataset_title, submission.dataset_description,
+                             [], submission.status)
+
+    def replace_submission(self, submission_id: int, validated_files: List[ValidatedFile],
+                           associated_file_dirs: List[PathLike] = None) -> NdaSubmission:
+        """Replaces the data in a submission with the passed in set of validated_files. Used to correct QA errors"""
+        package_id = self._build_replacement_package(submission_id, validated_files)
+        logger.info('Requesting submission for package: {}'.format(package_id))
+        submission = self.submission_api.replace_submission(submission_id, package_id)
+        logger.info("Submission replaced successfully.")
+        if submission.status == SubmissionStatus.UPLOADING:
+            self._upload_associated_files(submission, associated_file_dirs, resuming_upload=True)
+            submission = self.submission_api.get_submission(submission.submission_id)
+        return NdaSubmission(submission.collection.id, submission.dataset_title, submission.dataset_description,
+                             validated_files, submission.status)
 
     def validate_v1(self, file_list, threads) -> List[ValidatedFile]:
+        """Validates files using the old validation API. Deprecated and will be removed in a future release"""
         validation = Validation(file_list, config=self.config, hide_progress=self.config.hide_progress,
                                 thread_num=threads,
                                 allow_exit=True)
         validation.validate()
         return [ValidatedFile(v[1], v1_resource=v[0]) for v in validation.responses]
 
-    def validate(self, file_name: Union[List[str], str]) -> Union[List[ValidatedFile]]:
+    def validate(self, file_name: Union[List[str], str]) -> List[ValidatedFile]:
         """
         Validates one or multiple files by interacting with a validation API and handling csv uploads,
         and manifest uploads (if necessary), and validation statuses. If a list of files is provided, csv and manifest
-        files uploads are performed concurrently using the max-threads setting in the nda configuration. 
+        files uploads are performed concurrently using the max-threads setting in the nda configuration.
 
         Parameters
         ----------
@@ -216,7 +270,7 @@ class NdaUploadCli:
 
         Returns
         -------
-        Union[List[ValidatedFile]]
+        List[ValidatedFile]
             A list of ValidatedFile objects, which include information about the uploaded and validated
             files, associated resources, and any manifest errors encountered during the validation
             process.
@@ -233,7 +287,7 @@ class NdaUploadCli:
         creds.upload_csv(file)
         resource = self.validation_api.wait_validation_complete(creds.uuid, self.config.validation_timeout, False)
         if resource.status == ValidationStatus.PENDING_MANIFESTS:
-            self.uploader.upload_manifests(creds, self.config.manifest_path)
+            self.manifests_uploader.upload_manifests(creds, self.config.manifest_path)
             resource = self.validation_api.wait_validation_complete(creds.uuid, self.config.validation_timeout, True)
             # there must be manifest errors if the status changes from 'PendingManifests' to 'CompleteWithErrors'
             # TODO refactor this and set_manifest_errors into common helper method
@@ -305,7 +359,7 @@ class NdaUploadCli:
 
             manifest_requests = [r for r in results if r.waiting_manifest_upload]
             if manifest_requests:
-                self.uploader.upload_manifests([m.v2_creds for m in manifest_requests], self.manifest_dir)
+                self.manifests_uploader.upload_manifests([m.v2_creds for m in manifest_requests], self.manifest_dir)
                 logger.info(f'Waiting for validation of {len(manifest_requests)} files to complete....')
 
             def wait_and_update(request: InitiatedV2Request):
@@ -333,3 +387,36 @@ class NdaUploadCli:
     def _execute_in_threadpool(self, func: Callable, args: List[Tuple]):
         return execute_in_threadpool(func, args, max_workers=self.config.worker_threads,
                                      disable_tqdm=self.config.hide_progress)
+
+    def _upload_associated_files(self, submission, associated_file_dirs: List[PathLike],
+                                 resuming_upload=False) -> Submission:
+        if not associated_file_dirs:
+            associated_file_dirs = [os.getcwd()]
+        self.associated_files_uploader.start_upload(submission, associated_file_dirs, resuming_upload)
+        return self.submission_api.get_submission(submission.submission_id)
+
+    def _build_replacement_package(self, submission_id: int, validated_files: List[ValidatedFile]) -> SubmissionPackage:
+        """Builds a submissionPackage for a replacement submission"""
+        submission: Submission = self.submission_api.get_submission(submission_id)
+        submission_details: SubmissionDetails = self.submission_api.get_submission_details(submission.submission_id)
+        pkg = build_replacement_package_info(validated_files, submission, submission_details)
+        return self._build_package(pkg.collection_id, pkg.title, pkg.description, pkg.validation_uuids,
+                                   pkg.submission_id)
+
+    def _build_package(self, collection_id: int, title: str, description: str,
+                       validated_files: List[ValidatedFile], replacement_submission: int = None) -> SubmissionPackage:
+        """Builds a submissionPackage using the passed in parameters as the values for the payload"""
+        validation_uuids = [v.uuid for v in validated_files]
+        package = self.submission_package_api.build_package(collection_id, title, description, validation_uuids,
+                                                            replacement_submission)
+        if package.status == PackagingStatus.PROCESSING:
+            package = self.submission_package_api.wait_package_complete(package.submission_package_uuid)
+
+        # print package info to console
+        logger.info('\n\nPackage Information:')
+        logger.info('validation results: {}'.format(validation_uuids))
+        logger.info('submission_package_uuid: {}'.format(package.submission_package_uuid))
+        logger.info('created date: {}'.format(package.created_date))
+        logger.info('expiration date: {}'.format(package.expiration_date))
+
+        return package
