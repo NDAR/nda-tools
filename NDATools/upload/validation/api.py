@@ -29,11 +29,10 @@ class NdaCredentials(BaseModel):
                                     aws_session_token=self.session_token)
         self._s3_transfer = boto3.s3.transfer.S3Transfer(self._s3_cli)
 
-    def download(self, s3_url: str):
+    def download(self, s3_url: str) -> str:
         assert s3_url.startswith('s3://')
         bucket, key = s3_url.replace("s3://", "").split("/", 1)
-        res = self._s3_cli.get_object(Bucket=bucket, Key=key)
-        return res['Body'].read()
+        return self._s3_cli.get_object(Bucket=bucket, Key=key)['Body'].read().decode('utf-8')
 
     def upload(self, file: Union[pathlib.Path, str], s3_url: str):
         assert s3_url.startswith('s3://')

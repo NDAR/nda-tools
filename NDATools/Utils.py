@@ -16,7 +16,6 @@ from urllib.parse import urlparse, unquote
 
 import boto3
 import requests
-from botocore.exceptions import ClientError
 from requests.adapters import HTTPAdapter, Retry
 from tqdm.contrib.concurrent import thread_map
 
@@ -322,12 +321,6 @@ def get_s3_client_with_config(aws_access_key, aws_secret_key, aws_session_token)
                                  region_name='us-east-1').client('s3')
 
 
-def get_s3_resource(aws_access_key, aws_secret_key, aws_session_token, s3_config):
-    return boto3.Session(aws_access_key_id=aws_access_key,
-                         aws_secret_access_key=aws_secret_key,
-                         aws_session_token=aws_session_token).resource('s3', config=s3_config)
-
-
 def collect_directory_list():
     while True:
         retry = input(
@@ -368,24 +361,6 @@ def get_directory_input(prompt):
             logger.error(f'{retry_associated_files_dir} does not exist. Please try again.')
         else:
             return retry_associated_files_dir
-
-
-def get_object(s3_url, /, access_key_id, secret_access_key, session_token):
-    # split the s3_url to get a bucket and key
-    bucket, key = s3_url.replace("s3://", "").split("/", 1)
-    # use the boto3 client to get the results and display the contents
-    try:
-        result = boto3.client(
-            's3',
-            aws_access_key_id=access_key_id,
-            aws_secret_access_key=secret_access_key,
-            aws_session_token=session_token
-        ).get_object(Bucket=bucket, Key=key)
-        # print(f"{key}: {result['Body'].read(1024).decode('utf-8')}")
-        return result['Body'].read()
-    except ClientError as e:
-        print(f"An error occurred: {e}")
-        exit(1)
 
 
 def tqdm_thread_map(func: Callable, args: List[Tuple], max_workers: int, disable_tqdm: bool = False):

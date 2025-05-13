@@ -12,7 +12,7 @@ import NDATools
 from NDATools import HttpErrorHandlingStrategy
 from NDATools.Utils import parse_local_files, sanitize_file_path, check_read_permissions, \
     sanitize_windows_download_filename, deconstruct_s3_url, collect_directory_list, get_int_input, \
-    evaluate_yes_no_input, put_request
+    evaluate_yes_no_input, put_request, post_request
 from tests.conftest import MockLogger
 
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s:%(levelname)s:%(message)s")
@@ -177,7 +177,19 @@ def test_put_request(monkeypatch):
     mock_session.return_value.__enter__.return_value.send.return_value = Response()
     with monkeypatch.context() as m:
         m.setattr('requests.Session', mock_session)
-        put_request('https://nda.nih.gov/api/submission')
+        response = put_request('https://nda.nih.gov/api/submission')
+        assert response == {}
+
+
+def test_post_request(monkeypatch):
+    mock_session = MagicMock()
+    mock_session.return_value.__enter__.return_value.send.return_value = Response()
+    with monkeypatch.context() as m:
+        m.setattr('requests.Session', mock_session)
+        response = post_request('https://nda.nih.gov/api/submission', {'key': 'value'})
+        assert response == {}
+        response = post_request('https://nda.nih.gov/api/submission', """{}""")
+        assert response == {}
 
 
 def test_http_error_handling_print_and_exit(monkeypatch):
