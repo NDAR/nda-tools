@@ -399,7 +399,7 @@ def get_object(s3_url, /, access_key_id, secret_access_key, session_token):
         exit(1)
 
 
-def execute_in_threadpool(func: Callable, args: List[Tuple], max_workers: int, disable_tqdm: bool = False):
+def tqdm_thread_map(func: Callable, args: List[Tuple], max_workers: int, disable_tqdm: bool = False):
     return thread_map(func, args, max_workers=max_workers, total=len(args), disable=disable_tqdm)
     # manual implementation - keeping for now until decidedly not needed
     # results = []
