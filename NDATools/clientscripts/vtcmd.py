@@ -159,7 +159,7 @@ def validate(args, config):
 
 
 def resume_submission(sub_id, config):
-    submission = config.upload_cli.resume_submission(sub_id, config.directory_list)
+    submission = config.upload_cli.resume(sub_id, config.directory_list)
     print_submission_complete_message(submission, False)
 
 

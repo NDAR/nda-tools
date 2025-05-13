@@ -232,8 +232,36 @@ def test_submit_no_files(monkeypatch, upload_creds, ndar_subject01, user_collect
         results_writer.write_warnings.assert_not_called()
 
 
-def test_resume():
-    pass
+def test_resume(monkeypatch, upload_creds, ndar_subject01, user_collections, complete_submission_package,
+                submission):
+    uploading_submission = submission('test', 'test', 1860, SubmissionStatus.UPLOADING)
+    completed_submission = submission('test', 'test', 1860, SubmissionStatus.SUBMITTED)
+    with monkeypatch.context() as m:
+        m.setattr(sys, 'argv', shlex.split('vtcmd ndarsubject01.csv -r 1 -l some-dir/'))
+        m.setattr(NDATools, '_get_password', MagicMock(return_value='testpassword'))
+        # mock _save_username so we dont try to write information to disk while running tests.
+        m.setattr(NDATools.Configuration.ClientConfiguration, '_save_username', MagicMock(return_value=None))
+        m.setattr(NDATools.upload.submission.api.UserApi, 'is_valid_nda_credentials', MagicMock(return_value=True))
+
+        # first return a completed submission and confirm that the
+        m.setattr(NDATools.upload.submission.api.SubmissionApi, 'get_submission',
+                  MagicMock(return_value=completed_submission))
+
+        # set mock logger so we can run tests on logged stmts
+        m.setattr(NDATools.clientscripts.vtcmd, 'logger', MockLogger())
+        NDATools.clientscripts.vtcmd.main()
+        NDATools.clientscripts.vtcmd.logger.any_call_contains(
+            'You have successfully completed uploading files for submission')
+
+        # NEXT return a submission that has a status of uploading and check that cli attempts to upload files
+        NDATools.clientscripts.vtcmd.logger.reset_mock()
+        m.setattr(NDATools.upload.submission.api.SubmissionApi, 'get_submission',
+                  MagicMock(side_effect=[uploading_submission, completed_submission]))
+        m.setattr(NDATools.upload.submission.associated_file.AssociatedFileUploader, 'start_upload',
+                  MagicMock(return_value=None))
+        NDATools.clientscripts.vtcmd.main()
+        assert NDATools.upload.submission.api.SubmissionApi.get_submission.call_count == 2
+        assert NDATools.upload.submission.associated_file.AssociatedFileUploader.start_upload.call_count == 1
 
 
 def test_replace_submission():

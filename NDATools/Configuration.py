@@ -58,6 +58,7 @@ class ClientConfiguration:
         self.collection_api_endpoint = self.config.get("Endpoints", "collection")
         self.user_api_endpoint = self.config.get("Endpoints", "user")
         self.username = self.config.get("User", "username").lower()
+        # TODO remove args from config
         self._args = args
 
         if args.username:

@@ -180,15 +180,6 @@ class NdaUploadCli:
 
     def __init__(self, client_config):
         self.config = client_config
-        # add warning if more than 1 manifest dir was detected. in later versions of the tool, we are only going to allow users to specify one manifest dir
-        if isinstance(self.config.manifest_path, list):
-            if len(self.config.manifest_path) > 1:
-                logger.warning(
-                    f'Found multiple manifest directories: {self.config.manifest_path}. Only the first one ({self.config.manifest_path[0]}) will be used.')
-            self.manifest_dir = self.config.manifest_path[0]
-        else:
-            # should be NoneType
-            self.manifest_dir = self.config.manifest_path
         ...
 
     @property
@@ -335,12 +326,11 @@ class NdaUploadCli:
                                disable_tqdm=self.config.hide_progress)
 
     def _upload_associated_files(self, submission: Submission, associated_file_dirs: List[PathLike],
-                                 resuming_upload=False) -> Submission:
+                                 resuming_upload=False) -> None:
         if not associated_file_dirs:
             associated_file_dirs = [os.getcwd()]
         logger.info('Preparing to upload associated files.')
         self.associated_files_uploader.start_upload(submission, associated_file_dirs, resuming_upload)
-        return self.submission_api.get_submission(submission.submission_id)
 
     def _build_replacement_package(self, submission_id: int, validated_files: List[ValidatedFile]) -> SubmissionPackage:
         """Builds a submissionPackage for a replacement submission"""
