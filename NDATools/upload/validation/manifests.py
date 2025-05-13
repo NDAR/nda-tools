@@ -63,9 +63,6 @@ class MFUploadContext(UploadContext):
 
 
 class _ManifestFileBatchUploader(BatchFileUploader):
-    def __init__(self, validation_api: ValidationV2Api, max_threads, exit_on_error=False, hide_progress=False):
-        super().__init__(max_threads, exit_on_error, hide_progress)
-        self.api = validation_api
 
     def _get_file_batches(self):
         for c in self.upload_context.credentials_list:
@@ -97,7 +94,7 @@ class _ManifestFileBatchUploader(BatchFileUploader):
             else:
                 logger.info(msg)
             new_dir = get_directory_input('Specify the folder containing the manifest files and try again:')
-            br = self._upload_batch(br.files_not_found, [new_dir], self.upload_context.progress_bar)
+            br = self._upload_batch(br.files_not_found, [new_dir], lambda: self.upload_context.progress_bar.update(1))
 
 
 class ManifestFileUploader:

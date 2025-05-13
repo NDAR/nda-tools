@@ -10,7 +10,7 @@ from NDATools.upload.batch_file_uploader import files_not_found_msg
 from NDATools.upload.cli import ValidatedFile
 from NDATools.upload.validation.api import ValidationManifest, ValidationV2Credentials, \
     ValidationV2Api, ValidationV2
-from NDATools.upload.validation.manifests import ManifestFileUploader, ManifestFile
+from NDATools.upload.validation.manifests import ManifestFileUploader, ManifestFile, MFUploadable
 
 validation_uuid = str(uuid.uuid4())
 found_manifest = {
@@ -91,19 +91,28 @@ def manifest_file():
     return _manifest_file
 
 
-def testfiles_not_found_msg(manifest_file):
+@pytest.fixture
+def mf_uploadable(manifest_file, validation_creds):
+    def _mf_uploadable(filename: str = 'manifest.json'):
+        mf = manifest_file(filename)
+        return MFUploadable(mf, validation_creds)
+
+    return _mf_uploadable
+
+
+def testfiles_not_found_msg(mf_uploadable):
     """ Test the message output to the console """
-    manifests_not_found = [manifest_file(f'manifest{i}.json') for i in range(1, 21)]
+    manifests_not_found = [mf_uploadable(f'manifest{i}.json') for i in range(1, 21)]
     test_path = 'test/manifest/dir'
     msg = files_not_found_msg(manifests_not_found, test_path)
 
-    assert f'The following manifests could not be found in {test_path}:\n' in msg
+    assert f'The following files could not be found in {test_path}:\n' in msg
     for i in range(1, 21):
         assert f'manifest{i}.json' in msg
     assert '...' not in msg
 
     # any more than 20 manifests should be abbreviated
-    manifests_not_found.append(manifest_file('manifest21.json'))
+    manifests_not_found.append(mf_uploadable('manifest21.json'))
     msg = files_not_found_msg(manifests_not_found, test_path)
     assert f'\n... and 1 more' in msg
 
@@ -126,17 +135,17 @@ def test_upload_manifest_not_found_non_interactive(top_level_datadir, validation
 def test_upload_manifest_not_found_interactive(top_level_datadir, validation_creds, monkeypatch, tmp_path):
     """Test that start_upload prompts user if manifest is not found, and re-attempts upload if interactive is true"""
     manifest_uploader = ManifestFileUploader(MagicMock(spec=ValidationV2Api), 1, False, True)
-    manifest_uploader._handle_manifests_not_found = MagicMock(wraps=manifest_uploader._handle_manifests_not_found)
+    manifest_uploader.uploader._post_batch_hook = MagicMock(wraps=manifest_uploader.uploader._post_batch_hook)
     with monkeypatch.context() as m:
         correct_directory = str(top_level_datadir / 'validation')
         m.setattr('builtins.input', MagicMock(return_value=correct_directory))
         manifest_uploader.start_upload([validation_creds], tmp_path)
-        assert manifest_uploader._handle_manifests_not_found.call_count == 1
+        assert manifest_uploader.uploader._post_batch_hook.call_count == 1
         validation_creds.upload.assert_called_with(f'{correct_directory}/{found_manifest["localFileName"]}',
                                                    found_manifest['s3Destination'])
         assert validation_creds.upload.call_count == 1
         builtins.input.assert_called_once_with(
-            'Press the "Enter" key to specify location for manifest files and try again:')
+            'Specify the folder containing the manifest files and try again:')
 
 
 def test_upload_manifest_unexpected_error(top_level_datadir, validation_creds, monkeypatch):

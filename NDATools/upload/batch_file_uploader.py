@@ -29,7 +29,6 @@ class Uploadable(ABC):
         return self._path
 
     @path.setter
-    @abstractmethod
     def path(self, new_value):
         self._path = new_value
 
