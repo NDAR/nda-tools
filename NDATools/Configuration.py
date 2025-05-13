@@ -190,4 +190,4 @@ class ClientConfiguration:
                                                                 self.worker_threads,
                                                                 force,
                                                                 hide_progress,
-                                                                self.config.batch_size)
+                                                                self.batch_size)

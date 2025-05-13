@@ -1,10 +1,8 @@
 import functools
 import logging
 from collections import defaultdict
-from typing import List
 
 from NDATools.Utils import exit_error, evaluate_yes_no_input
-from NDATools.upload.cli import ValidatedFile
 from NDATools.upload.submission.api import SubmissionApi, Submission, SubmissionDetails
 
 logger = logging.getLogger(__name__)
@@ -27,13 +25,9 @@ def check_replacement_authorized(config, submission_id):
                     submission_id))
 
 
-def _check_missing_data_for_resubmission(validated_files: List[ValidatedFile], submission_details: SubmissionDetails):
+def _check_missing_data_for_resubmission(validated_files, submission_details: SubmissionDetails):
     def add(d, v):
-        if isinstance(v, ValidatedFile):
-            d[v.short_name] += v.row_count
-        else:
-            d[v.short_name] += v.rows
-        return d
+        d[v.short_name] += v.row_count
 
     # create a dictionary containing row counts per datastructure in validated_files
     provided_row_counts = functools.reduce(add, validated_files, defaultdict(int))
@@ -65,7 +59,7 @@ def _check_missing_data_for_resubmission(validated_files: List[ValidatedFile], s
             exit_error(message='')
 
 
-def _check_unrecognized_datastructures(validated_files: List[ValidatedFile], submission_details: SubmissionDetails):
+def _check_unrecognized_datastructures(validated_files, submission_details: SubmissionDetails):
     short_names_provided = {v.short_name for v in validated_files}
     short_names_in_submission = {v.short_name for v in submission_details.data_structure_details}
     unrecognized_ds = short_names_provided.difference(short_names_in_submission)
@@ -75,7 +69,7 @@ def _check_unrecognized_datastructures(validated_files: List[ValidatedFile], sub
         exit_error(message=message)
 
 
-class ReplacementPackageInfo():
+class ReplacementPackageInfo:
     def __init__(self, submission_id, collection_id, title, description, validation_uuids):
         self.submission_id = submission_id
         self.collection_id = collection_id
@@ -84,7 +78,7 @@ class ReplacementPackageInfo():
         self.validation_uuids = validation_uuids
 
 
-def build_replacement_package_info(validated_files: List[ValidatedFile], submission: Submission,
+def build_replacement_package_info(validated_files, submission: Submission,
                                    submission_details: SubmissionDetails) -> ReplacementPackageInfo:
     # perform some checks before attempting to build the package
     _check_unrecognized_datastructures(validated_files, submission_details)
@@ -95,7 +89,7 @@ def build_replacement_package_info(validated_files: List[ValidatedFile], submiss
                                   submission.dataset_description, validation_uuid)
 
 
-def _generate_uuids_for_qa_workflow(validated_files: List[ValidatedFile], submission_details: SubmissionDetails):
+def _generate_uuids_for_qa_workflow(validated_files, submission_details: SubmissionDetails):
     new_uuids = {vf.uuid for vf in validated_files}
     # create a dictionary containing validation-uuids per datastructure in validated_files
     validation_uuids_by_short_name = defaultdict(set)

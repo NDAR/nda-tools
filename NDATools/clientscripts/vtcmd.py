@@ -3,13 +3,11 @@ import logging
 import random
 import traceback
 
-from NDATools.upload.submission.submission import Submission, SubmissionPackage
-
 import NDATools
 from NDATools import authenticate
 from NDATools.Configuration import ClientConfiguration
 from NDATools.Utils import get_non_blank_input, exit_error, get_int_input
-from NDATools.upload.submission.api import CollectionApi, SubmissionStatus
+from NDATools.upload.submission.api import CollectionApi
 from NDATools.upload.submission.resubmission import check_replacement_authorized
 from NDATools.upload.validation.api import ValidationV2Api
 
@@ -95,11 +93,6 @@ def parse_args():
     return args
 
 
-class Status:
-    UPLOADING = 'Uploading'
-    SYSERROR = 'SystemError'
-
-
 def check_args(args, config):
     if args.replace_submission:
         if args.title or args.description or args.collectionID:
@@ -167,8 +160,7 @@ def validate(args, config):
 
 def resume_submission(sub_id, config):
     submission = config.upload_cli.resume_submission(sub_id, config.directory_list)
-    if submission.status != SubmissionStatus.UPLOADING:
-        print_submission_complete_message(submission, False)
+    print_submission_complete_message(submission, False)
 
 
 def collect_submission_parameters(config: ClientConfiguration):
@@ -206,27 +198,17 @@ def print_submission_complete_message(submission, replacement):
               (submission.id, submission.status))
 
 
-def replace_submission(validated_files, args, config):
-    submission = config.upload_cli.replace_submission(args.replacement_submission, validated_files,
+def replace_submission(validated_files, config):
+    submission = config.upload_cli.replace_submission(config.replace_submission, validated_files,
                                                       config.directory_list)
     logger.info("Submission replaced successfully.")
-    _finish_submission(submission, replacement=True)
+    print_submission_complete_message(submission, replacement=True)
 
 
-def submit(validated_files, args, config):
+def submit(validated_files, config):
     collection_id, name, description = collect_submission_parameters(config)
     submission = config.upload_cli.submit(validated_files, collection_id, name, description, config.directory_list)
-    _finish_submission(submission)
-
-
-def _finish_submission(submission, replacement=False):
-    if submission.submission_id:
-        logger.info('Submission ID: {}'.format(str(submission.submission_id)))
-    if submission.status == Status.UPLOADING:
-        logger.info('Preparing to upload associated files.')
-        submission.upload_submission_files()
-    if submission.status != Status.UPLOADING:
-        print_submission_complete_message(submission, replacement=replacement)
+    print_submission_complete_message(submission, replacement=False)
 
 
 def set_validation_api_version(config):
@@ -259,9 +241,9 @@ def main():
         validated_files = validate(args, config)
         if args.buildPackage:
             if args.replace_submission:
-                replace_submission(validated_files, args, config)
+                replace_submission(validated_files, config)
             else:
-                submit(validated_files, args, config)
+                submit(validated_files, config)
 
 
 if __name__ == "__main__":

@@ -338,6 +338,7 @@ class NdaUploadCli:
                                  resuming_upload=False) -> Submission:
         if not associated_file_dirs:
             associated_file_dirs = [os.getcwd()]
+        logger.info('Preparing to upload associated files.')
         self.associated_files_uploader.start_upload(submission, associated_file_dirs, resuming_upload)
         return self.submission_api.get_submission(submission.submission_id)
 
