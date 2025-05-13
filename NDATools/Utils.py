@@ -8,7 +8,6 @@ import re
 import sys
 import threading
 import time
-import traceback
 import urllib.parse
 from pathlib import Path
 from typing import Callable, List, Tuple
@@ -189,15 +188,6 @@ def evaluate_yes_no_input(message):
             return user_input.lower()
         else:
             print("Input not recognized. Please enter 'y', or 'n'")
-
-
-def get_traceback():
-    exc_type, exc_value, exc_tb = sys.exc_info()
-    tbe = traceback.TracebackException(
-        exc_type, exc_value, exc_tb,
-    )
-    tb = ''.join(tbe.format())
-    return tb
 
 
 # return bucket and key for url (handles http and s3 protocol)

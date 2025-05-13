@@ -243,3 +243,12 @@ def test_http_error_handling_print_and_exit(monkeypatch):
             'An unexpected error was encountered and the program could not continue.')
         assert not NDATools.Utils.logger.error.any_call_contains('Error message from service was: \n ')
         NDATools.Utils.exit_error.call_count == 1
+
+
+def test_exit_normal(monkeypatch):
+    with monkeypatch.context() as m:
+        m.setattr(NDATools.Utils.logger, 'info', MockLogger())
+        m.setattr(os, '_exit', MagicMock())
+        NDATools.Utils.exit_normal('Exiting normally')
+        NDATools.Utils.logger.info.any_call_contains('Exiting normally')
+        os._exit.call_count == 1

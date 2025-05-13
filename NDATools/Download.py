@@ -6,6 +6,7 @@ import pathlib
 import platform
 import shutil
 import tempfile
+import traceback
 import uuid
 from queue import Queue
 from shutil import copyfile
@@ -43,7 +44,7 @@ class ThreadPool:
                 except Exception as e:
                     # An exception happened in this thread
                     logger.info(str(e))
-                    logger.info(get_traceback())
+                    logger.info(traceback.print_exc())
                 finally:
                     # Mark this task as done, whether an exception happened or not
                     self.tasks.task_done()
@@ -588,7 +589,7 @@ class Download(Protocol):
                 logger.error(message)
         else:
             logger.error(str(e))
-            logger.error(get_traceback())
+            logger.error(traceback.print_exc())
             if 'operation: Access Denied' in str(e):
                 logger.error('')
                 logger.error(
