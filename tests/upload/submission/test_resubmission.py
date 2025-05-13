@@ -189,8 +189,8 @@ def test_build_replacement_package_info_missing_data_discontinue(monkeypatch, mo
         build_replacement_package_info([validated_file], submission, submission_details)
 
     prompt = '\nIf you update your submission with these files, the missing data will be reflected in your data-expected numbers'
-    prompt += '\nAre you sure you want to continue? <Yes/No>: '
-    mock_input.assert_called_once_with(prompt, 'n')
+    prompt += '\nAre you sure you want to continue? (y/n): '
+    mock_input.assert_called_once_with(prompt)
     mock_exit.assert_called_once()
 
 
@@ -211,8 +211,8 @@ def test_build_replacement_package_info_missing_data_continue(monkeypatch, mock_
                                                                                       submission_details)
 
     prompt = '\nIf you update your submission with these files, the missing data will be reflected in your data-expected numbers'
-    prompt += '\nAre you sure you want to continue? <Yes/No>: '
-    mock_input.assert_called_once_with(prompt, 'n')
+    prompt += '\nAre you sure you want to continue? (y/n): '
+    mock_input.assert_called_once_with(prompt)
 
     assert replacement_package_info.submission_id == submission_id
     assert replacement_package_info.collection_id == collection_id

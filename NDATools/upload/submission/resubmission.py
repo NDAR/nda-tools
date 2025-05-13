@@ -59,8 +59,8 @@ def _check_missing_data_for_resubmission(validated_files, submission_details: Su
                                                                 tuple_expected_actual[1],
                                                                 tuple_expected_actual[2]))
         prompt = '\nIf you update your submission with these files, the missing data will be reflected in your data-expected numbers'
-        prompt += '\nAre you sure you want to continue? <Yes/No>: '
-        proceed = evaluate_yes_no_input(prompt, 'n')
+        prompt += '\nAre you sure you want to continue? (y/n): '
+        proceed = evaluate_yes_no_input(prompt)
         if str(proceed).lower() == 'n':
             exit_error(message='')
 

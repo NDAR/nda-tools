@@ -61,19 +61,18 @@ class HttpErrorHandlingStrategy():
             message = 'Error authenticating the endpoint: incorrect NDA username or password'
         elif 'content-type' in r.headers and 'json' in r.headers['Content-Type']:
             try:
-                message = r.json()
-                if message.get('message', None):
-                    message = message.get('message')
+                response_json = r.json()
+                if 'message' in response_json:
+                    message = response_json['message']
             except (ValueError, json.JSONDecodeError):
                 message = r.text
         else:
             message = r.text
 
+        could_not_continue = 'An unexpected error was encountered and the program could not continue.'
+        logger.error('\n%s' % could_not_continue)
         if message is not None and len(str(message).strip()) > 0:
-            logger.error(
-                '\nAn unexpected error was encountered and the program could not continue. Error message from service was: \n%s' % message)
-        else:
-            logger.error('\nAn unexpected error was encountered and the program could not continue.\n')
+            logger.error('\nError message from service was: \n%s' % message)
         exit_error()
 
     @staticmethod
@@ -184,23 +183,13 @@ def check_read_permissions(file):
     return False
 
 
-def evaluate_yes_no_input(message, default_input=None):
+def evaluate_yes_no_input(message):
     while True:
-        default_print = ' (Y/n)' if default_input.upper() == 'Y' else ' (y/N)' if default_input.upper() == 'N' else ''
-        user_input = input('{}{}'.format(message, default_print)) or default_input
-        if str(user_input).upper() in ['Y', 'N']:
+        user_input = input(message)
+        if str(user_input).lower() in ['y', 'n']:
             return user_input.lower()
         else:
-            print('Input not recognized.')
-
-
-def get_error():
-    exc_type, exc_value, exc_tb = sys.exc_info()
-    tbe = traceback.TracebackException(
-        exc_type, exc_value, exc_tb,
-    )
-    ex = ''.join(tbe.format_exception_only())
-    return 'Error: {}'.format(ex)
+            print("Input not recognized. Please enter 'y', or 'n'")
 
 
 def get_traceback():
@@ -401,16 +390,3 @@ def get_object(s3_url, /, access_key_id, secret_access_key, session_token):
 
 def tqdm_thread_map(func: Callable, args: List[Tuple], max_workers: int, disable_tqdm: bool = False):
     return thread_map(func, args, max_workers=max_workers, total=len(args), disable=disable_tqdm)
-    # manual implementation - keeping for now until decidedly not needed
-    # results = []
-    # with tqdm(total=len(args), disable=self.config.hide_progress or disable_tqdm) as progress_bar, \
-    #         ThreadPoolExecutor(max_workers=self.config.worker_threads) as executor:
-    #     # executor.map seems to block whereas executor.submit doesnt...
-    #     futures = list(map(lambda arg: executor.submit(func, *arg), args))
-    #     for result in concurrent.futures.as_completed(futures):
-    #         r = result.result()
-    #         results.append(r)
-    #         if cb:
-    #             cb(r)
-    #         progress_bar.update(1)
-    # return results

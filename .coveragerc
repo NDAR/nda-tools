@@ -6,4 +6,4 @@ omit =
     tests/**/*.py
     # omit file for nda command until its integrated. It is not setup as an entrypoint in setup.py so should not be executed by the user
     NDATools/clientscripts/nda.py
-fail_under=60
+fail_under=69
