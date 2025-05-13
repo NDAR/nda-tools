@@ -286,8 +286,7 @@ class NdaUploadCli:
             resource = self.validation_api.wait_validation_complete(creds.uuid, self.config.validation_timeout, False)
             return ValidationV2Request(f_name, creds, resource)
 
-        requests: List[ValidationV2Request] = list(
-            self._tqdm_thread_map(initiate_request, [(f,) for f in file_names]))
+        requests: List[ValidationV2Request] = list(self._tqdm_thread_map(initiate_request, file_names))
 
         validated_files = [ValidatedFile(req.file, v2_resource=req.resource, v2_creds=req.creds) for req in
                            requests if req.resource.status != ValidationStatus.PENDING_MANIFESTS]
@@ -298,7 +297,7 @@ class NdaUploadCli:
 
         # Process requests with a status of 'PendingManifests' by uploading manifest files and waiting for status to change
         manifest_requests = [m for m in requests if m.resource.status == ValidationStatus.PENDING_MANIFESTS]
-        self.manifests_uploader.upload_manifests([m.creds for m in manifest_requests], manifests_dir)
+        self.manifests_uploader.start_upload([m.creds for m in manifest_requests], manifests_dir)
 
         def wait_manifest_validation_complete(req: ValidationV2Request):
             resource = self.validation_api.wait_validation_complete(req.creds.uuid,
@@ -317,7 +316,7 @@ class NdaUploadCli:
                 return ValidatedFile(req.file, v2_resource=resource, v2_creds=req.creds)
 
         validated_files.extend(list(
-            self._tqdm_thread_map(wait_manifest_validation_complete, [(r,) for r in manifest_requests])))
+            self._tqdm_thread_map(wait_manifest_validation_complete, manifest_requests)))
         return validated_files
 
     def _tqdm_thread_map(self, func: Callable, args: List[Tuple]):

@@ -160,6 +160,11 @@ def validation_v2_response():
 
 
 @pytest.fixture
+def fmriresults01_pending(validation_v2_response):
+    return validation_v2_response('fmriresults01', 'PendingManifests')
+
+
+@pytest.fixture
 def fmriresults01(validation_v2_response):
     return validation_v2_response('fmriresults01')
 
@@ -366,5 +371,60 @@ def test_replace_submission(monkeypatch, upload_creds, ndar_subject01, image03, 
         assert NDATools.upload.submission.associated_file.AssociatedFileUploader.start_upload.call_count == 1
 
 
-def test_submit_with_manifests():
-    pass
+def test_submit_with_manifests(monkeypatch, upload_creds, fmriresults01, fmriresults01_pending,
+                               user_collections, complete_submission_package, submission, results_writer):
+    uploading_submission = submission('title', 'description', 1860, SubmissionStatus.UPLOADING)
+    completed_submission = submission('title', 'description', 1860, SubmissionStatus.SUBMITTED)
+    fmriresults01_creds = upload_creds(fmriresults01.uuid)
+
+    with monkeypatch.context() as m:
+        m.setattr(sys, 'argv',
+                  shlex.split(
+                      'vtcmd fmriresults01.csv -l some-dir/ -m manifests_dir/ -b -t title -d description -c 1860'))
+        m.setattr(NDATools, '_get_password', MagicMock(return_value='testpassword'))
+        # mock _save_username so we dont try to write information to disk while running tests.
+        m.setattr(NDATools.Configuration.ClientConfiguration, '_save_username', MagicMock(return_value=None))
+        m.setattr(NDATools.upload.submission.api.UserApi, 'is_valid_nda_credentials', MagicMock(return_value=True))
+        m.setattr(NDATools.upload.validation.results_writer.ResultsWriterFactory, 'get_writer',
+                  MagicMock(return_value=results_writer))
+
+        # mock validation api calls
+        m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'get_v2_routing_percent', MagicMock(return_value=1))
+        m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'request_upload_credentials',
+                  MagicMock(side_effect=[fmriresults01_creds]))
+        m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'wait_validation_complete',
+                  MagicMock(side_effect=[fmriresults01_pending, fmriresults01]))
+
+        # mock submission api calls
+        m.setattr(NDATools.upload.submission.api.SubmissionApi, 'create_submission',
+                  MagicMock(side_effect=[uploading_submission]))
+        m.setattr(NDATools.upload.submission.api.SubmissionApi, 'get_submission',
+                  MagicMock(side_effect=[completed_submission]))
+
+        # mock submission-package call
+        m.setattr(NDATools.upload.submission.api.CollectionApi, 'get_user_collections',
+                  MagicMock(return_value=user_collections))
+        m.setattr(NDATools.upload.submission.api.SubmissionPackageApi, 'build_package',
+                  MagicMock(return_value=complete_submission_package))
+
+        # mock the file uploaders
+        m.setattr(NDATools.upload.submission.associated_file.AssociatedFileUploader, 'start_upload',
+                  MagicMock(return_value=None))
+        m.setattr(NDATools.upload.validation.manifests.ManifestFileUploader, 'start_upload',
+                  MagicMock(return_value=None))
+
+        # set mock logger so we can run tests on logged stmts
+        m.setattr(NDATools.clientscripts.vtcmd, 'logger', MockLogger())
+        NDATools.clientscripts.vtcmd.main()
+
+        # check the program output
+        NDATools.clientscripts.vtcmd.logger.any_call_contains(
+            'have successfully completed uploading files for submission')
+        # check the arguments to the build-package call
+        assert NDATools.upload.submission.api.SubmissionPackageApi.build_package.call_args_list[0][0][0] == 1860
+        assert NDATools.upload.submission.api.SubmissionPackageApi.build_package.call_args_list[0][0][1] == 'title'
+        assert NDATools.upload.submission.api.SubmissionPackageApi.build_package.call_args_list[0][0][
+                   2] == 'description'
+        # check the files were uploaded because the submission returned from replace_submission had a status of 'Uploading'
+        assert NDATools.upload.submission.associated_file.AssociatedFileUploader.start_upload.call_count == 1
+        assert NDATools.upload.validation.manifests.ManifestFileUploader.start_upload.call_count == 1
