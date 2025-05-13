@@ -181,7 +181,7 @@ def _get_user_credentials(config) -> Tuple[str, str]:
     while not api.is_valid_nda_credentials(username, password):
         _use_keyring = False
         username = get_username()
-        _get_password(username)
+        password = _get_password(username)
     _try_save_password_keyring(username, password)
     return username, password
 
@@ -200,13 +200,3 @@ def authenticate(config):
     username, password = _get_user_credentials(config)
     config.update_with_auth(username, password)
     return config
-
-
-upload_client = None
-
-
-def get_upload_client():
-    global upload_client
-    if not upload_client:
-        upload_client = NDA().upload_client()
-    return upload_client

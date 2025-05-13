@@ -69,7 +69,11 @@ class AssociatedFile(BaseModel):
 
 class SubmissionStatus(str, enum.Enum):
     UPLOADING = 'Uploading'
-    SUBMITTED = 'Submitted_Prototype'
+    SUBMITTED_PROTOTYPE = 'Submitted_Prototype'
+    SUBMITTED = 'Submitted'
+    PROCESSING = 'PROCESSING'
+    COMPLETE = 'Upload Completed'
+    ERROR_ON_DATA_LOAD = 'Error on Data Load'
 
 
 class Submission(BaseModel):

@@ -6,10 +6,11 @@ from unittest.mock import MagicMock
 import pytest
 
 import NDATools
+from NDATools.upload.batch_file_uploader import files_not_found_msg
 from NDATools.upload.cli import ValidatedFile
 from NDATools.upload.validation.api import ValidationManifest, ValidationV2Credentials, \
     ValidationV2Api, ValidationV2
-from NDATools.upload.validation.manifests import ManifestsUploader, _manifests_not_found_msg, ManifestFile
+from NDATools.upload.validation.manifests import ManifestFileUploader, ManifestFile
 
 validation_uuid = str(uuid.uuid4())
 found_manifest = {
@@ -90,11 +91,11 @@ def manifest_file():
     return _manifest_file
 
 
-def test_manifests_not_found_msg(manifest_file):
+def testfiles_not_found_msg(manifest_file):
     """ Test the message output to the console """
     manifests_not_found = [manifest_file(f'manifest{i}.json') for i in range(1, 21)]
     test_path = 'test/manifest/dir'
-    msg = _manifests_not_found_msg(manifests_not_found, test_path)
+    msg = files_not_found_msg(manifests_not_found, test_path)
 
     assert f'The following manifests could not be found in {test_path}:\n' in msg
     for i in range(1, 21):
@@ -103,33 +104,33 @@ def test_manifests_not_found_msg(manifest_file):
 
     # any more than 20 manifests should be abbreviated
     manifests_not_found.append(manifest_file('manifest21.json'))
-    msg = _manifests_not_found_msg(manifests_not_found, test_path)
+    msg = files_not_found_msg(manifests_not_found, test_path)
     assert f'\n... and 1 more' in msg
 
 
 def test_upload_manifest(top_level_datadir, validation_creds):
     """Test that a manifest will be uploaded if the manifest is found"""
-    manifest_uploader = ManifestsUploader(MagicMock(spec=ValidationV2Api), 1, True, True)
-    manifest_uploader.upload_manifests([validation_creds], top_level_datadir / 'validation')
+    manifest_uploader = ManifestFileUploader(MagicMock(spec=ValidationV2Api), 1, True, True)
+    manifest_uploader.start_upload([validation_creds], top_level_datadir / 'validation')
     assert validation_creds.upload.call_count == 1
 
 
 def test_upload_manifest_not_found_non_interactive(top_level_datadir, validation_creds_not_found, monkeypatch):
-    """Test that upload_manifests exits program with error if manifest is not found and interactive is false"""
-    manifest_uploader = ManifestsUploader(MagicMock(spec=ValidationV2Api), 1, True, True)
+    """Test that start_upload exits program with error if manifest is not found and interactive is false"""
+    manifest_uploader = ManifestFileUploader(MagicMock(spec=ValidationV2Api), 1, True, True)
     with monkeypatch.context() as m, pytest.raises(SystemExit):
         m.setattr(NDATools.upload.validation.manifests, 'exit_error', MagicMock(side_effect=SystemExit))
-        manifest_uploader.upload_manifests([validation_creds_not_found], top_level_datadir)
+        manifest_uploader.start_upload([validation_creds_not_found], top_level_datadir)
 
 
 def test_upload_manifest_not_found_interactive(top_level_datadir, validation_creds, monkeypatch, tmp_path):
-    """Test that upload_manifests prompts user if manifest is not found, and re-attempts upload if interactive is true"""
-    manifest_uploader = ManifestsUploader(MagicMock(spec=ValidationV2Api), 1, False, True)
+    """Test that start_upload prompts user if manifest is not found, and re-attempts upload if interactive is true"""
+    manifest_uploader = ManifestFileUploader(MagicMock(spec=ValidationV2Api), 1, False, True)
     manifest_uploader._handle_manifests_not_found = MagicMock(wraps=manifest_uploader._handle_manifests_not_found)
     with monkeypatch.context() as m:
         correct_directory = str(top_level_datadir / 'validation')
         m.setattr('builtins.input', MagicMock(return_value=correct_directory))
-        manifest_uploader.upload_manifests([validation_creds], tmp_path)
+        manifest_uploader.start_upload([validation_creds], tmp_path)
         assert manifest_uploader._handle_manifests_not_found.call_count == 1
         validation_creds.upload.assert_called_with(f'{correct_directory}/{found_manifest["localFileName"]}',
                                                    found_manifest['s3Destination'])
@@ -140,9 +141,9 @@ def test_upload_manifest_not_found_interactive(top_level_datadir, validation_cre
 
 def test_upload_manifest_unexpected_error(top_level_datadir, validation_creds, monkeypatch):
     """ Test that an unexpected error causes the program to exit early """
-    manifest_uploader = ManifestsUploader(MagicMock(spec=ValidationV2Api), 1, True, True)
+    manifest_uploader = ManifestFileUploader(MagicMock(spec=ValidationV2Api), 1, True, True)
     validation_creds.upload = MagicMock(side_effect=Exception('Unexpected error'))
 
     with pytest.raises(SystemExit), monkeypatch.context() as m:
         m.setattr(NDATools.upload.validation.manifests, 'exit_error', MagicMock(side_effect=SystemExit))
-        manifest_uploader.upload_manifests([validation_creds], top_level_datadir)
+        manifest_uploader.start_upload([validation_creds], top_level_datadir)
