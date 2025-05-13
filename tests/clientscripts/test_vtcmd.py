@@ -9,7 +9,7 @@ import NDATools
 from NDATools.clientscripts.vtcmd import validate
 from NDATools.upload.cli import ValidatedFile
 from NDATools.upload.submission.api import SubmissionHistory, NdaCollection, SubmissionPackage, PackagingStatus, \
-    SubmissionStatus, Submission
+    SubmissionStatus, Submission, SubmissionDetails
 from NDATools.upload.validation.api import ValidationV2Credentials, ValidationV2
 from tests.conftest import MockLogger
 
@@ -160,6 +160,16 @@ def validation_v2_response():
 
 
 @pytest.fixture
+def fmriresults01(validation_v2_response):
+    return validation_v2_response('fmriresults01')
+
+
+@pytest.fixture
+def image03(validation_v2_response):
+    return validation_v2_response('image03')
+
+
+@pytest.fixture
 def ndar_subject01(validation_v2_response):
     return validation_v2_response('ndar_subject01')
 
@@ -264,5 +274,97 @@ def test_resume(monkeypatch, upload_creds, ndar_subject01, user_collections, com
         assert NDATools.upload.submission.associated_file.AssociatedFileUploader.start_upload.call_count == 1
 
 
-def test_replace_submission():
+@pytest.fixture
+def submission_details():
+    return SubmissionDetails(**{
+        'validation_uuids': ['aaa', 'bbb'],
+        'submissionId': 1,
+        'pendingChanges': [
+            {
+                'shortName': 'image03',
+                'rows': 1,
+                'validationUuids': ['aaa']
+            },
+            {
+                'shortName': 'ndar_subject01',
+                'rows': 1,
+                'validationUuids': ['bbb']
+            }
+        ]
+    })
+
+
+@pytest.fixture
+def submission_history():
+    return [SubmissionHistory(**{
+        'replacement_authorized': True,
+        'created_date': '10/10/2023',
+        'created_by': '123456'
+    })]
+
+
+def test_replace_submission(monkeypatch, upload_creds, ndar_subject01, image03, user_collections,
+                            complete_submission_package, submission, results_writer, submission_details,
+                            submission_history):
+    uploading_submission = submission('title', 'description', 1860, SubmissionStatus.UPLOADING)
+    completed_submission = submission('title', 'description', 1860, SubmissionStatus.SUBMITTED)
+    image03_creds = upload_creds(image03.uuid)
+
+    with monkeypatch.context() as m:
+        # user is only going to be replacing the data in image03. The user will not be replacing the data in ndar_subject01
+        m.setattr(sys, 'argv', shlex.split('vtcmd image03.csv -rs 1 -l some-dir/'))
+        m.setattr(NDATools, '_get_password', MagicMock(return_value='testpassword'))
+        # mock _save_username so we dont try to write information to disk while running tests.
+        m.setattr(NDATools.Configuration.ClientConfiguration, '_save_username', MagicMock(return_value=None))
+        m.setattr(NDATools.upload.submission.api.UserApi, 'is_valid_nda_credentials', MagicMock(return_value=True))
+        m.setattr(NDATools.upload.validation.results_writer.ResultsWriterFactory, 'get_writer',
+                  MagicMock(return_value=results_writer))
+
+        # mock validation api calls
+        m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'get_v2_routing_percent', MagicMock(return_value=1))
+        m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'request_upload_credentials',
+                  MagicMock(side_effect=[image03_creds]))
+        m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'wait_validation_complete',
+                  MagicMock(side_effect=[image03]))
+
+        # mock submission api calls
+        m.setattr(NDATools.upload.submission.api.SubmissionApi, 'get_submission',
+                  MagicMock(side_effect=[completed_submission, completed_submission]))
+        m.setattr(NDATools.upload.submission.api.SubmissionApi, 'get_submission_details',
+                  MagicMock(return_value=submission_details))
+        m.setattr(NDATools.upload.submission.api.SubmissionApi, 'get_submission_history',
+                  MagicMock(return_value=submission_history))
+        m.setattr(NDATools.upload.submission.api.SubmissionApi, 'replace_submission',
+                  MagicMock(return_value=uploading_submission))
+
+        # mock submission-package call
+        m.setattr(NDATools.upload.submission.api.SubmissionPackageApi, 'build_package',
+                  MagicMock(return_value=complete_submission_package))
+
+        # mock the file uploader
+        m.setattr(NDATools.upload.submission.associated_file.AssociatedFileUploader, 'start_upload',
+                  MagicMock(return_value=None))
+
+        # set mock logger so we can run tests on logged stmts
+        m.setattr(NDATools.clientscripts.vtcmd, 'logger', MockLogger())
+        NDATools.clientscripts.vtcmd.main()
+
+        # check the program output
+        NDATools.clientscripts.vtcmd.logger.any_call_contains('You have successfully replaced submission')
+        # check the arguments to the build-package call
+        assert NDATools.upload.submission.api.SubmissionPackageApi.build_package.call_args_list[0][0][0] == 1860
+        assert NDATools.upload.submission.api.SubmissionPackageApi.build_package.call_args_list[0][0][1] == 'title'
+        assert NDATools.upload.submission.api.SubmissionPackageApi.build_package.call_args_list[0][0][
+                   2] == 'description'
+        build_package_uuids = set(
+            NDATools.upload.submission.api.SubmissionPackageApi.build_package.call_args_list[0][0][3])
+        old_ndar_subject01_uuid = 'bbb'
+        assert build_package_uuids == {image03.uuid, old_ndar_subject01_uuid}
+        assert NDATools.upload.submission.api.SubmissionPackageApi.build_package.call_args_list[0][0][
+                   4] == completed_submission.submission_id
+        # check the files were uploaded because the submission returned from replace_submission had a status of 'Uploading'
+        assert NDATools.upload.submission.associated_file.AssociatedFileUploader.start_upload.call_count == 1
+
+
+def test_submit_with_manifests():
     pass

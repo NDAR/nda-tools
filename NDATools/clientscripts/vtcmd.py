@@ -239,11 +239,10 @@ def main():
         resume_submission(args.resume, config=config)
     else:
         validated_files = validate(args, config)
-        if args.buildPackage:
-            if args.replace_submission:
-                replace_submission(validated_files, config)
-            else:
-                submit(validated_files, config)
+        if args.replace_submission:
+            replace_submission(validated_files, config)
+        elif args.buildPackage:
+            submit(validated_files, config)
 
 
 if __name__ == "__main__":

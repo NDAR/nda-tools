@@ -27,7 +27,13 @@ def check_replacement_authorized(config, submission_id):
 
 def _check_missing_data_for_resubmission(validated_files, submission_details: SubmissionDetails):
     def add(d, v):
-        d[v.short_name] += v.row_count
+        if hasattr(v, 'rows'):
+            d[v.short_name] += v.rows
+        elif hasattr(v, 'row_count'):
+            d[v.short_name] += v.row_count
+        else:
+            raise Exception('Unexpected object type: {}'.format(v))
+        return d
 
     # create a dictionary containing row counts per datastructure in validated_files
     provided_row_counts = functools.reduce(add, validated_files, defaultdict(int))
@@ -90,7 +96,7 @@ def build_replacement_package_info(validated_files, submission: Submission,
 
 
 def _generate_uuids_for_qa_workflow(validated_files, submission_details: SubmissionDetails):
-    new_uuids = {vf.uuid for vf in validated_files}
+    new_uuids = set(submission_details.validation_uuids)
     # create a dictionary containing validation-uuids per datastructure in validated_files
     validation_uuids_by_short_name = defaultdict(set)
     for file in validated_files:
@@ -103,6 +109,6 @@ def _generate_uuids_for_qa_workflow(validated_files, submission_details: Submiss
         # remove uuids from the previous submission for this data-structure
         new_uuids = new_uuids.difference(set(structure_details.validation_uuids))
         # add uuids from the validated_files for this data-structure
-        new_uuids.update({res for res in validation_uuids_by_short_name[short_name]})
+        new_uuids.update(validation_uuids_by_short_name[short_name])
 
     return list(new_uuids)

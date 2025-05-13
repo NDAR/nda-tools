@@ -209,7 +209,7 @@ class NdaUploadCli:
     def submit(self, validated_files: List[ValidatedFile], collection_id: int, title: str, description: str,
                associated_file_dirs: List[PathLike] = None) -> NdaSubmission:
         """Submits data from validated files. A new submission will be created in NDA after this operation succeeds"""
-        package = self._build_package(collection_id, title, description, validated_files)
+        package = self._build_package(collection_id, title, description, [v.uuid for v in validated_files])
         logger.info('Requesting submission for package: {}'.format(package.submission_package_uuid))
         submission = self.submission_api.create_submission(package.submission_package_uuid)
         # print package info to console
@@ -341,9 +341,8 @@ class NdaUploadCli:
                                    pkg.submission_id)
 
     def _build_package(self, collection_id: int, title: str, description: str,
-                       validated_files: List[ValidatedFile], replacement_submission: int = None) -> SubmissionPackage:
+                       validation_uuids: List[str], replacement_submission: int = None) -> SubmissionPackage:
         """Builds a submissionPackage using the passed in parameters as the values for the payload"""
-        validation_uuids = [v.uuid for v in validated_files]
         package = self.submission_package_api.build_package(collection_id, title, description, validation_uuids,
                                                             replacement_submission)
         if package.status == PackagingStatus.PROCESSING:
