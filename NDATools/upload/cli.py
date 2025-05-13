@@ -165,8 +165,9 @@ class ValidatedFile:
 
 
 class NdaSubmission:
-    def __init__(self, collection_id: int, title: str, description: str, validated_files: List[ValidatedFile],
-                 status: str):
+    def __init__(self, id: int, collection_id: int, title: str, description: str, validated_files: List[ValidatedFile],
+                 status: SubmissionStatus):
+        self.id = id
         self.collection_id = collection_id
         self.title = title
         self.description = description
@@ -214,8 +215,8 @@ class NdaUploadCli:
     def associated_files_uploader(self):
         return self.config.associated_files_uploader
 
-    def submit(self, collection_id: int, title: str, description: str,
-               validated_files: List[ValidatedFile], associated_file_dirs: List[PathLike] = None) -> NdaSubmission:
+    def submit(self, validated_files: List[ValidatedFile], collection_id: int, title: str, description: str,
+               associated_file_dirs: List[PathLike] = None) -> NdaSubmission:
         """Submits data from validated files. A new submission will be created in NDA after this operation succeeds"""
         package = self._build_package(collection_id, title, description, validated_files)
         logger.info('Requesting submission for package: {}'.format(package.submission_package_uuid))
@@ -227,8 +228,8 @@ class NdaUploadCli:
         if submission.status == SubmissionStatus.UPLOADING:
             self._upload_associated_files(submission, associated_file_dirs, resuming_upload=True)
             submission = self.submission_api.get_submission(submission.submission_id)
-        return NdaSubmission(submission.collection.id, submission.dataset_title, submission.dataset_description,
-                             validated_files, submission.status)
+        return NdaSubmission(submission.submission_id, submission.collection.id, submission.dataset_title,
+                             submission.dataset_description, validated_files, submission.status)
 
     def resume(self, submission_id: int, associated_file_dirs: List[PathLike] = None) -> NdaSubmission:
         """Resumes an in-progress submission by uploading any remaining Associated Files."""
@@ -236,8 +237,8 @@ class NdaUploadCli:
         if submission.status == SubmissionStatus.UPLOADING:
             self._upload_associated_files(submission, associated_file_dirs, resuming_upload=True)
             submission = self.submission_api.get_submission(submission_id)
-        return NdaSubmission(submission.collection.id, submission.dataset_title, submission.dataset_description,
-                             [], submission.status)
+        return NdaSubmission(submission.submission_id, submission.collection.id, submission.dataset_title,
+                             submission.dataset_description, [], submission.status)
 
     def replace_submission(self, submission_id: int, validated_files: List[ValidatedFile],
                            associated_file_dirs: List[PathLike] = None) -> NdaSubmission:
@@ -245,12 +246,11 @@ class NdaUploadCli:
         package = self._build_replacement_package(submission_id, validated_files)
         logger.info('Requesting submission for package: {}'.format(package.submission_package_uuid))
         submission = self.submission_api.replace_submission(submission_id, package.submission_package_uuid)
-        logger.info("Submission replaced successfully.")
         if submission.status == SubmissionStatus.UPLOADING:
             self._upload_associated_files(submission, associated_file_dirs, resuming_upload=True)
             submission = self.submission_api.get_submission(submission.submission_id)
-        return NdaSubmission(submission.collection.id, submission.dataset_title, submission.dataset_description,
-                             validated_files, submission.status)
+        return NdaSubmission(submission.submission_id, submission.collection.id, submission.dataset_title,
+                             submission.dataset_description, validated_files, submission.status)
 
     def validate_v1(self, file_list, threads) -> List[ValidatedFile]:
         """Validates files using the old validation API. Deprecated and will be removed in a future release"""
@@ -301,7 +301,7 @@ class NdaUploadCli:
         validated_files = [ValidatedFile(req.file, v2_resource=req.resource, v2_creds=req.creds) for req in
                            requests if req.resource.status != ValidationStatus.PENDING_MANIFESTS]
 
-        # if all files completed validation, no additional work needs to be done.
+        # return early if all files completed validation
         if len(validated_files) == len(file_names):
             return validated_files
 

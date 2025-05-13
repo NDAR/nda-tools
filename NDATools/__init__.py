@@ -200,3 +200,13 @@ def authenticate(config):
     username, password = _get_user_credentials(config)
     config.update_with_auth(username, password)
     return config
+
+
+upload_client = None
+
+
+def get_upload_client():
+    global upload_client
+    if not upload_client:
+        upload_client = NDA().upload_client()
+    return upload_client

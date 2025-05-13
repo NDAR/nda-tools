@@ -2,10 +2,10 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from NDATools.upload.submission.submission import LocalAssociatedFile, SubmissionPackage
 
 import NDATools
 from NDATools.upload.submission.api import PackagingStatus
-from NDATools.upload.submission.submission import LocalAssociatedFile, SubmissionPackage
 
 
 @pytest.fixture

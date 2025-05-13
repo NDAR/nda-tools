@@ -3,12 +3,14 @@ import logging
 import random
 import traceback
 
+from NDATools.upload.submission.submission import Submission, SubmissionPackage
+
 import NDATools
 from NDATools import authenticate
+from NDATools.Configuration import ClientConfiguration
 from NDATools.Utils import get_non_blank_input, exit_error, get_int_input
-from NDATools.upload.submission.api import CollectionApi
-from NDATools.upload.submission.resubmission import check_replacement_authorized, build_replacement_package_info
-from NDATools.upload.submission.submission import Submission, SubmissionPackage
+from NDATools.upload.submission.api import CollectionApi, SubmissionStatus
+from NDATools.upload.submission.resubmission import check_replacement_authorized
 from NDATools.upload.validation.api import ValidationV2Api
 
 logger = logging.getLogger(__name__)
@@ -115,7 +117,7 @@ def validate(args, config):
         logger.debug('Using the new validation API.')
         if not config.is_authenticated():
             authenticate(config)
-        validated_files = config.upload_cli.validate(args.files)
+        validated_files = config.upload_cli.validate(args.files, args.manifestPath)
     else:
         logger.debug('Using the old validation API.')
         validated_files = config.upload_cli.validate_v1(args.files, config.worker_threads)
@@ -163,15 +165,14 @@ def validate(args, config):
     return validated_files
 
 
-def resume_submission(sub_id, config=None):
-    submission_svc = Submission(config)
-    submission = submission_svc.resume_submission(sub_id)
-    if submission.status != Status.UPLOADING:
+def resume_submission(sub_id, config):
+    submission = config.upload_cli.resume_submission(sub_id, config.directory_list)
+    if submission.status != SubmissionStatus.UPLOADING:
         print_submission_complete_message(submission, False)
 
 
-def build_package(validated_files, args, config):
-    coll_api = CollectionApi(config.validationtool_api_endpoint, config.username, config.password)
+def collect_submission_parameters(config: ClientConfiguration):
+    coll_api: CollectionApi = config.collection_api
 
     def get_collection_id():
         collections = coll_api.get_user_collections()
@@ -190,44 +191,31 @@ def build_package(validated_files, args, config):
             return get_collection_id()
         return id
 
-    package = SubmissionPackage(config=config)
-
-    logger.info('Building Package')
-    if args.replace_submission:
-        pkg = build_replacement_package_info(validated_files, args, config)
-        return package.build_package(pkg.collection_id, pkg.title, pkg.description, pkg.validation_uuids,
-                                     pkg.submission_id)
-    else:
-        validation_uuids = [v.uuid for v in validated_files]
-        collection_id = get_collection_id()
-        name = config.title or get_non_blank_input('Enter title for dataset name:', 'Title')
-        description = config.description or get_non_blank_input('Enter description for the dataset submission:',
-                                                                'Description')
-        return package.build_package(collection_id, name, description, validation_uuids)
+    collection_id = get_collection_id()
+    name = config.title or get_non_blank_input('Enter title for dataset name:', 'Title')
+    description = config.description or get_non_blank_input('Enter description for the dataset submission:',
+                                                            'Description')
+    return collection_id, name, description
 
 
 def print_submission_complete_message(submission, replacement):
     if replacement:
-        print('\nYou have successfully replaced submission {}.'.format(submission.submission_id))
+        print('\nYou have successfully replaced submission {}.'.format(submission.id))
     else:
         print('\nYou have successfully completed uploading files for submission {} with status: {}'.format
-              (submission.submission_id, submission.status))
+              (submission.id, submission.status))
 
 
 def replace_submission(validated_files, args, config):
-    package_id = build_package(validated_files, args, config)
-    submission_svc = Submission(config=config)
-    logger.info('Requesting submission for package: {}'.format(package_id))
-    submission = submission_svc.replace_submission(args.replacement_submission, package_id)
+    submission = config.upload_cli.replace_submission(args.replacement_submission, validated_files,
+                                                      config.directory_list)
     logger.info("Submission replaced successfully.")
     _finish_submission(submission, replacement=True)
 
 
 def submit(validated_files, args, config):
-    package_id = build_package(validated_files, args, config)
-    logger.info('Requesting submission for package: {}'.format(package_id))
-    submission_srv = Submission(config=config)
-    submission = submission_srv.submit(package_id)
+    collection_id, name, description = collect_submission_parameters(config)
+    submission = config.upload_cli.submit(validated_files, collection_id, name, description, config.directory_list)
     _finish_submission(submission)
 
 

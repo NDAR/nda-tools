@@ -169,12 +169,12 @@ class ClientConfiguration:
 
     def _save_apis(self):
         self.validation_api = ValidationV2Api(self.validation_api_endpoint, self.username, self.password)
-        self.submission_package_api = SubmissionPackageApi(self.config.submission_package_api_endpoint,
-                                                           self.config.username,
-                                                           self.config.password)
-        self.submission_api = SubmissionApi(self.config.submission_api_endpoint, self.config.username,
-                                            self.config.password)
-        self.collection_api = CollectionApi(config.validationtool_api_endpoint, config.username, config.password)
+        self.submission_package_api = SubmissionPackageApi(self.submission_package_api_endpoint,
+                                                           self.username,
+                                                           self.password)
+        self.submission_api = SubmissionApi(self.submission_api_endpoint, self.username,
+                                            self.password)
+        self.collection_api = CollectionApi(self.validationtool_api_endpoint, self.username, self.password)
         # self.force and self.hide_progress is only set in vtcmd
         hide_progress, force = False, False
         if hasattr(self, 'force'):
