@@ -1,5 +1,4 @@
 import json
-from unittest.mock import Mock
 
 import pytest
 
@@ -57,10 +56,10 @@ def manifest_errors():
 
 
 @pytest.fixture
-def validated_file(v2_resource, v2_creds, validation_errors, manifest_errors, monkeypatch):
+def validated_file(v2_resource, v2_creds, validation_errors, manifest_errors, monkeypatch, tmp_path):
     def _validated_file(errors):
-        mock_file = Mock()
-        validated_file = ValidatedFile(mock_file, v2_resource=v2_resource, v2_creds=v2_creds, manifest_errors={})
+        validated_file = ValidatedFile(tmp_path / 'associated-file1.png', v2_resource=v2_resource, v2_creds=v2_creds,
+                                       manifest_errors={})
         monkeypatch.setattr(validated_file, '_errors', errors)
         monkeypatch.setattr(validated_file, '_manifest_errors', manifest_errors)
         return validated_file
