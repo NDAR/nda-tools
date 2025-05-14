@@ -4,6 +4,7 @@ import shlex
 import shutil
 from unittest.mock import MagicMock
 
+import boto3
 import pytest
 from requests.structures import CaseInsensitiveDict
 
@@ -180,11 +181,6 @@ def download_request(tmp_path):
     return DownloadRequest(package_file, presigned_url, 123456789, tmp_path)
 
 
-# line 552
-def test_handle_download_exception(monkeypatch):
-    pass
-
-
 class Response:
     def __init__(self, status_code=200, text='{}', elapsed=2000, headers=None):
         if headers is None:
@@ -210,7 +206,6 @@ class Response:
         pass
 
 
-# line 426
 def test_download_local(monkeypatch, download_mock2, download_request):
     download = download_mock2(args=['-dp', '1189934'])
     mock_session = MagicMock()
@@ -250,9 +245,42 @@ def test_download_local(monkeypatch, download_mock2, download_request):
         assert not os.rename.called
 
 
-# line 494
-def test_download_to_s3(monkeypatch):
+def test_download_to_s3(monkeypatch, download_mock2, download_request):
+    download = download_mock2(args=['-dp', '1189934'])
+    with monkeypatch.context() as m:
+        creds = {
+            'access_key': 'XXX',
+            'secret_key': '123',
+            'session_token': '123',
+            'source_uri': 's3://nda-central/collection-1860/submission-12345/testing.txt',
+            'destination_uri': 's3://personal-bucket/prefix/image03/testing.txt'
+        }
+        m.setattr(download, 'get_temp_creds_for_file', MagicMock(return_value=creds))
+        s3_session = MagicMock()
+        s3_client = MagicMock()
+        s3_resource = MagicMock()
+        head_object_response = {
+            'ContentLength': '999999999999',
+            'ETag': '123123123',
+        }
+
+        m.setattr(boto3.session, 'Session', MagicMock(return_value=s3_session))
+        m.setattr(s3_session, 'client', MagicMock(return_value=s3_client))
+        m.setattr(s3_session, 'resource', MagicMock(return_value=s3_resource))
+        m.setattr(s3_client, 'head_object', MagicMock(return_value=head_object_response))
+        download.download_to_s3(download_request)
+        assert s3_resource.meta.client.copy.called_once_with({
+            'Bucket': 'nda-central',
+            'Key': 'collection-1860/submission-12345/testing.txt',
+        }, 'personal-bucket', 'prefix/image03/testing.txt')
+        assert 'Config' in s3_resource.meta.client.copy.call_args_list[0].kwargs
+        assert 'Callback' in s3_resource.meta.client.copy.call_args_list[0].kwargs
+
+
+# line 552
+def test_handle_download_exception(monkeypatch):
     pass
+
 ## TODO
 # test print-download-progress-report (line 335
 # find_matching_download_job line 653

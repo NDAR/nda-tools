@@ -544,10 +544,7 @@ class Download(Protocol):
             args['Config'] = config
             args['Callback'] = print_upload_part_info
 
-        s3.meta.client.copy(copy_source,
-                            dest_bucket,
-                            dest_path,
-                            **args)
+        s3.meta.client.copy(copy_source, dest_bucket, dest_path, **args)
 
     def handle_download_exception(self, download_request, e, download_local, err_if_exists, package_file,
                                   failed_s3_links_file=None):
