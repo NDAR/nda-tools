@@ -108,7 +108,7 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
 
     def _post_batch_hook(self, batch_results: BatchResults):
         """ REST endpoint to update status of files to COMPLETE"""
-        submission_id = self.upload_context.submission.id
+        submission_id = self.upload_context.submission.submission_id
         updates = [BatchUpdate(file.af_file, AssociatedFileStatus.COMPLETE, file.calculate_size()) for file in
                    batch_results.success]
         errors = self.api.batch_update_associated_file_status(submission_id, updates, AssociatedFileStatus.COMPLETE)
