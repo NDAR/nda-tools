@@ -43,12 +43,12 @@ class ValidationStatus(str, enum.Enum):
 
 
 class ValidatedFile:
-    def __init__(self, file: pathlib.Path, *, v1_resource=None, v2_resource: ValidationV2 = None, v2_creds=None,
+    def __init__(self, file: PathLike, *, v1_resource=None, v2_resource: ValidationV2 = None, v2_creds=None,
                  manifest_errors=None):
         if not manifest_errors:
             manifest_errors = []
 
-        self.file = file
+        self.file = pathlib.Path(file)
         assert v1_resource or v2_resource, "v1_resource or v2_resource must be specified"
         if v2_resource:
             self.status = ValidationStatus(v2_resource.status)
@@ -72,7 +72,7 @@ class ValidatedFile:
                               for err_type, errors
                               in v1_resource['warnings'].items() for i in errors]
             self._associated_files = v1_resource['associated_file_paths']
-            self._manifest_errors = None
+            self._manifest_errors = []
 
     def __hash__(self):
         return hash(self.file) + hash(self.uuid)
