@@ -39,14 +39,14 @@ class AFUploadable(Uploadable):
 
 class AFUploadContext(UploadContext):
     def __init__(self, submission: Submission, resuming_upload: bool, upload_progress: UploadProgress,
-                 transfer_config: TransferConfig, search_folders: List[pathlib.Path], progress_bar: tqdm):
+                 transfer_config: TransferConfig, search_folders: List[pathlib.Path]):
         self.submission = submission
         self.resuming_upload = resuming_upload
         self.upload_progress = upload_progress
         self.transfer_config = transfer_config
         self.files_not_found = []
         self.search_folders = search_folders
-        self.progress_bar = progress_bar
+        self.progress_bar = None
 
     @property
     def total_files(self):
@@ -108,7 +108,7 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
 
     def _post_batch_hook(self, batch_results: BatchResults):
         """ REST endpoint to update status of files to COMPLETE"""
-        submission_id = self.upload_context.submission.id
+        submission_id = self.upload_context.submission.submission_id
         updates = [BatchUpdate(file.af_file, AssociatedFileStatus.COMPLETE, file.calculate_size()) for file in
                    batch_results.success]
         errors = self.api.batch_update_associated_file_status(submission_id, updates, AssociatedFileStatus.COMPLETE)

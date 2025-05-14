@@ -68,7 +68,7 @@ class BatchFileUploader(ABC):
     def start_upload(self, search_folders: List[pathlib.Path], ctx: UploadContext = None):
         with self.upload_lock:
             if not search_folders:
-                search_folders = os.getcwd()
+                search_folders = [pathlib.Path(os.getcwd())]
             self.upload_context = ctx
 
             with self._construct_tqdm() as progress_bar:
