@@ -39,13 +39,14 @@ class AFUploadable(Uploadable):
 
 class AFUploadContext(UploadContext):
     def __init__(self, submission: Submission, resuming_upload: bool, upload_progress: UploadProgress,
-                 transfer_config: TransferConfig, search_folders: List[pathlib.Path]):
+                 transfer_config: TransferConfig, search_folders: List[pathlib.Path], progress_bar: tqdm):
         self.submission = submission
         self.resuming_upload = resuming_upload
         self.upload_progress = upload_progress
         self.transfer_config = transfer_config
         self.files_not_found = []
         self.search_folders = search_folders
+        self.progress_bar = progress_bar
 
     @property
     def total_files(self):
