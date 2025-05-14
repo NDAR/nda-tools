@@ -6,10 +6,12 @@ from unittest.mock import MagicMock
 
 import boto3
 import pytest
+from requests import HTTPError
 from requests.structures import CaseInsensitiveDict
 
 import NDATools
 from NDATools.Download import Download, DownloadRequest
+from tests.conftest import MockLogger
 
 
 def get_presigned_urls_mock(*args, **kwargs):
@@ -171,12 +173,16 @@ def download_mock2(load_from_file, download_config_factory, monkeypatch, tmp_pat
 
 
 @pytest.fixture
-def download_request(tmp_path):
-    package_file = {
+def package_file():
+    return {
         'package_file_id': 12345678,
         'download_alias': 'image03/testing.txt',
         'file_size': 123
     }
+
+
+@pytest.fixture
+def download_request(tmp_path, package_file):
     presigned_url = 'https://s3.amazonaws.com/nda-central/collection-1860/submission-12345/testing.txt?signature=123123'
     return DownloadRequest(package_file, presigned_url, 123456789, tmp_path)
 
@@ -278,8 +284,57 @@ def test_download_to_s3(monkeypatch, download_mock2, download_request):
 
 
 # line 552
-def test_handle_download_exception(monkeypatch):
-    pass
+def test_download_handle_credentials_expired(monkeypatch, download_mock2, download_request, package_file):
+    download = download_mock2(args=['-dp', '1189934'])
+
+    with monkeypatch.context() as m:
+        expired_error = HTTPError(response=Response(status_code=403, text='Request has expired'))
+        m.setattr(download, 'download_local', MagicMock(side_effect=[expired_error, None]))
+        m.setattr(download, 'get_temp_creds_for_file', MagicMock())
+        download_request = download.download_from_s3link(package_file, 'https://asdfasdf/asdfasdf')
+        assert download_request is not None
+        assert download_request.exists
+        assert download_request.download_complete_time is not None
+        assert download.get_temp_creds_for_file.call_count == 1
+
+
+def test_handle_download_exception(monkeypatch, download_mock2, download_request, tmp_path):
+    download = download_mock2(args=['-dp', '1189934'])
+    failed_s3_links_file = tmp_path / 'failed-files.txt'
+    # test handling a generic exception
+    with monkeypatch.context() as m:
+        m.setattr(download, 'write_to_failed_download_link_file', MagicMock())
+        m.setattr(NDATools.Download.logger, 'error', MockLogger())
+        download.handle_download_exception(download_request, Exception('test'), failed_s3_links_file)
+        assert download.write_to_failed_download_link_file.called_once_with(failed_s3_links_file)
+
+    # test extra logging for 404 error
+    not_found_error = HTTPError(response=Response(status_code=404))
+    with monkeypatch.context() as m:
+        m.setattr(download, 'write_to_failed_download_link_file', MagicMock())
+        m.setattr(NDATools.Download.logger, 'error', MockLogger())
+        download.handle_download_exception(download_request, not_found_error, failed_s3_links_file)
+        assert download.write_to_failed_download_link_file.called_once_with(failed_s3_links_file)
+        assert NDATools.Download.logger.error.any_call_contains('This path is incorrect')
+
+    # test extra logging for 403 error
+    forbidden_error = HTTPError(response=Response(status_code=403))
+    with monkeypatch.context() as m:
+        m.setattr(download, 'write_to_failed_download_link_file', MagicMock())
+        m.setattr(NDATools.Download.logger, 'error', MockLogger())
+        download.handle_download_exception(download_request, forbidden_error, failed_s3_links_file)
+        assert download.write_to_failed_download_link_file.called_once_with(failed_s3_links_file)
+        assert NDATools.Download.logger.error.any_call_contains('This is a private bucket')
+
+    # test extra logging for s3-to-s3 transfer errors
+    with monkeypatch.context() as m:
+        m.setattr(download, 'write_to_failed_download_link_file', MagicMock())
+        m.setattr(NDATools.Download.logger, 'error', MockLogger())
+        download.handle_download_exception(download_request, Exception('operation: Access Denied'),
+                                           failed_s3_links_file)
+        assert download.write_to_failed_download_link_file.called_once_with(failed_s3_links_file)
+        assert NDATools.Download.logger.error.any_call_contains(
+            'This error is likely caused by a misconfiguration on the target s3 bucket')
 
 ## TODO
 # test print-download-progress-report (line 335

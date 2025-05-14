@@ -546,47 +546,21 @@ class Download(Protocol):
 
         s3.meta.client.copy(copy_source, dest_bucket, dest_path, **args)
 
-    def handle_download_exception(self, download_request, e, download_local, err_if_exists, package_file,
-                                  failed_s3_links_file=None):
-        if not download_request.presigned_url and download_local:
-            # we couldnt get credentials, which means the service has become un-responsive.
-            # Instruct the user to retry at another time
-            logger.info('')
-            logger.info(
-                'Unexpected Error During File Download - Service Unresponsive. Unable to obtain credentials for file-id {}'.format(
-                    download_request.package_file_id))
-            logger.info('Please re-try downloading files at a later time. ')
-            logger.info('You may contact NDAHelp@mail.nih.gov for assistance in resolving this error.')
-            # use os._exit to kill the whole program. This works even if this is called in a child thread, unlike sys.exit()
-            os._exit(1)
+    def handle_download_exception(self, download_request, e, failed_s3_links_file=None):
 
         self.write_to_failed_download_link_file(failed_s3_links_file, s3_link=download_request.presigned_url,
                                                 source_uri=download_request.nda_s3_url)
-
-        error_code = -1 if not isinstance(e, HTTPError) else int(e.response.status_code)
-        if error_code == 404:
-            message = 'This path is incorrect: {}. Please try again.'.format(download_request.presigned_url)
-            logger.error(message)
-        elif error_code == 403:
-            # if we are using expired credentials, regenerate and resume the download
-            credentials_are_expired = False
-            if download_local:
-                if isinstance(e, requests.exceptions.HTTPError) and 'Request has expired' in e.response.text:
-                    credentials_are_expired = True
-
-            if credentials_are_expired:
-                logger.warning(
-                    f'Temporary credentials have expired for file {download_request.package_file_id}. Regenerating credentials and restarting download')
-                presigned_url = self.get_temp_creds_for_file(download_request.package_file_id)
-                return self.download_from_s3link(package_file, presigned_url, download_local, err_if_exists,
-                                                 failed_s3_links_file)
-            else:
+        logger.error(traceback.print_exc())
+        if isinstance(e, HTTPError):
+            error_code = e.response.status_code
+            if error_code == 404:
+                message = 'This path is incorrect: {}. Please try again.'.format(download_request.presigned_url)
+                logger.error(message)
+            elif error_code == 403:
                 message = '\nThis is a private bucket. Please contact NDAR for help: {}'.format(
                     download_request.presigned_url)
                 logger.error(message)
         else:
-            logger.error(str(e))
-            logger.error(traceback.print_exc())
             if 'operation: Access Denied' in str(e):
                 logger.error('')
                 logger.error(
@@ -595,13 +569,7 @@ class Download(Protocol):
                     "For more information about how to correctly configure the target bucket, run 'downloadcmd -h' and read the description of the s3 argument")
                 logger.error('')
                 time.sleep(2)
-
-        # if source_uri is set, it means they're downloading to s3 bucket and there will not be any partial file
-        if download_request.actual_file_size == 0 and not download_local:
-            try:
-                os.remove(download_request.partial_download_abs_path)
-            except:
-                logger.error('error removing partial file {}'.format(download_request.partial_download_abs_path))
+        return download_request
 
     def download_from_s3link(self, package_file, presigned_url, download_local=None, err_if_exists=False,
                              failed_s3_links_file=None, download_dir=None):
@@ -619,10 +587,18 @@ class Download(Protocol):
             download_request.exists = True
             download_request.download_complete_time = time.strftime("%Y%m%dT%H%M%S")
             return download_request
+        except HTTPError as e:
+            # if we are using expired credentials, regenerate and resume the download
+            if download_local and e.response.status_code == 403 and 'Request has expired' in e.response.text:
+                logger.warning(
+                    f'Temporary credentials have expired for file {download_request.package_file_id}. Regenerating credentials and restarting download')
+                presigned_url = self.get_temp_creds_for_file(download_request.package_file_id)
+                return self.download_from_s3link(package_file, presigned_url, download_local, err_if_exists,
+                                                 failed_s3_links_file)
+            else:
+                return self.handle_download_exception(download_request, e, failed_s3_links_file)
         except Exception as e:
-            self.handle_download_exception(download_request, e, download_local, err_if_exists, package_file,
-                                           failed_s3_links_file)
-            return download_request
+            return self.handle_download_exception(download_request, e, failed_s3_links_file)
 
     def write_to_failed_download_link_file(self, failed_s3_links_file, s3_link, source_uri):
         src_bucket, src_path = deconstruct_s3_url(s3_link if s3_link else source_uri)
@@ -1042,15 +1018,15 @@ class Download(Protocol):
         Stores key-value pairs of (key: package_file_id, value: presigned URL)
         :param id_list: List of package file IDs with max size of 50,000
         """
+
         # Use the batchGeneratePresignedUrls when retrieving multiple files
         logger.debug('Retrieving credentials for {} files'.format(len(id_list)))
         url = self.package_url + '/{}/files/batchGeneratePresignedUrls'.format(self.package_id)
         response = post_request(url, payload=id_list, auth=self.auth,
-                                error_handler=HttpErrorHandlingStrategy.reraise_status,
+                                error_handler=HttpErrorHandlingStrategy.print_and_exit,
                                 deserialize_handler=DeserializeHandler.convert_json)
         creds = {e['package_file_id']: e['downloadURL'] for e in response['presignedUrls']}
-        if not self.verify_flg:
-            logger.debug('Finished retrieving credentials')
+        logger.debug('Finished retrieving credentials')
         return creds
 
     def get_completed_files_in_download(self):

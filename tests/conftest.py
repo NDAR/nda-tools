@@ -81,7 +81,7 @@ class MockLogger(MagicMock):
 
     @property
     def logged_lines(self):
-        return [args for call in self.call_args_list for args in call.args]
+        return [args for call in self.call_args_list for args in call.args if args is not None]
 
     def assert_any_call_contains(self, str): assert self.any_call_contains(str)
 
