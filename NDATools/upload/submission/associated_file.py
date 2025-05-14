@@ -111,7 +111,9 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
         submission_id = self.upload_context.submission.submission_id
         updates = [BatchUpdate(file.af_file, AssociatedFileStatus.COMPLETE, file.calculate_size()) for file in
                    batch_results.success]
-        errors = self.api.batch_update_associated_file_status(submission_id, updates, AssociatedFileStatus.COMPLETE)
+        errors = None
+        if len(updates) > 0:
+            errors = self.api.batch_update_associated_file_status(submission_id, updates, AssociatedFileStatus.COMPLETE)
         if errors:
             for error in errors:
                 logger.error(f'Error updating status of file {error.search_name.file_user_path}: {error.message}')
@@ -120,6 +122,7 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
                          f'If the error persists, contact NDAHelp@mail.nih.gov for help.')
             exit_error()
         self.upload_context.files_not_found.extend(batch_results.files_not_found)
+        self.upload_context.upload_progress.uploaded_file_count += len(updates)
 
     def _post_upload_hook(self):
         while self.upload_context.files_not_found:
