@@ -5,9 +5,10 @@ import shutil
 from unittest.mock import MagicMock
 
 import pytest
+from requests.structures import CaseInsensitiveDict
 
 import NDATools
-from NDATools.Download import Download
+from NDATools.Download import Download, DownloadRequest
 
 
 def get_presigned_urls_mock(*args, **kwargs):
@@ -44,7 +45,7 @@ def download_mock(load_from_file, download_config_factory, monkeypatch, tmp_path
         # patch logger so we can run verifications on how they were called, if needed
         monkeypatch.setattr(NDATools.Download, 'logger', logger_mock)
 
-        # path the exit call so that we dont actually exit the program
+        # patch the exit call so that we dont actually exit the program
         def fake_exit(*args, **kwargs):
             raise SystemExit()
 
@@ -132,6 +133,7 @@ def test_download_with_all_completed_files(download_mock, logger_mock, tmp_path,
     ds_download.download_local.assert_not_called()
     assert not logger_mock.info.any_call_contains('Beginning download')
 
+
 def test_download_with_some_completed_files(download_mock, logger_mock, tmp_path, shared_datadir):
     """ Test that the program uses the files in .download-progress to check for already completed files"""
     ds_download = download_mock(args=['-dp', '1189934'])
@@ -151,3 +153,107 @@ def test_download_with_some_completed_files(download_mock, logger_mock, tmp_path
     # some files are downloaded and should be skipped
     logger_mock.info.assert_any_call_contains('Skipping 4 files which have already been downloaded')
     logger_mock.info.assert_any_call_contains('Beginning download of the remaining 2 files')
+
+
+@pytest.fixture
+def download_mock2(load_from_file, download_config_factory, monkeypatch, tmp_path, logger_mock):
+    """mock for testing download_local and download_to_s3 methods"""
+
+    def _download_mock(*, args):
+        # return json.loads(load_from_file('api_responses/s3/ds_test/get-presigned-url-response.json'))
+        config, args = download_config_factory(args)
+        # override the NDATools.NDA_TOOLS_DOWNLOADS_FOLDER before calling constructor so downloads go to tmpdir
+        monkeypatch.setattr(NDATools, 'NDA_TOOLS_DOWNLOADS_FOLDER', tmp_path)
+        return Download(args, config)
+
+    return _download_mock
+
+
+@pytest.fixture
+def download_request(tmp_path):
+    package_file = {
+        'package_file_id': 12345678,
+        'download_alias': 'image03/testing.txt',
+        'file_size': 123
+    }
+    presigned_url = 'https://s3.amazonaws.com/nda-central/collection-1860/submission-12345/testing.txt?signature=123123'
+    return DownloadRequest(package_file, presigned_url, 123456789, tmp_path)
+
+
+# line 552
+def test_handle_download_exception(monkeypatch):
+    pass
+
+
+class Response:
+    def __init__(self, status_code=200, text='{}', elapsed=2000, headers=None):
+        if headers is None:
+            headers = CaseInsensitiveDict({'Content-Type': 'application/json'})
+        self.status_code = status_code
+        self.text = text
+        self.elapsed = elapsed
+        self.headers = headers
+
+    @property
+    def ok(self):
+        return self.status_code == 200
+
+    def json(self):
+        return json.loads(self.text)
+
+    def iter_content(self, chunk_size: int):
+        # split up self.text into chunks of chunk_size
+        for i in range(0, len(self.text), chunk_size):
+            yield self.text[i:i + chunk_size].encode('utf-8')
+
+    def raise_for_status(self):
+        pass
+
+
+# line 426
+def test_download_local(monkeypatch, download_mock2, download_request):
+    download = download_mock2(args=['-dp', '1189934'])
+    mock_session = MagicMock()
+    mock_response_context = MagicMock()
+    mock_session.return_value.__enter__.return_value.get.return_value = mock_response_context
+    mock_response_context.__enter__.return_value = Response()
+    with monkeypatch.context() as m:
+        m.setattr('requests.session', mock_session)
+        m.setattr(os, 'rename', MagicMock())
+        download.download_local(download_request)
+        assert download_request.actual_file_size == 2
+        assert os.rename.called_with(download_request.partial_download_abs_path,
+                                     download_request.completed_download_abs_path)
+        assert download_request.nda_s3_url == 's3://nda-central/collection-1860/submission-12345/testing.txt'
+
+    # test that a download continues where it left off when a file is alreay present on disk
+    # mock a response that returns the last byte of the file
+    mock_response_context.__enter__.return_value = Response(text='}')
+    with monkeypatch.context() as m:
+        m.setattr('requests.session', mock_session)
+        m.setattr(os, 'rename', MagicMock())
+        m.setattr(os.path, 'isfile', MagicMock(side_effect=[False, True]))
+        m.setattr(os.path, 'getsize', MagicMock(return_value=1))
+        download.download_local(download_request)
+        assert download_request.actual_file_size == 2
+        assert mock_session.headers.update.called_once_with({'Range': 'bytes=1-'})
+
+    # test that a download is skipped when the file is already downloaded
+    with monkeypatch.context() as m:
+        m.setattr('requests.session', mock_session)
+        m.setattr(os, 'rename', MagicMock())
+        m.setattr(os.path, 'isfile', MagicMock(return_value=True))
+        m.setattr(os.path, 'getsize', MagicMock(return_value=2))
+        download.download_local(download_request)
+        assert download_request.actual_file_size == 2
+        assert download_request.exists is True
+        assert not os.rename.called
+
+
+# line 494
+def test_download_to_s3(monkeypatch):
+    pass
+## TODO
+# test print-download-progress-report (line 335
+# find_matching_download_job line 653
+# verify_download line 757

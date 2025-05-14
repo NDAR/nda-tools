@@ -65,7 +65,7 @@ class ThreadPool:
         self.tasks.join()
 
 
-class DownloadRequest():
+class DownloadRequest:
 
     def __init__(self, package_file, presigned_url, package_id, download_dir):
         operating_system = platform.system()
@@ -463,6 +463,7 @@ class Download(Protocol):
             download_request.exists = True
             return download_request
 
+        downloaded_size = 0
         if os.path.isfile(download_request.partial_download_abs_path):
             downloaded = True
             downloaded_size = os.path.getsize(download_request.partial_download_abs_path)
@@ -473,7 +474,6 @@ class Download(Protocol):
             mk_dir_ignore_err(os.path.dirname(download_request.partial_download_abs_path))
             logger.info('Starting download: {}'.format(download_request.partial_download_abs_path))
             # downloading to local machine
-        bytes_written = 0
         with requests.session() as s:
             s.mount(download_request.presigned_url, get_http_adapter(download_request.presigned_url))
             if resume_header:
@@ -483,11 +483,11 @@ class Download(Protocol):
                     response.raise_for_status()
                     for chunk in response.iter_content(chunk_size=1024 * 1024 * 5):  # iterate 5MB chunks
                         if chunk:
-                            bytes_written += download_file.write(chunk)
+                            downloaded_size += download_file.write(chunk)
         # TODO - this doesnt work when using s3fs...add ticket to make it easy to download using s3fs
         os.rename(download_request.partial_download_abs_path, download_request.completed_download_abs_path)
         logger.info('Completed download {}'.format(download_request.completed_download_abs_path))
-        download_request.actual_file_size = bytes_written
+        download_request.actual_file_size = downloaded_size
         bucket, key = deconstruct_s3_url(download_request.presigned_url)
         download_request.nda_s3_url = 's3://{}/{}'.format(bucket, key)
 
