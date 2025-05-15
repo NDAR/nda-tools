@@ -258,6 +258,9 @@ def test_resume(monkeypatch, upload_creds, ndar_subject01, user_collections, com
         m.setattr(NDATools.Configuration.ClientConfiguration, '_save_username', MagicMock(return_value=None))
         m.setattr(NDATools.upload.submission.api.UserApi, 'is_valid_nda_credentials', MagicMock(return_value=True))
 
+        # set the routing percent for v2 to 100
+        m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'get_v2_routing_percent', MagicMock(return_value=1))
+
         # first return a completed submission and confirm that the
         m.setattr(NDATools.upload.submission.api.SubmissionApi, 'get_submission',
                   MagicMock(return_value=completed_submission))

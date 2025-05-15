@@ -732,9 +732,8 @@ class Download(Protocol):
         self.download_package_metadata_file()
 
         if self.custom_user_s3_endpoint:
-            raise Exception(
+            exit_error(
                 'The --verify command does not yet support checking for files in s3 endpoints. This feature will be added in a future iteration...')
-            exit_error()
 
         verification_report_path = os.path.join(self.package_metadata_directory,
                                                 'download-verification-report.csv')
@@ -790,7 +789,6 @@ class Download(Protocol):
             print('adding files to report...')
             for file_info in tqdm(missing_file_records):
                 record = copy.deepcopy(self.download_job_progress_report_column_defs)
-                # TODO - consider making these the same names
                 record['package_file_expected_location'] = file_info['download_alias']
                 record['expected_file_size'] = min(abs(int(file_info['file_size'])), 1)
                 record['package_file_id'] = int(file_info['package_file_id'])
@@ -822,8 +820,7 @@ class Download(Protocol):
         logger.info(
             'Running verification process. This process will check whether all of the files from the following downloadcmd were successfully downloaded to the computer:')
 
-        verification_report_path = os.path.join(self.package_metadata_directory,
-                                                'download-verification-report.csv')
+        verification_report_path = os.path.join(self.package_metadata_directory, 'download-verification-report.csv')
 
         logger.info('{}'.format(self.build_rerun_download_cmd(['--verify'])))
         logger.info('')
@@ -848,7 +845,8 @@ class Download(Protocol):
             ' to finish but will be necessary for accurate results.'.format(pr_path))
         downloaded_file_records = parse_download_progress_report_for_files(pr_path)
         # There shouldn't be duplicates in the system logs, but check anyway
-        downloaded_file_records_count = len({f['package_file_expected_location'] for f in downloaded_file_records})
+        downloaded_file_records_count = len({f['package_file_expected_location'] for f in downloaded_file_records if
+                                             f['package_file_expected_location']})
         downloaded_file_set = {int(f['package_file_id']) for f in downloaded_file_records}
         logger.info('')
         logger.info(
@@ -884,7 +882,6 @@ class Download(Protocol):
         logger.info(
             'Details about status of files in download can be found at {} (This file can be opened with Excel or Google Spreadsheets)'.format(
                 verification_report_path))
-        exit_normal()
 
     def get_temp_creds_for_file(self, package_file_id, custom_user_s3_endpoint=None):
         url = self.package_url + '/{}/files/{}/download_token'.format(self.package_id, package_file_id)

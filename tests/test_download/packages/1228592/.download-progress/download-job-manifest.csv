@@ -1,0 +1,2 @@
+uuid,run_date,package_id,download_directory,s3_destination,data_structure,s3_links_file,regex
+196d36c8-336b-406e-8051-1f0afe413bc7,20250515T103414,1228592,/home/greg/NDA/nda-tools/downloadcmd/packages/1228592,,,,
