@@ -148,13 +148,13 @@ class SubmissionApi:
 
     def get_upload_credentials(self, submission_id, file_ids) -> List[AssociatedFileUploadCreds]:
         credentials_list = post_request("/".join(
-            [self.api_endpoint, submission_id, 'files/batchMultipartUploadCredentials']),
+            [self.api_endpoint, str(submission_id), 'files/batchMultipartUploadCredentials']),
             payload=json.dumps(file_ids), auth=self.auth)
         return [AssociatedFileUploadCreds(**c) for c in credentials_list['credentials']]
 
     def batch_update_associated_file_status(self, submission_id, updates: List[BatchUpdate]):
         list_data = list(map(lambda x: x.to_payload(), updates))
-        url = "/".join([self.api_endpoint, submission_id, 'files/batchUpdate'])
+        url = "/".join([self.api_endpoint, str(submission_id), 'files/batchUpdate'])
         data = json.dumps(list_data)
         response = put_request(url, payload=data, auth=self.auth)
         # hash files by id to make searching easier
@@ -162,7 +162,7 @@ class SubmissionApi:
         return [BatchError(lookup[e.id], e['errorMessage']) for e in response['errors']]
 
     def get_upload_progress(self, submission_id):
-        response = get_request("/".join([self.api_endpoint, submission_id, "upload-progress"]), auth=self.auth)
+        response = get_request("/".join([self.api_endpoint, str(submission_id), "upload-progress"]), auth=self.auth)
         return UploadProgress(**response)
 
     def replace_submission(self, submission_id, package_id):
@@ -184,7 +184,7 @@ class SubmissionApi:
     def get_files_by_page(self, submission_id, page_number, page_size, exclude_uploaded=True):
         excluded_q_param = f'&omitCompleted=true' if exclude_uploaded else ''
         try:
-            get_files_url = "/".join([self.api_endpoint, submission_id,
+            get_files_url = "/".join([self.api_endpoint, str(submission_id),
                                       f'file-listing?pageNumber={page_number}&pageSize={page_size}{excluded_q_param}'])
             response = get_request(get_files_url, auth=self.auth, error_handler=HttpErrorHandlingStrategy.ignore,
                                    deserialize_handler=DeserializeHandler.none)

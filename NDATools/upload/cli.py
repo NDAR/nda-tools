@@ -39,7 +39,7 @@ class ValidationStatus(str, enum.Enum):
     COMPLETE_WITH_WARNINGS = 'CompleteWithWarnings'
     COMPLETE_WITH_ERRORS = 'CompleteWithErrors'
     SYSTEM_ERROR = 'SystemError'
-    PENDING_MANIFESTS = 'PendingManifests'
+    PENDING_MANIFESTS = 'PendingManifestFiles'
 
 
 class ValidatedFile:
@@ -251,7 +251,7 @@ class NdaUploadCli:
         validation.validate()
         return [ValidatedFile(v[1], v1_resource=v[0]) for v in validation.responses]
 
-    def validate(self, file_names: Union[List[PathLike], PathLike], manifests_dir: PathLike = None) -> List[
+    def validate(self, file_names: Union[List[PathLike], PathLike], manifests_dir: List[PathLike] = None) -> List[
         ValidatedFile]:
         """
         Validates one or multiple files by interacting with a validation API and handling csv uploads,

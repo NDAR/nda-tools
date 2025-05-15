@@ -108,4 +108,4 @@ class ManifestFileUploader:
         if isinstance(creds, ValidationV2Credentials):
             creds = [creds]
 
-        self.uploader.start_upload([manifest_dir], MFUploadContext(creds))
+        self.uploader.start_upload(manifest_dir, MFUploadContext(creds))
