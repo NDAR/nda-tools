@@ -1,4 +1,5 @@
 import logging
+import os
 import traceback
 from os import PathLike
 from typing import List, Union
@@ -107,7 +108,9 @@ class ManifestFileUploader:
         # normalize parameter to list
         if isinstance(creds, ValidationV2Credentials):
             creds = [creds]
-        if not isinstance(manifest_dirs, list):
+        if not manifest_dirs:
+            manifest_dirs = [os.getcwd()]
+        elif not isinstance(manifest_dirs, list):
             manifest_dirs = [manifest_dirs]
 
         self.uploader.start_upload(manifest_dirs, MFUploadContext(creds))

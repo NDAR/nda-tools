@@ -137,7 +137,10 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
             self.upload_context.search_folders.clear()
             self.upload_context.search_folders.append(new_dir)
             for file_batch in self._get_file_batches():
-                self._upload_batch(file_batch, self.upload_context.search_folders, lambda: progress_bar.update(1))
+                results = self._upload_batch(file_batch, self.upload_context.search_folders,
+                                             lambda: progress_bar.update(1))
+                if results.files_not_found:
+                    self.upload_context.files_not_found.extend(results.files_not_found)
 
     def _prompt_for_file_directory(self, searched_folders: List[pathlib.Path]) -> pathlib.Path:
         # ask the user if they want to continue

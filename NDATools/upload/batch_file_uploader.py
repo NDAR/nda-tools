@@ -3,6 +3,7 @@ import os
 import pathlib
 from abc import ABC, abstractmethod
 from concurrent.futures import as_completed, ThreadPoolExecutor
+from os import PathLike
 from threading import RLock
 from typing import List, Callable, Union
 
@@ -46,7 +47,7 @@ class UploadError(Exception):
 
 class BatchResults:
     def __init__(self, success: List[Uploadable], files_not_found: List[Uploadable],
-                 search_folders: List[pathlib.Path]):
+                 search_folders: List[PathLike]):
         self.success = success
         self.files_not_found = files_not_found
         self.search_folders = search_folders

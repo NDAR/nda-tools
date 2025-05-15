@@ -209,7 +209,7 @@ class SubmissionApi:
                 exit_error()
             submission = self._query_submissions_by_package_id(package_id)
             if submission:
-                logger.debug("Submission successfully created.")
+                logger.debug(f"Submission: {submission.submission_id}")
                 return submission
             time.sleep(10)
 

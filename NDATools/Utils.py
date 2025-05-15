@@ -1,13 +1,10 @@
 import datetime
-import functools
 import json
 import logging
 import os
-import random
 import re
 import sys
 import threading
-import time
 import urllib.parse
 from pathlib import Path
 from typing import Callable, List, Tuple
@@ -222,22 +219,6 @@ def human_size(bytes, units=[' bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']):
     return str(round(bytes, 2)) + units[0] if bytes < 1024 else human_size(bytes / 1024, units[1:])
 
 
-def retry_connection_errors(func):
-    @functools.wraps(func)
-    def _retry(*args, **kwargs):
-        tmp = None
-        for i in range(10):
-            try:
-                tmp = func(*args, **kwargs)
-                return tmp
-            except requests.exceptions.ConnectionError as e:
-                if i == 9:
-                    raise e
-                time.sleep(random.randint(10, 30))
-
-    return _retry
-
-
 def is_json(test):
     try:
         json.dumps(test)
@@ -246,7 +227,6 @@ def is_json(test):
         return False
 
 
-@retry_connection_errors
 def _send_prepared_request(prepped, timeout=150, deserialize_handler=DeserializeHandler.convert_json,
                            error_handler=HttpErrorHandlingStrategy.print_and_exit):
     with requests.Session() as session:
