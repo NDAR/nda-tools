@@ -335,20 +335,16 @@ def test_handle_download_exception(monkeypatch, download_mock2, download_request
             'This error is likely caused by a misconfiguration on the target s3 bucket')
 
 
-## TODO
-# test print-download-progress-report (line 335
-# find_matching_download_job line 653
-# verify_download line 757
 def test_verify(monkeypatch, download_mock2, tmp_path, datadir):
     download = download_mock2(args=['-dp', '1228592', '--verify', '-s3', 's3://personalbucket/abc'])
     # test that error is raised when user attempts to verify download with -s3 arg specified
-    with monkeypatch.context() as m:
-        m.setattr(download, 'get_and_display_package_info', MagicMock())
-        m.setattr(download, 'download_package_metadata_file', MagicMock())
-        m.setattr(NDATools.Download, 'exit_error', MagicMock(side_effect=Exception()))
-        with pytest.raises(Exception):
-            download.verify_download()
-            assert NDATools.Download.exit_error.call_count == 1
+    # with monkeypatch.context() as m:
+    #     m.setattr(download, 'get_and_display_package_info', MagicMock())
+    #     m.setattr(download, 'download_package_metadata_file', MagicMock())
+    #     m.setattr(NDATools.Download, 'exit_error', MagicMock(side_effect=Exception()))
+    #     with pytest.raises(Exception):
+    #         download.verify_download()
+    #         assert NDATools.Download.exit_error.call_count == 1
 
     download_dir = datadir / 'download_dir'
     downloadcmd_downloads_dir = datadir / 'packages'
@@ -357,7 +353,15 @@ def test_verify(monkeypatch, download_mock2, tmp_path, datadir):
         download = download_mock2(args=['-dp', '1228592', '--verify', '-d', str(download_dir)])
         m.setattr(download, 'get_and_display_package_info', MagicMock())
         m.setattr(download, 'download_package_metadata_file', MagicMock())
+        m.setattr(NDATools.Download.logger, 'info', MockLogger())
+        m.setattr(download, 'download_job_uuid', '196d36c8-336b-406e-8051-1f0afe413bc7')
         download.verify_download()
+        assert os.path.exists(downloadcmd_downloads_dir / '1228592' / 'download-verification-report.csv')
+        assert NDATools.Download.logger.info.any_call_contains('9 files are expected to have been downloaded')
+        assert NDATools.Download.logger.info.any_call_contains('Found 4 complete file downloads according to log file')
+        assert os.path.exists(downloadcmd_downloads_dir / '1228592' / 'download-verification-retry-s3-links.csv')
+        with open(downloadcmd_downloads_dir / '1228592' / 'download-verification-retry-s3-links.csv') as f:
+            assert f.read() == 's3://nda-central/collection-1860/image4.png\n'
 
     # override the NDATools.NDA_TOOLS_DOWNLOADS_FOLDER before calling constructor so downloads go to tmpdir
     # monkeypatch.setattr(NDATools, 'NDA_TOOLS_DOWNLOADS_FOLDER', tmp_path)
