@@ -2,7 +2,8 @@ import functools
 import logging
 from collections import defaultdict
 
-from NDATools.Utils import exit_error, evaluate_yes_no_input
+from NDATools import exit_error
+from NDATools.Utils import evaluate_yes_no_input
 from NDATools.upload.submission.api import SubmissionApi, Submission, SubmissionDetails
 
 logger = logging.getLogger(__name__)

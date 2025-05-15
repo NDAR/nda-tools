@@ -52,7 +52,7 @@ def download_mock(load_from_file, download_config_factory, monkeypatch, tmp_path
         def fake_exit(*args, **kwargs):
             raise SystemExit()
 
-        monkeypatch.setattr(NDATools.Utils, '_exit_client', fake_exit)
+        monkeypatch.setattr(NDATools, '_exit_client', fake_exit)
         return download
 
     return _download_mock

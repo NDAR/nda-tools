@@ -11,7 +11,8 @@ import requests
 from botocore.exceptions import ClientError
 from pydantic import BaseModel, Field, ValidationError
 
-from NDATools.Utils import get_request, post_request, exit_error
+from NDATools import exit_error
+from NDATools.Utils import get_request, post_request
 
 logger = logging.getLogger(__name__)
 

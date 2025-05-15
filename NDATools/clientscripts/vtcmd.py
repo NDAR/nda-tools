@@ -5,8 +5,9 @@ import traceback
 
 import NDATools
 from NDATools import authenticate
+from NDATools import exit_error
 from NDATools.Configuration import ClientConfiguration
-from NDATools.Utils import get_non_blank_input, exit_error, get_int_input
+from NDATools.Utils import get_non_blank_input, get_int_input
 from NDATools.upload.submission.api import CollectionApi
 from NDATools.upload.submission.resubmission import check_replacement_authorized
 from NDATools.upload.validation.api import ValidationV2Api

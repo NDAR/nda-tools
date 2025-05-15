@@ -9,10 +9,9 @@ from urllib.parse import quote
 import pytest
 
 import NDATools
-from NDATools import HttpErrorHandlingStrategy
 from NDATools.Utils import parse_local_files, sanitize_file_path, check_read_permissions, \
     sanitize_windows_download_filename, deconstruct_s3_url, collect_directory_list, get_int_input, \
-    evaluate_yes_no_input, put_request, post_request
+    evaluate_yes_no_input, put_request, post_request, HttpErrorHandlingStrategy
 from tests.conftest import MockLogger
 
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s:%(levelname)s:%(message)s")
@@ -247,8 +246,8 @@ def test_http_error_handling_print_and_exit(monkeypatch):
 
 def test_exit_normal(monkeypatch):
     with monkeypatch.context() as m:
-        m.setattr(NDATools.Utils.logger, 'info', MockLogger())
+        m.setattr(NDATools.logger, 'info', MockLogger())
         m.setattr(os, '_exit', MagicMock())
-        NDATools.Utils.exit_normal('Exiting normally')
-        NDATools.Utils.logger.info.any_call_contains('Exiting normally')
+        NDATools.exit_normal('Exiting normally')
+        NDATools.logger.info.any_call_contains('Exiting normally')
         os._exit.call_count == 1

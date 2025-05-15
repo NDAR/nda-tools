@@ -10,10 +10,10 @@ import sys
 
 __version__ = '0.5.0.dev9'
 
+import threading
+
 from pkg_resources import resource_filename
 
-from NDATools.Utils import exit_error, get_request, HttpErrorHandlingStrategy
-from NDATools.upload.submission.api import UserApi
 from typing import Tuple
 
 pypi_version = None
@@ -153,6 +153,8 @@ def get_username():
 
 
 def _get_user_credentials(config) -> Tuple[str, str]:
+    # Adding NDATools dependencies to the start of __init__ can cause errors during installation, so keep import here.
+    from NDATools.upload.submission.api import UserApi
     # username is fetched from settings.cfg, and it is not present at the first time use of nda-tools
     # display NDA account instructions
     global _get_keyring
@@ -198,3 +200,22 @@ def authenticate(config):
     username, password = _get_user_credentials(config)
     config.update_with_auth(username, password)
     return config
+
+
+def _exit_client(message=None, status_code=1):
+    for t in threading.enumerate():
+        try:
+            t.shutdown_flag.set()
+        except AttributeError as e:
+            continue
+    if message:
+        logger.info('\n\n{}'.format(message))
+    os._exit(status_code)
+
+
+def exit_error(message=None):
+    _exit_client(message, status_code=1)
+
+
+def exit_normal(message=None):
+    _exit_client(message, status_code=0)

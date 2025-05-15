@@ -9,7 +9,8 @@ import requests
 from pydantic import BaseModel, Field
 from requests import HTTPError
 
-from NDATools.Utils import get_request, exit_error, post_request, HttpErrorHandlingStrategy, DeserializeHandler, \
+from NDATools import exit_error
+from NDATools.Utils import get_request, post_request, HttpErrorHandlingStrategy, DeserializeHandler, \
     put_request
 
 logger = logging.getLogger(__name__)

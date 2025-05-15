@@ -4,7 +4,6 @@ import logging
 import os
 import re
 import sys
-import threading
 import urllib.parse
 from pathlib import Path
 from typing import Callable, List, Tuple
@@ -14,6 +13,8 @@ import boto3
 import requests
 from requests.adapters import HTTPAdapter, Retry
 from tqdm.contrib.concurrent import thread_map
+
+from NDATools import exit_error
 
 logger = logging.getLogger(__name__)
 
@@ -73,25 +74,6 @@ class HttpErrorHandlingStrategy():
     @staticmethod
     def reraise_status(response):
         response.raise_for_status()
-
-
-def _exit_client(message=None, status_code=1):
-    for t in threading.enumerate():
-        try:
-            t.shutdown_flag.set()
-        except AttributeError as e:
-            continue
-    if message:
-        logger.info('\n\n{}'.format(message))
-    os._exit(status_code)
-
-
-def exit_error(message=None):
-    _exit_client(message, status_code=1)
-
-
-def exit_normal(message=None):
-    _exit_client(message, status_code=0)
 
 
 def parse_local_files(directory_list, no_match, full_file_path, no_read_access, skip_local_file_check):

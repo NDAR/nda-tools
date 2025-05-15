@@ -1,7 +1,7 @@
 import logging
 import pathlib
 
-from NDATools.Utils import exit_error
+from NDATools import exit_error
 
 logger = logging.getLogger(__name__)
 
