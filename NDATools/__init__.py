@@ -28,7 +28,8 @@ except Exception as e:
     logger.debug(f'Error while importing keyring module: {str(e)}')
     keyring = None
 SERVICE_NAME = 'nda-tools'
-_use_keyring = True if keyring is not None else False
+_get_keyring = True if keyring is not None else False
+_set_keyring = True if keyring is not None else False
 
 
 def check_version():
@@ -39,11 +40,6 @@ def check_version():
     except ImportError:
         from pip._vendor.packaging.version import parse
     # use https://test.pypi.org/pypi/{package}/json on test/release branches, use https://pypi.org on master
-    # Print Python 2 support dropping warning
-    if sys.version_info < (3, 0):
-        print()
-        print('''WARNING - Detected Python version 2. Support for Python 2 is being removed from nda-tools. It is recommended to upgrade to the latest version of Python 
-          before using the latest features in the downloadcmd''')
 
     if parse(__version__).is_devrelease:
         return
@@ -125,13 +121,13 @@ def prerun_checks_and_setup():
 
 
 def _get_password(username) -> str:
-    global _use_keyring
+    global _get_keyring
     try:
-        if _use_keyring:
+        if _get_keyring:
             password = keyring.get_password(SERVICE_NAME, username)
             if not password:
                 logger.debug('no password found in keyring')
-                _use_keyring = False
+                _get_keyring = False
                 return _get_password(username)
             logger.debug('retrieved password from keyring')
             return password
@@ -139,13 +135,14 @@ def _get_password(username) -> str:
             return getpass.getpass('Enter your NDA account password:')
     except Exception as e:
         logger.warning(f'could not retrieve password from keyring: {str(e)}')
-        _use_keyring = False
+        _get_keyring = False
         return _get_password(username)
 
 
 def _try_save_password_keyring(username, password):
+    global _set_keyring
     try:
-        if _use_keyring:
+        if _set_keyring:
             keyring.set_password(SERVICE_NAME, username, password)
     except Exception as e:
         logger.warning(f'could not save password to keyring: {str(e)}')
@@ -158,7 +155,7 @@ def get_username():
 def _get_user_credentials(config) -> Tuple[str, str]:
     # username is fetched from settings.cfg, and it is not present at the first time use of nda-tools
     # display NDA account instructions
-    global _use_keyring
+    global _get_keyring
     if not config.username:
         logger.info(
             '\nPlease use your NIMH Data Archive (NDA) account credentials to authenticate with nda-tools')
@@ -179,7 +176,8 @@ def _get_user_credentials(config) -> Tuple[str, str]:
     # validate credentials
     api = UserApi(config.user_api_endpoint)
     while not api.is_valid_nda_credentials(username, password):
-        _use_keyring = False
+        logger.info('Username/password combination is incorrect')
+        _get_keyring = False
         username = get_username()
         password = _get_password(username)
     _try_save_password_keyring(username, password)

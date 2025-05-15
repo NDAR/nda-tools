@@ -63,13 +63,13 @@ class ClientConfiguration:
 
         if args.username:
             self.username = args.username
+            logger.info('proceeding as NDA user: {}'.format(self.username))
         elif self.username:
             logger.warning("-u/--username argument not provided. Using default value of '%s' which was saved in %s",
                            self.username, NDATools.NDA_TOOLS_SETTINGS_CFG_FILE)
         self.password = None
 
-        is_vtcmd = 'collectionID' in args
-        if is_vtcmd:
+        if self._is_vtcmd():
             self.v2_enabled = False
             self.validation_results_writer = ResultsWriterFactory.get_writer(file_format='json' if args.JSON else 'csv')
             self.validation_api = None
@@ -79,8 +79,6 @@ class ClientConfiguration:
             self.manifests_uploader = None
             self.associated_files_uploader = None
             self.upload_cli = NdaUploadCli(self)
-        if self.username:
-            logger.info('proceeding as NDA user: {}'.format(self.username))
 
     @property
     def hide_progress(self):
@@ -132,6 +130,9 @@ class ClientConfiguration:
     def batch_size(self):
         return self._args.batch
 
+    def _is_vtcmd(self):
+        return 'collectionID' in self._args
+
     def _check_and_fix_missing_options(self):
         default_config = configparser.ConfigParser()
         default_file_path = resource_filename(__name__, 'clientscripts/config/settings.cfg')
@@ -176,19 +177,14 @@ class ClientConfiguration:
         self.submission_api = SubmissionApi(self.submission_api_endpoint, self.username,
                                             self.password)
         self.collection_api = CollectionApi(self.validationtool_api_endpoint, self.username, self.password)
-        # self.force and self.hide_progress is only set in vtcmd
-        hide_progress, force = False, False
-        if hasattr(self, 'force'):
-            force = self.force
-        if hasattr(self, 'hide_progress'):
-            hide_progress = self.hide_progress
 
-        self.manifests_uploader = ManifestFileUploader(self.validation_api,
-                                                       self.worker_threads,
-                                                       force,
-                                                       hide_progress)
-        self.associated_files_uploader = AssociatedFileUploader(self.submission_api,
-                                                                self.worker_threads,
-                                                                force,
-                                                                hide_progress,
-                                                                self.batch_size)
+        if self._is_vtcmd():
+            self.manifests_uploader = ManifestFileUploader(self.validation_api,
+                                                           self.worker_threads,
+                                                           self.force,
+                                                           self.hide_progress)
+            self.associated_files_uploader = AssociatedFileUploader(self.submission_api,
+                                                                    self.worker_threads,
+                                                                    self.force,
+                                                                    self.hide_progress,
+                                                                    self.batch_size)

@@ -29,7 +29,7 @@ def test_read_user_credentials_no_username_set(mock_settings_no_user):
 
     with patch.object(NDATools.logger, 'info', mock_logger), \
             patch.object(NDATools.upload.submission.api.UserApi, 'is_valid_nda_credentials', side_effect=[True]), \
-            patch.object(NDATools, '_use_keyring', False), \
+            patch.object(NDATools, '_get_keyring', False), \
             patch('builtins.input', return_value=username) as mock_get_username, \
             patch('getpass.getpass', return_value=password) as mock_get_password:
         client_config = ClientConfiguration(MagicMock())
@@ -83,7 +83,7 @@ def test_read_user_credentials_has_username_set_has_password_in_keyring(mock_set
 
     with patch.object(NDATools.logger, 'info', mock_logger), \
             patch.object(NDATools.upload.submission.api.UserApi, 'is_valid_nda_credentials', side_effect=[True]), \
-            patch.object(NDATools, '_use_keyring', True), \
+            patch.object(NDATools, '_get_keyring', True), \
             patch('builtins.input', return_value=username) as mock_get_username, \
             patch('keyring.get_password', return_value=password) as mock_keyring, \
             patch('getpass.getpass', return_value=password) as mock_get_password:
@@ -110,7 +110,7 @@ def test_read_user_credentials_reenter_credentials(mock_settings_no_user):
 
     with patch.object(NDATools.logger, 'info', mock_logger), \
             patch.object(NDATools.upload.submission.api.UserApi, 'is_valid_nda_credentials', side_effect=[False, True]), \
-            patch.object(NDATools, '_use_keyring', False), \
+            patch.object(NDATools, '_get_keyring', False), \
             patch('builtins.input', return_value=username) as mock_get_username, \
             patch('getpass.getpass', return_value=password) as mock_get_password:
         client_config = ClientConfiguration(MagicMock())
@@ -147,12 +147,12 @@ def test_no_keyring(monkeypatch, mock_settings_with_user):
         NDATools.authenticate(client_config)
         assert builtins.input.call_count == 1
         assert getpass.getpass.call_count == 1
-        assert NDATools._use_keyring == False
+        assert NDATools._get_keyring == False
 
     # mock error retrieving password from keyring. should not cause program to crash.
     with monkeypatch.context() as m:
         mock_keyring = MagicMock()
-        m.setattr(NDATools, '_use_keyring', True)
+        m.setattr(NDATools, '_get_keyring', True)
         mock_keyring.get_password = MagicMock(side_effect=KeyringLocked)
         m.setattr(NDATools, 'keyring', mock_keyring)
         m.setattr(NDATools.logger, 'warning', MockLogger())
@@ -168,6 +168,6 @@ def test_no_keyring(monkeypatch, mock_settings_with_user):
         NDATools.authenticate(client_config)
         assert builtins.input.call_count == 1
         assert getpass.getpass.call_count == 1
-        assert NDATools._use_keyring == False
+        assert NDATools._get_keyring == False
         assert NDATools.keyring.get_password.call_count == 1
         assert NDATools.logger.warning.any_call_contains('could not retrieve password from keyring:')

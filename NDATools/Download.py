@@ -73,11 +73,11 @@ class DownloadRequest:
             download_dir = sanitize_windows_download_filename(download_dir)
         self.presigned_url = presigned_url
         self.package_file_id = str(package_file['package_file_id'])
-        self.package_file_relative_path = package_file['download_alias']
+        self.package_file_expected_location = package_file['download_alias']
         self.completed_download_abs_path = os.path.normpath(convert_to_abs_path(os.path.join(download_dir,
                                                                                              sanitize_windows_download_filename(
-                                                                                                 self.package_file_relative_path)
-                                                                                             if operating_system == 'Windows' else self.package_file_relative_path)
+                                                                                                 self.package_file_expected_location)
+                                                                                             if operating_system == 'Windows' else self.package_file_expected_location)
                                                                                 ))
         self.package_download_directory = convert_to_abs_path(
             os.path.join(NDATools.NDA_TOOLS_DOWNLOADS_FOLDER, str(package_id)))
@@ -550,25 +550,24 @@ class Download(Protocol):
 
         self.write_to_failed_download_link_file(failed_s3_links_file, s3_link=download_request.presigned_url,
                                                 source_uri=download_request.nda_s3_url)
-        logger.error(traceback.print_exc())
+        # only print out stack trace if verbose logging is enabled
+        if logger.level == logging.DEBUG:
+            traceback.print_exc()
         if isinstance(e, HTTPError):
             error_code = e.response.status_code
             if error_code == 404:
                 message = 'This path is incorrect: {}. Please try again.'.format(download_request.presigned_url)
                 logger.error(message)
             elif error_code == 403:
-                message = '\nThis is a private bucket. Please contact NDAR for help: {}'.format(
+                message = 'This is a private bucket. Please contact NDAR for help: {}'.format(
                     download_request.presigned_url)
                 logger.error(message)
         else:
             if 'operation: Access Denied' in str(e):
-                logger.error('')
                 logger.error(
-                    'This error is likely caused by a misconfiguration on the target s3 bucket')
+                    f'{str(e)}- This error is likely caused by a misconfiguration on the target s3 bucket')
                 logger.error(
                     "For more information about how to correctly configure the target bucket, run 'downloadcmd -h' and read the description of the s3 argument")
-                logger.error('')
-                time.sleep(2)
         return download_request
 
     def download_from_s3link(self, package_file, presigned_url, download_local=None, err_if_exists=False,
