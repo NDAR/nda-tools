@@ -106,7 +106,7 @@ class BatchUpdate:
     def to_payload(self):
         payload = {
             "id": self.file.id,
-            "status": str(self.status),
+            "status": self.status,
         }
         if self.size:
             payload["size"] = self.size
