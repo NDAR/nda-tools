@@ -74,6 +74,7 @@ class _ManifestFileBatchUploader(BatchFileUploader):
         try:
             creds = file.creds
             creds.upload(str(file.path), file.manifest.s3_destination)
+            logger.debug(f'Finished uploading {str(file.path)}')
         except Exception as e:
             logger.error(f'Unexpected error occurred while uploading {file}: {e}')
             logger.error(traceback.format_exc())
@@ -81,7 +82,7 @@ class _ManifestFileBatchUploader(BatchFileUploader):
 
     def _construct_tqdm(self):
         """Use the default tqdm but insert into the UploadContext to use inside _post_batch_hook"""
-        progressbar = tqdm(disable=self.hide_progress)
+        progressbar = tqdm(disable=True)
         self.upload_context.progress_bar = progressbar
         return progressbar
 

@@ -16,7 +16,7 @@ from NDATools.upload.validation.api import ValidationV2
 from NDATools.upload.validation.manifests import ManifestFile
 from NDATools.upload.validation.v1 import Validation
 
-logger = logging.Logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ManifestValidationError:
@@ -297,7 +297,9 @@ class NdaUploadCli:
 
         # Process requests with a status of 'PendingManifests' by uploading manifest files and waiting for status to change
         manifest_requests = [m for m in requests if m.resource.status == ValidationStatus.PENDING_MANIFESTS]
+        logger.info(f'Uploading manifests from {len(manifest_requests)} files')
         self.manifests_uploader.start_upload([m.creds for m in manifest_requests], manifests_dir)
+        logger.info(f'Waiting for {len(manifest_requests)} files to finish validation')
 
         def wait_manifest_validation_complete(req: ValidationV2Request):
             resource = self.validation_api.wait_validation_complete(req.creds.uuid,
