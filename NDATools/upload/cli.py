@@ -39,7 +39,7 @@ class ValidationStatus(str, enum.Enum):
     COMPLETE_WITH_WARNINGS = 'CompleteWithWarnings'
     COMPLETE_WITH_ERRORS = 'CompleteWithErrors'
     SYSTEM_ERROR = 'SystemError'
-    PENDING_MANIFESTS = 'PendingManifests'
+    PENDING_MANIFESTS = 'PendingManifestFiles'
 
 
 class ValidatedFile:
