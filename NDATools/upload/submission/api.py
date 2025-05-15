@@ -47,7 +47,7 @@ class NdaCollection(BaseModel):
 class AssociatedFileUploadCreds(BaseModel):
     id: int = Field(..., alias='submissionFileId')
     destination_uri: str
-    source_uri: str
+    source_uri: Union[str, None]
     access_key: str
     secret_key: str
     session_token: str

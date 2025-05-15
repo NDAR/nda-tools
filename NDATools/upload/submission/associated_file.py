@@ -81,7 +81,7 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
             # hash files by id to make searching easier
             lookup = {file.id: file for file in files}
             creds: List[AssociatedFileUploadCreds] = self.api.get_upload_credentials(submission.submission_id,
-                                                                                     lookup.keys())
+                                                                                     list(lookup.keys()))
             yield [AFUploadable(lookup[c.id], c) for c in creds]
             page_number -= 1
 
@@ -98,7 +98,7 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
                     s3.head_object(Bucket=bucket, Key=key)
                 except botocore.exceptions.ClientError as ce:
                     # only upload the file if it hasn't already been uploaded to s3
-                    if ce.response['Error']['Code'] == 'NoSuchKey':
+                    if ce.response['Error']['Message'] in 'Not Found':
                         s3.upload_file(file_name, bucket, key, Config=self.upload_context.transfer_config)
                     else:
                         raise UploadError(up, ce)
@@ -116,7 +116,7 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
                    batch_results.success]
         errors = None
         if len(updates) > 0:
-            errors = self.api.batch_update_associated_file_status(submission_id, updates, AssociatedFileStatus.COMPLETE)
+            errors = self.api.batch_update_associated_file_status(submission_id, updates)
         if errors:
             for error in errors:
                 logger.error(f'Error updating status of file {error.search_name.file_user_path}: {error.message}')
