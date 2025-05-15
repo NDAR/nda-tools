@@ -213,8 +213,13 @@ class NdaUploadCli:
         logger.info('Requesting submission for package: {}'.format(package.submission_package_uuid))
         submission = self.submission_api.create_submission(package.submission_package_uuid)
         # print package info to console
+        logger.info('')
         logger.info('Submission ID: {}'.format(str(submission.submission_id)))
-        logger.info('Validation results: {}'.format([v.uuid for v in validated_files]))
+        logger.info('Files: {}'.format(' '.join([v.file.name for v in validated_files])))
+        logger.info('Collection ID: {}'.format(collection_id))
+        logger.info('Name: {}'.format(title))
+        logger.info('Description: {}'.format(description))
+        logger.info('')
 
         if submission.status == SubmissionStatus.UPLOADING:
             self._upload_associated_files(submission, associated_file_dirs, resuming_upload=True)
