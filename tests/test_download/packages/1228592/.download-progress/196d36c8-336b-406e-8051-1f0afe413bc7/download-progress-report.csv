@@ -1,0 +1,6 @@
+package_file_id,package_file_expected_location,nda_s3_url,exists,expected_file_size,actual_file_size,e_tag,download_complete_time
+10648066111,,,True,0,405,"(None,)",20250515T103419
+10648066112,,s3://gpop-stage/ndar_data/QueryPackages/CLOUDDB/773981645558%3Andar_administrator/Package_1228592/package_info.txt,True,142,142,"(None,)",20250515T103419
+10648066110,,s3://gpop-stage/ndar_data/QueryPackages/CLOUDDB/773981645558%3Andar_administrator/Package_1228592/image03.txt,True,11602,11602,"(None,)",20250515T103419
+10648066113,,s3://gpop-stage/ndar_data/QueryPackages/CLOUDDB/773981645558%3Andar_administrator/Package_1228592/dataset_collection.txt,True,210,210,"(None,)",20250515T103419
+10648066114,,s3://gpop-stage/ndar_data/QueryPackages/CLOUDDB/README.pdf,True,11000,103371,"(None,)",20250515T103419

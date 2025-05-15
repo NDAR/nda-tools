@@ -164,10 +164,8 @@ def download_mock2(load_from_file, download_config_factory, monkeypatch, tmp_pat
 
     def _download_mock(*, args):
         # return json.loads(load_from_file('api_responses/s3/ds_test/get-presigned-url-response.json'))
-        config, args = download_config_factory(args)
-        # override the NDATools.NDA_TOOLS_DOWNLOADS_FOLDER before calling constructor so downloads go to tmpdir
-        monkeypatch.setattr(NDATools, 'NDA_TOOLS_DOWNLOADS_FOLDER', tmp_path)
-        return Download(args, config)
+        args, config = download_config_factory(args)
+        return Download(config, args)
 
     return _download_mock
 
@@ -336,7 +334,30 @@ def test_handle_download_exception(monkeypatch, download_mock2, download_request
         assert NDATools.Download.logger.error.any_call_contains(
             'This error is likely caused by a misconfiguration on the target s3 bucket')
 
+
 ## TODO
 # test print-download-progress-report (line 335
 # find_matching_download_job line 653
 # verify_download line 757
+def test_verify(monkeypatch, download_mock2, tmp_path, datadir):
+    download = download_mock2(args=['-dp', '1228592', '--verify', '-s3', 's3://personalbucket/abc'])
+    # test that error is raised when user attempts to verify download with -s3 arg specified
+    with monkeypatch.context() as m:
+        m.setattr(download, 'get_and_display_package_info', MagicMock())
+        m.setattr(download, 'download_package_metadata_file', MagicMock())
+        m.setattr(NDATools.Download, 'exit_error', MagicMock(side_effect=Exception()))
+        with pytest.raises(Exception):
+            download.verify_download()
+            assert NDATools.Download.exit_error.call_count == 1
+
+    download_dir = datadir / 'download_dir'
+    downloadcmd_downloads_dir = datadir / 'packages'
+    with monkeypatch.context() as m:
+        m.setattr(NDATools, 'NDA_TOOLS_DOWNLOADS_FOLDER', str(downloadcmd_downloads_dir))
+        download = download_mock2(args=['-dp', '1228592', '--verify', '-d', str(download_dir)])
+        m.setattr(download, 'get_and_display_package_info', MagicMock())
+        m.setattr(download, 'download_package_metadata_file', MagicMock())
+        download.verify_download()
+
+    # override the NDATools.NDA_TOOLS_DOWNLOADS_FOLDER before calling constructor so downloads go to tmpdir
+    # monkeypatch.setattr(NDATools, 'NDA_TOOLS_DOWNLOADS_FOLDER', tmp_path)
