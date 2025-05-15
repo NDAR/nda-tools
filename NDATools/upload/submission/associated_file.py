@@ -4,8 +4,8 @@ import pathlib
 import traceback
 from typing import List
 
+import botocore
 from boto3.s3.transfer import TransferConfig
-from botocore import client
 from tqdm import tqdm
 
 from NDATools import exit_error
@@ -96,9 +96,12 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
                 try:
                     # REV-1389 check to see if the file has already been uploaded to s3
                     s3.head_object(Bucket=bucket, Key=key)
-                except client.exceptions.NoSuchKey:
+                except botocore.exceptions.ClientError as ce:
                     # only upload the file if it hasn't already been uploaded to s3
-                    s3.upload_file(file_name, bucket, key, Config=self.upload_context.transfer_config)
+                    if ce.response['Error']['Code'] == 'NoSuchKey':
+                        s3.upload_file(file_name, bucket, key, Config=self.upload_context.transfer_config)
+                    else:
+                        raise UploadError(up, ce)
             else:
                 s3.upload_file(file_name, bucket, key, Config=self.upload_context.transfer_config)
         except Exception as e:
