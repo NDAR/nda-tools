@@ -161,7 +161,7 @@ def validation_v2_response():
 
 @pytest.fixture
 def fmriresults01_pending(validation_v2_response):
-    return validation_v2_response('fmriresults01', 'PendingManifests')
+    return validation_v2_response('fmriresults01', 'PendingManifestFiles')
 
 
 @pytest.fixture

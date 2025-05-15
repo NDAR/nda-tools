@@ -53,7 +53,7 @@ def validation_manifest(monkeypatch):
                                                'v2_creds': mock_creds,
                                                'v2_resource': ValidationV2(
                                                    **{'validation_uuid': validation_uuid,
-                                                      'status': 'PendingManifests',
+                                                      'status': 'PendingManifestFiles',
                                                       'short_name': 'fmriresults01',
                                                       'rows': 1,
                                                       'validation_files': {},

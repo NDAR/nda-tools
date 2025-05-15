@@ -1,6 +1,6 @@
 import logging
-import pathlib
 import traceback
+from os import PathLike
 from typing import List, Union
 
 from tqdm import tqdm
@@ -103,9 +103,11 @@ class ManifestFileUploader:
         self.uploader = _ManifestFileBatchUploader(max_threads, exit_on_error, hide_progress)
 
     def start_upload(self, creds: Union[List[ValidationV2Credentials], ValidationV2Credentials],
-                     manifest_dir: pathlib.Path):
+                     manifest_dirs: Union[List[PathLike], PathLike]):
         # normalize parameter to list
         if isinstance(creds, ValidationV2Credentials):
             creds = [creds]
+        if not isinstance(manifest_dirs, list):
+            manifest_dirs = [manifest_dirs]
 
-        self.uploader.start_upload(manifest_dir, MFUploadContext(creds))
+        self.uploader.start_upload(manifest_dirs, MFUploadContext(creds))

@@ -65,7 +65,7 @@ class BatchFileUploader(ABC):
         self.upload_context = None
         self.upload_lock = RLock()  # lock to prevent concurrent uploads
 
-    def start_upload(self, search_folders: List[pathlib.Path], ctx: UploadContext = None):
+    def start_upload(self, search_folders: List[os.PathLike], ctx: UploadContext = None):
         with self.upload_lock:
             if not search_folders:
                 search_folders = [pathlib.Path(os.getcwd())]
@@ -78,7 +78,7 @@ class BatchFileUploader(ABC):
                     self._post_batch_hook(results)
                 self._post_upload_hook()
 
-    def _upload_batch(self, files: List[Uploadable], search_folders: List[pathlib.Path], progress_cb: Callable):
+    def _upload_batch(self, files: List[Uploadable], search_folders: List[os.PathLike], progress_cb: Callable):
         assert len(files) > 0, "no files passed to _upload_batch method"
 
         # group files by whether the path exists
