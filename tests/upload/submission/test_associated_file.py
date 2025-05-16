@@ -1,5 +1,3 @@
-import os
-import pathlib
 from unittest.mock import MagicMock, patch
 
 import boto3
@@ -23,10 +21,10 @@ def get_submission():
 
 @pytest.fixture
 def get_associated_files():
-    associated_file1 = AssociatedFile(id=111, file_user_path='README.txt',
+    associated_file1 = AssociatedFile(id=111, file_user_path='readme.txt',
                                       file_remote_path='s3://nda-central-dev/collection-80/submission-89075/associated-files/README',
                                       status=AssociatedFileStatus.READY, size=2074)
-    associated_file2 = AssociatedFile(id=222, file_user_path='README2.txt',
+    associated_file2 = AssociatedFile(id=222, file_user_path='readme2.txt',
                                       file_remote_path='s3://nda-central-dev/collection-80/submission-89075/associated-files/README2',
                                       status=AssociatedFileStatus.READY, size=2074)
     return [associated_file1, associated_file2]
@@ -89,7 +87,8 @@ def test_start_upload_happy_path(mock_get_s3_client, get_submission, get_associa
 
 @patch('NDATools.upload.submission.associated_file.get_directory_input')
 @patch('NDATools.upload.submission.associated_file.get_s3_client_with_config')
-def test_start_upload_files_not_found_reenter(mock_get_s3_client, mock_input, get_submission, get_associated_files, datadir):
+def test_start_upload_files_not_found_reenter(mock_get_s3_client, mock_input, get_submission, get_associated_files,
+                                              datadir):
     associated_file_path1 = datadir / 'readme.txt'
     associated_file_path1.write_text('testing')
     associated_file_path2 = datadir / 'another_associated_file' / 'readme2.txt'
