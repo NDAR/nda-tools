@@ -61,6 +61,8 @@ class MFUploadable(Uploadable):
 class MFUploadContext(UploadContext):
     def __init__(self, credentials_list: List[ValidationV2Credentials]):
         self.credentials_list = credentials_list
+        # initialize this to false, and toggle to true after we prompt user to enter manifest folder
+        self.display_missing_files_message = False
 
 
 class _ManifestFileBatchUploader(BatchFileUploader):
@@ -93,9 +95,14 @@ class _ManifestFileBatchUploader(BatchFileUploader):
             if self.exit_on_error:
                 exit_error(msg)
             else:
-                logger.info(msg)
-            new_dir = get_directory_input('Specify the folder containing the manifest files and try again:')
-            self._upload_batch(br.files_not_found, [new_dir], lambda: self.upload_context.progress_bar.update(1))
+                if self.upload_context.display_missing_files_message:
+                    self.upload_context.display_missing_files_message = True
+                    new_dir = get_directory_input(
+                        'Your data contains manifest files. Specify the folder containing the manifest files:')
+                else:
+                    logger.info(msg)
+                    new_dir = get_directory_input('Specify the folder containing the manifest files and try again:')
+                self._upload_batch(br.files_not_found, [new_dir], lambda: self.upload_context.progress_bar.update(1))
 
 
 class ManifestFileUploader:

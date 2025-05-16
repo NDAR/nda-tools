@@ -8,7 +8,7 @@ from typing import List, Callable, Tuple, Union
 
 from tabulate import tabulate
 
-from NDATools.Utils import tqdm_thread_map
+from NDATools.Utils import tqdm_thread_map, get_directory_input
 from NDATools.upload.submission.api import SubmissionPackage, Submission, SubmissionDetails, PackagingStatus, \
     SubmissionStatus
 from NDATools.upload.submission.resubmission import build_replacement_package_info
