@@ -19,11 +19,11 @@ phases:
         if [ "$ENV" = "prod" ]; then 
           echo "Setting up SSH key"
           mkdir -p ~/.ssh
-          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          echo "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan github.com >> ~/.ssh/known_hosts
           git remote set-url --push origin $GITHUB_REPO
-          ssh -T git@github.com
+          ssh -i ~/.ssh/id_rsa -T git@github.com
           echo "Extract the version number"
           initFilePath="NDATools/__init__.py"
           if [ -f "$initFilePath" ]; then
@@ -35,7 +35,7 @@ phases:
                gitTag="$versionNumber"
                git tag "$gitTag"
                git push --tags
-               git push origin master
+               git push origin main
             else
             echo "Version number not found in __init__.py"
             fi
