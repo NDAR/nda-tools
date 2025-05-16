@@ -67,7 +67,7 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
     def _construct_tqdm(self):
         """Override progress bar to display total number of files and save to upload ctx"""
         progress_bar = tqdm(disable=self.hide_progress, total=self.upload_context.total_files,
-                            initial=self.upload_context.uploaded_file_count)
+                            initial=self.upload_context.upload_progress.uploaded_file_count)
         self.upload_context.progress_bar = progress_bar
         return progress_bar
 
