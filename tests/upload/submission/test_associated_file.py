@@ -13,6 +13,7 @@ submission_id = 89075
 collection_id = 80
 associated_file_id1 = 111
 associated_file_id2 = 222
+search_folders = [os.getcwd() + os.sep + 'associated_file']
 
 
 @pytest.fixture
@@ -42,7 +43,6 @@ def fake_exit(message=None):
 
 @patch('NDATools.upload.submission.associated_file.get_s3_client_with_config')
 def test_start_upload_happy_path(mock_get_s3_client, get_submission, get_associated_files):
-    search_folders = [os.getcwd() + '/associated_file']
     upload_progress = UploadProgress(associated_file_count=2, uploaded_file_count=0)
 
     mock_submission_api = MagicMock(spec=SubmissionApi)
@@ -87,7 +87,6 @@ def test_start_upload_happy_path(mock_get_s3_client, get_submission, get_associa
 @patch('NDATools.upload.submission.associated_file.get_directory_input')
 @patch('NDATools.upload.submission.associated_file.get_s3_client_with_config')
 def test_start_upload_files_not_found_reenter(mock_get_s3_client, mock_input, get_submission, get_associated_files):
-    search_folders = [os.getcwd() + '/associated_file']
     upload_progress = UploadProgress(associated_file_count=2, uploaded_file_count=0)
 
     mock_submission_api = MagicMock(spec=SubmissionApi)
@@ -110,14 +109,14 @@ def test_start_upload_files_not_found_reenter(mock_get_s3_client, mock_input, ge
                                               secret_key='RHGADKVNASDLG4534543534F',
                                               session_token='DFDFKSADL3452340980')
     mock_submission_api.get_upload_credentials.side_effect = [[upload_creds1], [upload_creds2], [upload_creds2]]
-    mock_submission_api.batch_update_associated_file_status.side_effect = [None]
+    mock_submission_api.batch_update_associated_file_status.side_effect = [None, None]
     resuming_upload = False
 
     mock_s3_client = MagicMock(spec=boto3.client('s3'))
     mock_get_s3_client.return_value = mock_s3_client
     mock_s3_client.upload_file.side_effect = [None, None]
 
-    mock_input.return_value = os.getcwd() + '/another_associated_file'
+    mock_input.return_value = os.getcwd() + os.sep + 'another_associated_file'
 
     associated_file_uploader = AssociatedFileUploader(mock_submission_api, 1, False, False, 1)
     associated_file_uploader.start_upload(get_submission, search_folders, resuming_upload)
@@ -127,7 +126,7 @@ def test_start_upload_files_not_found_reenter(mock_get_s3_client, mock_input, ge
                           upload_progress=upload_progress, search_folders=search_folders, num_of_files_not_found=0)
 
     verify_submission_api(mock_submission_api=mock_submission_api, get_files_by_page_call_ct=3,
-                          get_upload_credentials_call_ct=3, batch_update_associated_file_status_call_ct=1)
+                          get_upload_credentials_call_ct=3, batch_update_associated_file_status_call_ct=2)
 
     assert mock_s3_client.upload_file.call_count == 2
     assert mock_input.call_count == 1
@@ -138,7 +137,6 @@ def test_start_upload_files_not_found_reenter(mock_get_s3_client, mock_input, ge
 @patch('NDATools.upload.submission.associated_file.get_s3_client_with_config')
 def test_start_upload_files_not_found_exit(mock_get_s3_client, mock_input, mock_exit, get_submission,
                                            get_associated_files):
-    search_folders = [os.getcwd() + '/associated_file']
     upload_progress = UploadProgress(associated_file_count=2, uploaded_file_count=0)
 
     mock_submission_api = MagicMock(spec=SubmissionApi)
@@ -187,7 +185,6 @@ def test_start_upload_files_not_found_exit(mock_get_s3_client, mock_input, mock_
 @patch('NDATools.upload.batch_file_uploader.exit_error', side_effect=fake_exit)
 @patch('NDATools.upload.submission.associated_file.get_s3_client_with_config')
 def test_start_upload_s3_upload_error(mock_get_s3_client, mock_exit, get_submission, get_associated_files):
-    search_folders = [os.getcwd() + '/associated_file']
     upload_progress = UploadProgress(associated_file_count=2, uploaded_file_count=0)
 
     mock_submission_api = MagicMock(spec=SubmissionApi)
@@ -211,7 +208,7 @@ def test_start_upload_s3_upload_error(mock_get_s3_client, mock_exit, get_submiss
 
     associated_file_uploader = AssociatedFileUploader(mock_submission_api, 1, False, False, 1)
 
-    with pytest.raises(SystemExit) as error_info:
+    with pytest.raises(SystemExit):
         associated_file_uploader.start_upload(get_submission, search_folders, resuming_upload)
 
     verify_upload_context(upload_context=associated_file_uploader.uploader.upload_context,
@@ -227,7 +224,6 @@ def test_start_upload_s3_upload_error(mock_get_s3_client, mock_exit, get_submiss
 
 @patch('NDATools.upload.submission.associated_file.get_s3_client_with_config')
 def test_start_upload_resume_upload(mock_get_s3_client, get_submission, get_associated_files):
-    search_folders = [os.getcwd() + '/associated_file']
     upload_progress = UploadProgress(associated_file_count=2, uploaded_file_count=0)
 
     mock_submission_api = MagicMock(spec=SubmissionApi)
@@ -255,7 +251,7 @@ def test_start_upload_resume_upload(mock_get_s3_client, get_submission, get_asso
     mock_s3_client = MagicMock(spec=boto3.client('s3'))
     mock_get_s3_client.return_value = mock_s3_client
 
-    client_error = ClientError({'Error': {'Code': 'NoSuchKey'}}, 'HeadObject')
+    client_error = ClientError({'Error': {'Code': '404', 'Message': 'Not Found'}}, 'HeadObject')
     mock_s3_client.head_object.side_effect = [client_error, None]
     mock_s3_client.upload_file.side_effect = [None]
 
