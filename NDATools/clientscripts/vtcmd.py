@@ -195,7 +195,7 @@ def print_submission_complete_message(submission, replacement):
         print('\nYou have successfully replaced submission {}.'.format(submission.id))
     else:
         print('\nYou have successfully completed uploading files for submission {} with status: {}'.format
-              (submission.id, submission.status))
+              (submission.id, submission.status.value))
 
 
 def replace_submission(validated_files, config):
