@@ -206,7 +206,7 @@ def _exit_client(message=None, status_code=1):
     for t in threading.enumerate():
         try:
             t.shutdown_flag.set()
-        except AttributeError as e:
+        except AttributeError:
             continue
     if message:
         logger.info('\n\n{}'.format(message))

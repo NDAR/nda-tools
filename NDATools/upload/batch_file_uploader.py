@@ -123,13 +123,13 @@ class BatchFileUploader(ABC):
         return tqdm(disable=self.hide_progress)
 
     def _pre_batch_hook(self, found: List[Uploadable], search_folders: List[PathLike]):
-        pass
+        ...
 
     def _post_batch_hook(self, batch_results: BatchResults):
         _process_not_found_files(batch_results.files_not_found, batch_results.search_folders)
 
     def _post_upload_hook(self):
-        pass
+        ...
 
 
 def _process_not_found_files(not_found_list: List[Uploadable], search_folders: List[PathLike]):
@@ -140,7 +140,10 @@ def _process_not_found_files(not_found_list: List[Uploadable], search_folders: L
 
 def files_not_found_msg(not_found: List[Uploadable], dirs, limit=20):
     files_not_found = [m.search_name for m in not_found]
-    msg = f'The following files could not be found in {dirs}:\n'
+    if not isinstance(dirs, list):
+        dirs = [dirs]
+    dir_sting = "\n".join(dirs)
+    msg = f'The following files could not be found in {dir_sting}:\n'
     msg += '\n'.join(files_not_found[:limit])
     if len(files_not_found) > limit:
         msg += f'\n... and {len(files_not_found) - limit} more'
