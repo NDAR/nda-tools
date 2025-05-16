@@ -169,7 +169,8 @@ class SubmissionApi:
     def replace_submission(self, submission_id, package_id):
         version_count = len(self.get_submission_history(submission_id))
         put_request(
-            f"{self.api_endpoint}/{submission_id}/?submissionPackageUuid={package_id}&async=true", auth=self.auth)
+            f"{self.api_endpoint}/{submission_id}?submissionPackageUuid={package_id}&async=true",
+            auth=self.auth, deserialize_handler=DeserializeHandler.none)
         # poll the versions endpoint until a new one is created or until we timeout
         end_time = datetime.timedelta(seconds=self.create_submission_timeout) + datetime.datetime.now()
         while True:
