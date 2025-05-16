@@ -96,12 +96,13 @@ class _ManifestFileBatchUploader(BatchFileUploader):
                 exit_error(msg)
             else:
                 if self.upload_context.display_missing_files_message:
+                    logger.info(msg)
+                    new_dir = get_directory_input('Specify the folder containing the manifest files and try again:')
+                else:
                     self.upload_context.display_missing_files_message = True
                     new_dir = get_directory_input(
                         'Your data contains manifest files. Specify the folder containing the manifest files:')
-                else:
-                    logger.info(msg)
-                    new_dir = get_directory_input('Specify the folder containing the manifest files and try again:')
+
                 self._upload_batch(br.files_not_found, [new_dir], lambda: self.upload_context.progress_bar.update(1))
 
 

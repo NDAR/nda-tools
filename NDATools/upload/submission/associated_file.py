@@ -47,6 +47,8 @@ class AFUploadContext(UploadContext):
         self.files_not_found = []
         self.search_folders = search_folders
         self.progress_bar = None
+        # initialize this to false, and toggle to true after we prompt user to enter folder
+        self.display_missing_files_message = False
 
     @property
     def total_files(self):
@@ -146,8 +148,11 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
         if self.exit_on_error:
             exit_error(msg)
         else:
-            logger.info(msg)
-        return get_directory_input('Specify the folder containing the associated files and try again:')
+            if self.upload_context.display_missing_files_message:
+                logger.info(msg)
+            else:
+                self.upload_context.display_missing_files_message = True
+            return get_directory_input('Specify the folder containing the associated files:')
 
 
 KB = 1024

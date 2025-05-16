@@ -145,7 +145,7 @@ def test_upload_manifest_not_found_interactive(top_level_datadir, validation_cre
                                                    found_manifest['s3Destination'])
         assert validation_creds.upload.call_count == 1
         builtins.input.assert_called_once_with(
-            'Specify the folder containing the manifest files and try again:')
+            'Your data contains manifest files. Specify the folder containing the manifest files:')
 
 
 def test_upload_manifest_unexpected_error(top_level_datadir, validation_creds, monkeypatch):
