@@ -66,7 +66,8 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
 
     def _construct_tqdm(self):
         """Override progress bar to display total number of files and save to upload ctx"""
-        progress_bar = tqdm(disable=self.hide_progress, total=self.upload_context.total_files)
+        progress_bar = tqdm(disable=self.hide_progress, total=self.upload_context.total_files,
+                            initial=self.upload_context.uploaded_file_count)
         self.upload_context.progress_bar = progress_bar
         return progress_bar
 
@@ -119,6 +120,8 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
         errors = None
         if len(updates) > 0:
             errors = self.api.batch_update_associated_file_status(submission_id, updates)
+            # show the missing files message if the program cannot find some files, and at least 1 file was found in the specified directory
+            self.upload_context.display_missing_files_message = True
         if errors:
             for error in errors:
                 logger.error(f'Error updating status of file {error.search_name.file_user_path}: {error.message}')
