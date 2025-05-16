@@ -120,7 +120,7 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
         errors = None
         if len(updates) > 0:
             errors = self.api.batch_update_associated_file_status(submission_id, updates)
-            # show the missing files message if the program cannot find some files, and at least 1 file was found in the specified directory
+            # it makes sense to show the missing files message if the program successfully processed at least 1 file
             self.upload_context.display_missing_files_message = True
         if errors:
             for error in errors:
