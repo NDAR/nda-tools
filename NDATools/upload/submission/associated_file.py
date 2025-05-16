@@ -100,7 +100,7 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
                     s3.head_object(Bucket=bucket, Key=key)
                 except botocore.exceptions.ClientError as ce:
                     # only upload the file if it hasn't already been uploaded to s3
-                    if ce.response['Error']['Message'] in 'Not Found':
+                    if str(ce.response['Error']['Code']) == '404':
                         s3.upload_file(file_name, bucket, key, Config=self.upload_context.transfer_config)
                     else:
                         raise UploadError(up, ce)
