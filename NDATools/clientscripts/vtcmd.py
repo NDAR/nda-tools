@@ -25,10 +25,9 @@ def parse_args():
                     ' provide your account credentials, the AWS bucket, and a prefix, if it exists.  '
                     'Any files that are created while running the client (ie. results files) will be downloaded in '
                     'your home directory under NDAValidationResults. If your submission was interrupted in the middle'
-                    ', you may resume your upload by entering a valid submission ID. ',
-        usage='%(prog)s <file_list>')
+                    ', you may resume your upload by entering a valid submission ID. ')
 
-    parser.add_argument('files', metavar='<file_list>', type=str, nargs='+', action='store',
+    parser.add_argument('files', type=str, nargs='+', action='store',
                         help='Returns validation results for list of files')
 
     parser.add_argument('-l', '--listDir', metavar='<directory_list>', type=str, nargs='+', action='store',
@@ -61,7 +60,7 @@ def parse_args():
     parser.add_argument('-rs', '--replace-submission', metavar='<arg>', type=str, action='store', default=0,
                         help='Use this argument to replace a submission that has QA errors or that NDA staff has authorized manually to replace.')
 
-    parser.add_argument('-r', '--resume', type=int, action='store',
+    parser.add_argument('-r', '--resume', action='store_true',
                         help='Restart an in-progress submission, resuming from the last successful part in a multi-part'
                              'upload. Must enter a valid submission ID.')
 
@@ -237,7 +236,13 @@ def main():
     set_validation_api_version(config)
 
     if args.resume:
-        resume_submission(args.resume, config=config)
+        # submission_id is stored in positional arg 'files'
+        try:
+            submission_id = int(args.files[0])
+        except:
+            exit_error('Invalid submission ID. Please enter a valid submission ID to resume.')
+        else:
+            resume_submission(submission_id, config=config)
     else:
         validated_files = validate(args, config)
         if args.replace_submission:

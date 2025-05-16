@@ -252,7 +252,7 @@ def test_resume(monkeypatch, upload_creds, ndar_subject01, user_collections, com
     uploading_submission = submission('test', 'test', 1860, SubmissionStatus.UPLOADING)
     completed_submission = submission('test', 'test', 1860, SubmissionStatus.SUBMITTED)
     with monkeypatch.context() as m:
-        m.setattr(sys, 'argv', shlex.split('vtcmd ndarsubject01.csv -r 1 -l some-dir/'))
+        m.setattr(sys, 'argv', shlex.split('vtcmd -r 1 -l some-dir/'))
         m.setattr(NDATools, '_get_password', MagicMock(return_value='testpassword'))
         # mock _save_username so we dont try to write information to disk while running tests.
         m.setattr(NDATools.Configuration.ClientConfiguration, '_save_username', MagicMock(return_value=None))

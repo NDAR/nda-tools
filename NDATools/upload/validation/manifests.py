@@ -86,17 +86,16 @@ class _ManifestFileBatchUploader(BatchFileUploader):
         self.upload_context.progress_bar = progressbar
         return progressbar
 
-    def _post_batch_hook(self, batch_results: BatchResults):
+    def _post_batch_hook(self, br: BatchResults):
         """Handle missing manifests at the end of each batch. Don't proceed until all manifests from the batch are processed"""
-        br = batch_results
-        while br.files_not_found:
+        if br.files_not_found:
             msg = files_not_found_msg(br.files_not_found, br.search_folders)
             if self.exit_on_error:
                 exit_error(msg)
             else:
                 logger.info(msg)
             new_dir = get_directory_input('Specify the folder containing the manifest files and try again:')
-            br = self._upload_batch(br.files_not_found, [new_dir], lambda: self.upload_context.progress_bar.update(1))
+            self._upload_batch(br.files_not_found, [new_dir], lambda: self.upload_context.progress_bar.update(1))
 
 
 class ManifestFileUploader:

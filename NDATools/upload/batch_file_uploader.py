@@ -74,13 +74,12 @@ class BatchFileUploader(ABC):
 
             with self._construct_tqdm() as progress_bar:
                 for file_batch in self._get_file_batches():
-                    self._pre_batch_hook(file_batch, search_folders)
-                    results = self._upload_batch(file_batch, search_folders, lambda: progress_bar.update(1))
-                    self._post_batch_hook(results)
+                    self._upload_batch(file_batch, search_folders, lambda: progress_bar.update(1))
                 self._post_upload_hook()
 
     def _upload_batch(self, files: List[Uploadable], search_folders: List[os.PathLike], progress_cb: Callable):
         assert len(files) > 0, "no files passed to _upload_batch method"
+        self._pre_batch_hook(files, search_folders)
 
         # group files by whether the path exists
         def group_files_by_path_exists():
@@ -108,7 +107,7 @@ class BatchFileUploader(ABC):
             else:
                 progress_cb()
 
-        return BatchResults(files_found, not_found, search_folders)
+        self._post_batch_hook(BatchResults(files_found, not_found, search_folders))
 
     # generator for file batches
     @abstractmethod
@@ -123,7 +122,7 @@ class BatchFileUploader(ABC):
         """Default method to construct progress bar. Can be overridden in subclasses"""
         return tqdm(disable=self.hide_progress)
 
-    def _pre_batch_hook(self, found: List[Uploadable], search_folders: List[pathlib.Path]):
+    def _pre_batch_hook(self, found: List[Uploadable], search_folders: List[PathLike]):
         pass
 
     def _post_batch_hook(self, batch_results: BatchResults):
@@ -133,7 +132,7 @@ class BatchFileUploader(ABC):
         pass
 
 
-def _process_not_found_files(not_found_list: List[Uploadable], search_folders: List[pathlib.Path]):
+def _process_not_found_files(not_found_list: List[Uploadable], search_folders: List[PathLike]):
     """Default method to handle missing files. Will print and exit. Can be overridden in subclasses"""
     msg = files_not_found_msg(not_found_list, search_folders)
     exit_error(msg)
