@@ -142,7 +142,7 @@ def files_not_found_msg(not_found: List[Uploadable], dirs, limit=20):
     files_not_found = [m.search_name for m in not_found]
     if not isinstance(dirs, list):
         dirs = [dirs]
-    dir_sting = "\n".join(dirs)
+    dir_sting = "\n".join([str(d) for d in dirs])
     msg = f'The following files could not be found in {dir_sting}:\n'
     msg += '\n'.join(files_not_found[:limit])
     if len(files_not_found) > limit:
