@@ -18,7 +18,7 @@ phases:
           echo "building project ...."
           python -m build
           # set repository to testpypi if env variable TEST_PYPI is set
-          if [ -n "$PYPI_PASSWORD" ]
+          if [ -n "$PYPI_PASSWORD" ]; then
             echo "Pushing to PyPI"
             twine upload dist/* -u $PYPI_USER -p $PYPI_PASSWORD
           elif [ -n "$TEST_PYPIPASSWORD" ]; then
