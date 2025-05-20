@@ -8,7 +8,7 @@ import pathlib
 import shutil
 import sys
 
-__version__ = '0.5.0.dev18'
+__version__ = '0.5.0.dev19'
 
 import threading
 

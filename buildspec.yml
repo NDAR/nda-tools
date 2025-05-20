@@ -40,7 +40,7 @@ phases:
           ssh-keyscan github.com >> ~/.ssh/known_hosts
           git remote set-url --push origin $GITHUB_REPO
           ssh -i ~/.ssh/id_rsa -T git@github.com
-          git status
+          env
           # branch_name=$(git rev-parse --abbrev-ref HEAD)
           echo "pushing $CODEBUILD_SOURCE_VERSION"
           git push origin "HEAD:${CODEBUILD_SOURCE_VERSION}"
