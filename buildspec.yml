@@ -15,9 +15,19 @@ phases:
       - coverage run -m pytest && coverage report -m
       - |
         if [ -n "$PYPI_USER" ]; then
-           echo "Pushing to PyPI"
+          echo "building project ...."
           python -m build
-          twine upload --skip-existing dist/* dist/* -u $PYPI_USER -p $PYPI_PASSWORD
+          # set repository to testpypi if env variable TEST_PYPI is set
+          if [ -n "$PYPI_PASSWORD" ]
+            echo "Pushing to PyPI"
+            twine upload dist/* -u $PYPI_USER -p $PYPI_PASSWORD
+          elif [ -n "$TEST_PYPIPASSWORD" ]; then
+            echo "Pushing to Test PyPI"
+            twine upload dist/* -u $PYPI_USER -p $TESTPYPI_PASSWORD --repository-url https://test.pypi.org/legacy/        
+          else
+            echo "PYPI_PASSWORD not set"
+            exit 1
+          fi
         else
           echo "SKIPPING PUSH TO PYPI"
         fi
