@@ -35,7 +35,7 @@ phases:
         if [ -n "$GITHUB_REPO" ]; then 
           echo "Setting up SSH key"
           mkdir -p ~/.ssh
-          echo "$SSH_PRIVATE_KEY" | tr [:space:] "\n" > ~/.ssh/id_rsa
+          echo "$SSH_PRIVATE_KEY" | tr "\t" "\n" > ~/.ssh/id_rsa
           chmod 400 ~/.ssh/id_rsa
           ssh-keyscan github.com >> ~/.ssh/known_hosts
           git remote set-url --push origin $GITHUB_REPO
