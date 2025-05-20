@@ -42,8 +42,8 @@ phases:
           ssh -i ~/.ssh/id_rsa -T git@github.com
           git status
           # branch_name=$(git rev-parse --abbrev-ref HEAD)
-          echo "pushing $CODEBUILD_WEBHOOK_HEAD_REF"
-          git push origin "HEAD:${CODEBUILD_WEBHOOK_HEAD_REF}"
+          echo "pushing $CODEBUILD_SOURCE_VERSION"
+          git push origin "HEAD:${CODEBUILD_SOURCE_VERSION}"
           if [ "$ENV" = "prod" ]; then
             echo "Extract the version number"
             versionPattern="__version__ = '([0-9]+\.[0-9]+\.[0-9]+)'"
