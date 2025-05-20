@@ -13,8 +13,14 @@ phases:
       - pip install keyrings.alt
       - pip install -e '.[test]'
       - coverage run -m pytest && coverage report -m
-      - python -m build
-      - twine upload $PYTHON_ENV dist/* -u $PYPI_USER -p $TESTPYPI_PASSWORD
+      - |
+        if [[ -v "$PYPI_USER" ]]; then
+           echo "Pushing to PyPI"
+          python -m build
+          twine upload --skip-existing dist/* dist/* -u $PYPI_USER -p $PYPI_PASSWORD
+        else
+          echo "SKIPPING PUSH TO PYPI"
+        fi
       - |
         if [[ -v "$GITHUB_REPO" ]]; then 
           echo "Setting up SSH key"
@@ -40,7 +46,7 @@ phases:
             exit 1
           fi
         else
-          echo "In Development stage, skipping push to Github."
+          echo "SKIPPING PUSH TO GITHUB"
         fi
   post_build:
     commands:
