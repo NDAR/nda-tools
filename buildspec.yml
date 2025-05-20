@@ -21,7 +21,7 @@ phases:
           if [ -n "$PYPI_PASSWORD" ]; then
             echo "Pushing to PyPI"
             twine upload dist/* -u $PYPI_USER -p $PYPI_PASSWORD
-          elif [ -n "$TEST_PYPIPASSWORD" ]; then
+          elif [ -n "$TESTPYPI_PASSWORD" ]; then
             echo "Pushing to Test PyPI"
             twine upload dist/* -u $PYPI_USER -p $TESTPYPI_PASSWORD --repository-url https://test.pypi.org/legacy/        
           else
