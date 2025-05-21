@@ -44,6 +44,7 @@ phases:
           ssh-keyscan github.com >> ~/.ssh/known_hosts
           git remote set-url --push origin $GITHUB_REPO
           ssh -i ~/.ssh/id_rsa -T git@github.com
+          git fetch $branch_name
           git checkout $branch_name
           echo "pushing $branch_name"
           git push origin "$branch_name"
