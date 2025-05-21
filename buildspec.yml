@@ -39,10 +39,8 @@ phases:
           chmod 400 ~/.ssh/id_rsa
           s3_url=$(echo "$CODEBUILD_SOURCE_VERSION" | sed 's|arn:aws:s3:::|s3://|g')
           echo "s3_url: $s3_url"
-          aws s3 cp $s3_url ./buildinfo.json
-          branch_name=cat ./buildinfo.json | jq '.BranchName'
+          branch_name=$(aws s3 cp $s3_url - | jq '.BranchName')
           echo "branch_name: $branch_name"
-          rm -f ./buildinfo.json
           ssh-keyscan github.com >> ~/.ssh/known_hosts
           git remote set-url --push origin $GITHUB_REPO
           ssh -i ~/.ssh/id_rsa -T git@github.com
