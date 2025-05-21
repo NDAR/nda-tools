@@ -14,6 +14,7 @@ phases:
       - pip install -e '.[test]'
       - coverage run -m pytest && coverage report -m
       - |
+        set -euo pipefail
         if [ -n "$PYPI_USER" ]; then
           echo "building project ...."
           python -m build
@@ -32,6 +33,7 @@ phases:
           echo "SKIPPING PUSH TO PYPI"
         fi
       - |
+        set -euo pipefail
         if [ -n "$GITHUB_REPO" ]; then 
           echo "Setting up SSH key"
           mkdir -p ~/.ssh
