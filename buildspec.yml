@@ -13,56 +13,9 @@ phases:
       - pip install keyrings.alt
       - pip install -e '.[test]'
       - coverage run -m pytest && coverage report -m
-      - |
-        if [ -n "$PYPI_USER" ]; then
-          echo "building project ...."
-          python -m build
-          # set repository to testpypi if env variable TEST_PYPI is set
-          if [ -n "$PYPI_PASSWORD" ]; then
-            echo "Pushing to PyPI"
-            twine upload dist/* -u $PYPI_USER -p $PYPI_PASSWORD
-          elif [ -n "$TESTPYPI_PASSWORD" ]; then
-            echo "Pushing to Test PyPI"
-            twine upload dist/* -u $PYPI_USER -p $TESTPYPI_PASSWORD --repository-url https://test.pypi.org/legacy/        
-          else
-            echo "PYPI_PASSWORD not set"
-            exit 1
-          fi
-        else
-          echo "SKIPPING PUSH TO PYPI"
-        fi
-      - codebuild-breakpoint
-      - |
-        if [ -n "$GITHUB_REPO" ]; then 
-          echo "Setting up SSH key"
-          mkdir -p ~/.ssh
-          echo "$SSH_PRIVATE_KEY" | tr "\t" "\n" > ~/.ssh/id_rsa
-          chmod 400 ~/.ssh/id_rsa
-          ssh-keyscan github.com >> ~/.ssh/known_hosts
-          git remote set-url --push origin $GITHUB_REPO
-          ssh -i ~/.ssh/id_rsa -T git@github.com
-          env
-          # branch_name=$(git rev-parse --abbrev-ref HEAD)
-          echo "pushing $CODEBUILD_SOURCE_VERSION"
-          git push origin "HEAD:${CODEBUILD_SOURCE_VERSION}"
-          if [ "$ENV" = "prod" ]; then
-            echo "Extract the version number"
-            versionPattern="__version__ = '([0-9]+\.[0-9]+\.[0-9]+)'"
-            initFileContent=$(cat NDATools/__init__.py)
-            versionNumber=$(echo "$initFileContent" | grep -Po "$versionPattern" | cut -d"'" -f2)
-            if [ -n "$versionNumber" ]; then
-              echo "Tagging version: $versionNumber"
-              gitTag="$versionNumber"
-              git tag "$gitTag"
-              git push --tags
-            else
-              echo "Version number not found in __init__.py"
-              exit 1
-            fi 
-          fi
-        else
-          echo "SKIPPING PUSH TO GITHUB"
-        fi
+      - python -m build
+      - twine upload $PYTHON_ENV dist/* -u $PYPI_USER -p $TESTPYPI_PASSWORD
+      - $GITSCRIPT
   post_build:
     commands:
       - echo $CODEBUILD_RESOLVED_SOURCE_VERSION
