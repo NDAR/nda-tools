@@ -37,17 +37,19 @@ phases:
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" | tr "\t" "\n" > ~/.ssh/id_rsa
           chmod 400 ~/.ssh/id_rsa
-          s3_url=$(echo "$CODEBUILD_SOURCE_VERSION" | sed 's|arn:aws:s3:::|s3://|g')
-          echo "s3_url: $s3_url"
-          branch_name=$(aws s3 cp $s3_url - | jq '.BranchName' | sed 's|"||g')
-          echo "branch_name: $branch_name"
+          S3_URL=$(echo "$CODEBUILD_SOURCE_VERSION" | sed 's|arn:aws:s3:::|s3://|g')
+          echo "s3_url: $S3_URL"
+          BRANCH_NAME=$(aws s3 cp $S3_URL - | jq '.BranchName' | sed 's|"||g')
+          CODECOMMIT_URL=$(aws s3 cp $S3_URL - | jq '.CloneUrl' | sed 's|"||g')
+          echo "BRANCH_NAME: $BRANCH_NAME"
+          echo "CODECOMMIT_URL: $CODECOMMIT_URL"
           ssh-keyscan github.com >> ~/.ssh/known_hosts
-          git remote set-url --push origin $GITHUB_REPO
+          git remote add github $GITHUB_REPO
           ssh -i ~/.ssh/id_rsa -T git@github.com
-          git fetch $branch_name
-          git checkout $branch_name
-          echo "pushing $branch_name"
-          git push origin "$branch_name"
+          echo "checking out $BRANCH_NAME"
+          git checkout $BRANCH_NAME
+          echo "pushing $BRANCH_NAME"
+          git push github "$BRANCH_NAME"
           if [ "$ENV" = "prod" ]; then
             echo "Extract the version number"
             versionPattern="__version__ = '([0-9]+\.[0-9]+\.[0-9]+)'"
@@ -61,7 +63,7 @@ phases:
             else
               echo "Version number not found in __init__.py"
               exit 1
-            fi 
+            fi
           fi
         else
           echo "SKIPPING PUSH TO GITHUB"
