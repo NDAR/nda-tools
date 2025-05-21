@@ -45,7 +45,6 @@ phases:
           echo "CODECOMMIT_URL: $CODECOMMIT_URL"
           ssh-keyscan github.com >> ~/.ssh/known_hosts
           git remote add github $GITHUB_REPO
-          ssh -i ~/.ssh/id_rsa -T git@github.com
           echo "checking out $BRANCH_NAME"
           git checkout $BRANCH_NAME
           echo "pushing $BRANCH_NAME"
