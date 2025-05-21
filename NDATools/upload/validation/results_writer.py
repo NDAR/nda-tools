@@ -106,7 +106,7 @@ class CsvWriter(ResultsWriterABC):
             writer.writeheader()
             for result in results:
                 r: ValidatedFile = result
-                for error in sorted(r.errors, key=lambda x: x.record_number):
+                for error in sorted(r.errors, key=lambda x: x.record_number or 0):
                     row = {
                         'FILE': r.file.name,
                         'ID': r.uuid,
@@ -118,7 +118,7 @@ class CsvWriter(ResultsWriterABC):
                         'RECORD': error.record_number
                     }
                     writer.writerow(row)
-                for error in sorted(r.manifest_errors, key=lambda x: x.manifest.record_number):
+                for error in sorted(r.manifest_errors, key=lambda x: x.manifest.record_number or 0):
                     row = {
                         'FILE': r.file.name,
                         'ID': r.uuid,

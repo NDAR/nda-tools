@@ -38,7 +38,10 @@ def validation(top_level_datadir):
 def validation_with_errors(validation):
     return validation(
         errors={'error1a': [{'columnName': 'column 1a', 'message': 'error message 1a', 'recordNumber': 1}],
-                'error1b': [{'columnName': 'column 1b', 'message': 'error message 1b', 'recordNumber': 1}]},
+                'error1b': [{'columnName': 'column 1b', 'message': 'error message 1b', 'recordNumber': 1}],
+                'unrecognizedColumnName	': [
+                    {'columnName': 'column 1c', 'message': 'error message 1c', 'recordNumber': None}]
+                },
         warnings=None,
         manifest_errors=None)
 
