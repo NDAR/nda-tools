@@ -37,7 +37,7 @@ phases:
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" | tr "\t" "\n" > ~/.ssh/id_rsa
           chmod 400 ~/.ssh/id_rsa
-          s3_url="${CODEBUILD_SOURCE_VERSION//arn:aws:s3:::/s3://}"
+          s3_url=$(echo "$CODEBUILD_SOURCE_VERSION" | sed 's|arn:aws:s3:::|s3://|g')
           echo "s3_url: $s3_url"
           aws s3 cp $s3_url ~/buildinfo.json
           branch_name=cat ~/buildinfo.json | jq '.BranchName'
