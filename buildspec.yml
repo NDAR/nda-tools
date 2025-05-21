@@ -24,7 +24,7 @@ phases:
             twine upload dist/* -u $PYPI_USER -p $PYPI_PASSWORD
           elif [ -n "$TESTPYPI_PASSWORD" ]; then
             echo "Pushing to Test PyPI"
-            twine upload dist/* -u $PYPI_USER -p $TESTPYPI_PASSWORD --repository-url https://test.pypi.org/legacy/        
+            # twine upload dist/* -u $PYPI_USER -p $TESTPYPI_PASSWORD --repository-url https://test.pypi.org/legacy/        
           else
             echo "PYPI_PASSWORD not set"
             exit 1
@@ -32,8 +32,6 @@ phases:
         else
           echo "SKIPPING PUSH TO PYPI"
         fi
-      - |
-        set -e
         if [ -n "$GITHUB_REPO" ]; then 
           echo "Setting up SSH key"
           mkdir -p ~/.ssh
