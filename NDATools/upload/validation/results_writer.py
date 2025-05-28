@@ -53,7 +53,7 @@ class JsonValidationResultsEncoder(json.JSONEncoder):
             return {
                 'recordNumber': obj.manifest.record_number,
                 'manifest': obj.manifest.name,
-                'messages': obj.messages
+                'message': obj.message
             }
         return super().default(obj)
 
@@ -126,7 +126,7 @@ class CsvWriter(ResultsWriterABC):
                         'EXPIRATION_DATE': '',
                         'ERRORS': 'manifest_error',
                         'COLUMN': error.manifest.column,
-                        'MESSAGE': error.messages,
+                        'MESSAGE': error.message,
                         'RECORD': error.manifest.record_number
                     }
                     writer.writerow(row)
@@ -187,4 +187,4 @@ class ResultsWriterFactory:
         elif file_format == 'json':
             return JsonWriter(NDA_TOOLS_VAL_FOLDER)
         else:
-            raise Exception('invalid format')
+            raise NotImplementedError(f'format {file_format} not supported')

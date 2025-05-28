@@ -92,6 +92,9 @@ class AutoRefreshableCredentials(NdaCredentials):
         return super().download(s3_url)
 
 
+CSV_DATA_KEY = 'csv data'
+
+
 class ValidationV2Credentials(AutoRefreshableCredentials):
     uuid: str = Field(..., alias='validation_uuid')
     read_write_permission: dict
@@ -113,17 +116,14 @@ class ValidationV2Credentials(AutoRefreshableCredentials):
         return json.loads(self.download(self.read_permission['errors json']))
 
     def download_csv(self):
-        if 'csv data' in self.read_permission:
-            return json.loads(self.download(self.read_permission['csv data']))
+        if CSV_DATA_KEY in self.read_permission:
+            return json.loads(self.download(self.read_permission[CSV_DATA_KEY]))
         else:
-            return json.loads(self.download(self.read_write_permission['csv data']))
+            return json.loads(self.download(self.read_write_permission[CSV_DATA_KEY]))
 
     def upload_csv(self, file: Union[pathlib.Path, str]):
-        if 'csv data' in self.read_write_permission:
-            csv_s3_url = self.read_write_permission['csv data']
-            self.upload(file, csv_s3_url)
-        else:
-            raise Exception('These are not read write credentials')
+        csv_s3_url = self.read_write_permission[CSV_DATA_KEY]
+        self.upload(file, csv_s3_url)
 
 
 class ManifestError(BaseModel):
@@ -160,7 +160,6 @@ class ValidationManifest(BaseModel):
 
 class ValidationV2Api:
     def __init__(self, validation_api_endpoint, username, password):
-        # self.config = config
         self.api_v1_endpoint = f"{validation_api_endpoint}"
         self.api_v2_endpoint = f"{validation_api_endpoint}/v2/"
         self.auth = requests.auth.HTTPBasicAuth(username, password)

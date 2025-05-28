@@ -35,7 +35,7 @@ class Uploadable(ABC):
 
     def calculate_size(self):
         if not self.path.exists():
-            raise Exception(f'Cannot calculate size because File {self.path} was not found')
+            raise FileNotFoundError(f'Cannot calculate size because File {self.path} was not found')
         return self.path.stat().st_size
 
 

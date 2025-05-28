@@ -8,7 +8,7 @@ from typing import List, Callable, Tuple, Union
 
 from tabulate import tabulate
 
-from NDATools.Utils import tqdm_thread_map, get_directory_input
+from NDATools.Utils import tqdm_thread_map
 from NDATools.upload.submission.api import SubmissionPackage, Submission, SubmissionDetails, PackagingStatus, \
     SubmissionStatus
 from NDATools.upload.submission.resubmission import build_replacement_package_info
@@ -20,9 +20,9 @@ logger = logging.getLogger(__name__)
 
 
 class ManifestValidationError:
-    def __init__(self, manifest: ManifestFile, messages: List[str]):
+    def __init__(self, manifest: ManifestFile, message: str):
         self.manifest = manifest
-        self.messages = messages
+        self.message = message
 
 
 class ValidationError:
@@ -156,7 +156,7 @@ class ValidatedFile:
             [
                 error.manifest.record_number,
                 error.manifest.name,
-                error.messages
+                error.message
             ] for error in self._manifest_errors[:limit]
         ]
         self._preview(rows, ['Row', 'FileName', 'Message'])
@@ -281,17 +281,17 @@ class NdaUploadCli:
         if not isinstance(file_names, list):
             file_names = [file_names]
 
-        # named tuple ValidationV2Request is used to keep track of the state of each request
-        ValidationV2Request = namedtuple('ValidationV2Request',
-                                         ['file', 'creds', 'resource'])
+        # named tuple validation_v2_request is used to keep track of the state of each request
+        validation_v2_request = namedtuple('ValidationV2Request',
+                                           ['file', 'creds', 'resource'])
 
         def initiate_request(f_name):
             creds = self.validation_api.request_upload_credentials(f_name, self.config.scope)
             creds.upload_csv(f_name)
             resource = self.validation_api.wait_validation_complete(creds.uuid, self.config.validation_timeout, False)
-            return ValidationV2Request(f_name, creds, resource)
+            return validation_v2_request(f_name, creds, resource)
 
-        requests: List[ValidationV2Request] = list(self._tqdm_thread_map(initiate_request, file_names))
+        requests: List[validation_v2_request] = list(self._tqdm_thread_map(initiate_request, file_names))
 
         validated_files = [ValidatedFile(req.file, v2_resource=req.resource, v2_creds=req.creds) for req in
                            requests if req.resource.status != ValidationStatus.PENDING_MANIFESTS]
@@ -306,7 +306,7 @@ class NdaUploadCli:
         self.manifests_uploader.start_upload([m.creds for m in manifest_requests], manifests_dir)
         logger.info(f'Waiting for {len(manifest_requests)} files to finish validation')
 
-        def wait_manifest_validation_complete(req: ValidationV2Request):
+        def wait_manifest_validation_complete(req: validation_v2_request):
             resource = self.validation_api.wait_validation_complete(req.creds.uuid,
                                                                     self.config.validation_timeout,
                                                                     True)
@@ -315,8 +315,8 @@ class NdaUploadCli:
                 manifests = ManifestFile.manifests_from_credentials(req.creds)
                 # hash manifests by uuid for efficient lookup when creating manifest_errors
                 mdict = {m.uuid: m for m in manifests}
-                manifest_errors = [ManifestValidationError(mdict[e.uuid], e.errors) for e in
-                                   self.validation_api.get_manifest_errors(req.creds.uuid)]
+                manifest_errors = [ManifestValidationError(mdict[e.uuid], err) for e in
+                                   self.validation_api.get_manifest_errors(req.creds.uuid) for err in e.errors]
                 return ValidatedFile(req.file, v2_resource=resource, v2_creds=req.creds,
                                      manifest_errors=manifest_errors)
             else:
