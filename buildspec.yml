@@ -15,23 +15,6 @@ phases:
       - coverage run -m pytest && coverage report -m
       - |
         set -e
-        if [ -n "$PYPI_USER" ]; then
-          echo "building project ...."
-          python -m build
-          # set repository to testpypi if env variable TEST_PYPI is set
-          if [ -n "$PYPI_PASSWORD" ]; then
-            echo "Pushing to PyPI"
-            twine upload dist/* -u $PYPI_USER -p $PYPI_PASSWORD
-          elif [ -n "$TESTPYPI_PASSWORD" ]; then
-            echo "Pushing to Test PyPI"
-            twine upload dist/* -u $PYPI_USER -p $TESTPYPI_PASSWORD --repository-url https://test.pypi.org/legacy/        
-          else
-            echo "PYPI_PASSWORD not set"
-            exit 1
-          fi
-        else
-          echo "SKIPPING PUSH TO PYPI"
-        fi
         if [ -n "$GITHUB_REPO" ]; then 
           echo "Setting up SSH key"
           mkdir -p ~/.ssh
@@ -64,6 +47,23 @@ phases:
           fi
         else
           echo "SKIPPING PUSH TO GITHUB"
+        fi
+        if [ -n "$PYPI_USER" ]; then
+          echo "building project ...."
+          python -m build
+          # set repository to testpypi if env variable TEST_PYPI is set
+          if [ -n "$PYPI_PASSWORD" ]; then
+            echo "Pushing to PyPI"
+            twine upload dist/* -u $PYPI_USER -p $PYPI_PASSWORD
+          elif [ -n "$TESTPYPI_PASSWORD" ]; then
+            echo "Pushing to Test PyPI"
+            twine upload dist/* -u $PYPI_USER -p $TESTPYPI_PASSWORD --repository-url https://test.pypi.org/legacy/        
+          else
+            echo "PYPI_PASSWORD not set"
+            exit 1
+          fi
+        else
+          echo "SKIPPING PUSH TO PYPI"
         fi
   post_build:
     commands:
