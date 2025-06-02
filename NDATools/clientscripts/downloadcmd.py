@@ -1,6 +1,7 @@
 import argparse
 import sys
 
+from NDATools import exit_error
 from NDATools.Configuration import *
 from NDATools.Download import Download
 
@@ -30,7 +31,7 @@ def parse_args():
                                'options are provided, the program will download all files from the specified package.')
 
     parser.add_argument('paths', metavar='<S3_path_list>', type=str, nargs='*', action='store',
-                        help='Opional. When provided, the program will download only the specified files from the package.'
+                        help='Optional. When provided, the program will download only the specified files from the package.'
                              ' The specified files must exist in the package indicated by the -dp argument and the paths must be valid'
                              ' s3 urls.')
 

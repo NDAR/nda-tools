@@ -1,3 +1,4 @@
+import pathlib
 import sys
 from unittest import mock
 from unittest.mock import MagicMock
@@ -6,7 +7,6 @@ import keyring
 import pytest
 
 import NDATools
-from NDATools.Configuration import ClientConfiguration
 from NDATools.clientscripts.downloadcmd import parse_args as download_parse_args
 from NDATools.clientscripts.vtcmd import parse_args as validation_parse_args
 
@@ -39,10 +39,8 @@ def download_config_factory(monkeypatch):
             test_args.insert(0, 'downloadcmd')
             m.setattr(sys, 'argv', test_args)
             m.setattr(keyring, 'get_password', mock_get_password)
-            m.setattr(ClientConfiguration, 'is_valid_nda_credentials', mock_is_valid_credentials)
             args = download_parse_args()
             config = NDATools.init_and_create_configuration(args, NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER, auth_req=False)
-            # monkey patch is_valid_nda_credentials
             config.is_valid_nda_credentials = lambda _: True
             return args, config
 
@@ -56,7 +54,6 @@ def validation_config_factory():
             test_args.insert(0, 'vtcmd')
             args = validation_parse_args()
             config = NDATools.init_and_create_configuration(args, NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER, auth_req=False)
-            # monkey patch is_valid_nda_credentials
             config.is_valid_nda_credentials = lambda _: True
 
         return args, config
@@ -65,9 +62,14 @@ def validation_config_factory():
 
 
 @pytest.fixture
-def load_from_file(shared_datadir):
+def top_level_datadir():
+    return pathlib.Path(__file__).parent.absolute() / 'data'
+
+
+@pytest.fixture
+def load_from_file(top_level_datadir):
     def _load_from_file(file):
-        content = (shared_datadir / file).read_text()
+        content = (top_level_datadir / file).read_text()
         return content
 
     return _load_from_file
@@ -79,7 +81,7 @@ class MockLogger(MagicMock):
 
     @property
     def logged_lines(self):
-        return [args for call in self.call_args_list for args in call.args]
+        return [args for call in self.call_args_list for args in call.args if args is not None]
 
     def assert_any_call_contains(self, str): assert self.any_call_contains(str)
 
@@ -98,3 +100,8 @@ def logger_mock(monkeypatch):
     logger.error = MockLogger()
     logger.debug = MockLogger()
     return logger
+
+
+@pytest.fixture
+def s3_mock():
+    return MagicMock()

@@ -4,15 +4,15 @@ import os
 import pathlib
 import time
 from threading import RLock
-from typing import Union
+from typing import Union, List
 
 import boto3
 import requests
 from botocore.exceptions import ClientError
 from pydantic import BaseModel, Field, ValidationError
 
-from NDATools.Configuration import ClientConfiguration
-from NDATools.Utils import get_request, post_request, exit_error
+from NDATools import exit_error
+from NDATools.Utils import get_request, post_request
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +30,13 @@ class NdaCredentials(BaseModel):
                                     aws_session_token=self.session_token)
         self._s3_transfer = boto3.s3.transfer.S3Transfer(self._s3_cli)
 
-    def download(self, s3_url: str):
+    def download(self, s3_url: str) -> str:
+        assert s3_url.startswith('s3://')
         bucket, key = s3_url.replace("s3://", "").split("/", 1)
-        res = self._s3_cli.get_object(Bucket=bucket, Key=key)
-        return res['Body'].read()
+        return self._s3_cli.get_object(Bucket=bucket, Key=key)['Body'].read().decode('utf-8')
 
     def upload(self, file: Union[pathlib.Path, str], s3_url: str):
+        assert s3_url.startswith('s3://')
         bucket, key = s3_url.replace("s3://", "").split("/", 1)
         self._s3_transfer.upload_file(str(file), bucket, key)
         logger.debug(f'Finished uploading {file} to {s3_url}')
@@ -91,6 +92,9 @@ class AutoRefreshableCredentials(NdaCredentials):
         return super().download(s3_url)
 
 
+CSV_DATA_KEY = 'csv data'
+
+
 class ValidationV2Credentials(AutoRefreshableCredentials):
     uuid: str = Field(..., alias='validation_uuid')
     read_write_permission: dict
@@ -112,17 +116,19 @@ class ValidationV2Credentials(AutoRefreshableCredentials):
         return json.loads(self.download(self.read_permission['errors json']))
 
     def download_csv(self):
-        if 'csv data' in self.read_permission:
-            return json.loads(self.download(self.read_permission['csv data']))
+        if CSV_DATA_KEY in self.read_permission:
+            return json.loads(self.download(self.read_permission[CSV_DATA_KEY]))
         else:
-            return json.loads(self.download(self.read_write_permission['csv data']))
+            return json.loads(self.download(self.read_write_permission[CSV_DATA_KEY]))
 
     def upload_csv(self, file: Union[pathlib.Path, str]):
-        if 'csv data' in self.read_write_permission:
-            csv_s3_url = self.read_write_permission['csv data']
-            self.upload(file, csv_s3_url)
-        else:
-            raise Exception('These are not read write credentials')
+        csv_s3_url = self.read_write_permission[CSV_DATA_KEY]
+        self.upload(file, csv_s3_url)
+
+
+class ManifestError(BaseModel):
+    uuid: str
+    errors: List[str]
 
 
 class ValidationV2(BaseModel):
@@ -152,44 +158,14 @@ class ValidationManifest(BaseModel):
         return self._validation_response
 
 
-class ValidationResponse:
-    def __init__(self, file: pathlib.Path, creds: ValidationV2Credentials, validation_resource: ValidationV2):
-        self.file = file
-        self.rw_creds = creds
-        self.validation_resource = validation_resource
-
-    @property
-    def status(self):
-        return self.validation_resource.status
-
-    @property
-    def uuid(self):
-        return self.rw_creds.uuid
-
-    @property
-    def manifests(self) -> [ValidationManifest]:
-        this = self
-        return list(
-            map(lambda x: ValidationManifest(**{**x, 'validation_response': this}), self.rw_creds.download_manifests()))
-
-    def has_warnings(self):
-        return 'warnings' in self.status.lower()
-
-    def has_errors(self):
-        return 'errors' in self.status.lower()
-
-    def waiting_manifest_upload(self):
-        return 'pending' in self.status.lower()
-
-
-class ValidationApi:
-    def __init__(self, config: ClientConfiguration):
-        self.config = config
-        self.api_v2_endpoint = f"{self.config.validation_api}/v2/"
-        self.auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
+class ValidationV2Api:
+    def __init__(self, validation_api_endpoint, username, password):
+        self.api_v1_endpoint = f"{validation_api_endpoint}"
+        self.api_v2_endpoint = f"{validation_api_endpoint}/v2/"
+        self.auth = requests.auth.HTTPBasicAuth(username, password)
         self._refresh_creds_lock = RLock()
 
-    def initialize_validation_request(self, file_name: str, scope=None) -> ValidationV2Credentials:
+    def request_upload_credentials(self, file_name: str, scope=None) -> ValidationV2Credentials:
         payload = {
             "validation_file": os.path.basename(file_name)
         }
@@ -197,33 +173,6 @@ class ValidationApi:
             payload["scope"] = scope
         tmp = post_request(self.api_v2_endpoint, auth=self.auth, payload=payload)
         return self._get_refreshable_credentials(tmp)
-
-    def wait_validation_complete(self, uuid, timeout_seconds, wait_manifest_upload=False):
-        timeout = time.time() + timeout_seconds
-        poll_interval_sec = 1
-        while True:
-            validation = self.get_validation(uuid)
-            status = validation.status.lower()
-
-            if 'complete' in status:
-                break
-            elif 'pending' in status and not wait_manifest_upload:
-                break
-            elif 'error' in status:
-                exit_error()
-            else:
-                time.sleep(poll_interval_sec)  # Wait before checking again
-                poll_interval_sec = min(poll_interval_sec * 1.5, 10)
-                if time.time() > timeout:
-                    logger.error(f"Validation timed out for uuid {uuid}")
-                    exit_error()
-        return validation
-
-    def validate_file(self, file: pathlib.Path, scope: int = None, timeout_seconds: int = 120) -> ValidationResponse:
-        creds = self.initialize_validation_request(file.name, scope)
-        creds.upload_csv(file)
-        res = self.wait_validation_complete(creds.uuid, timeout_seconds, False)
-        return ValidationResponse(file, creds, res)
 
     def _get_refreshable_credentials(self, creds: dict):
         try:
@@ -248,3 +197,40 @@ class ValidationApi:
         url = f"{self.api_v2_endpoint}{uuid}"
         tmp = get_request(url, auth=self.auth)
         return ValidationV2(**tmp)
+
+    def get_manifest_errors(self, uuid: str) -> List[ManifestError]:
+        url = f"{self.api_v2_endpoint}{uuid}/manifests/errors"
+        results = []
+        page = 0
+        while True:
+            tmp = get_request(f"{url}?page={page}", auth=self.auth)
+            if not tmp:
+                break
+            results.extend([ManifestError(**t) for t in tmp])
+            page += 1
+        return results
+
+    def wait_validation_complete(self, uuid, timeout_seconds, wait_manifest_upload=False) -> ValidationV2:
+        timeout = time.time() + timeout_seconds
+        poll_interval_sec = 1
+        while True:
+            validation = self.get_validation(uuid)
+            status = validation.status.lower()
+
+            if 'complete' in status:
+                break
+            elif 'pending' in status and not wait_manifest_upload:
+                break
+            elif 'error' in status:
+                exit_error()
+            else:
+                time.sleep(poll_interval_sec)  # Wait before checking again
+                poll_interval_sec = min(poll_interval_sec * 1.5, 10)
+                if time.time() > timeout:
+                    logger.error(f"Validation timed out for uuid {uuid}")
+                    exit_error()
+        return validation
+
+    def get_v2_routing_percent(self):
+        api_config = get_request(f'{self.api_v1_endpoint}/config')
+        return api_config['v2Routing']['percent']

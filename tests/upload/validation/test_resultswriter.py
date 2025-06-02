@@ -6,18 +6,21 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from NDATools.upload.validation.api import ValidationResponse, ValidationV2Credentials, ValidationV2
-from NDATools.upload.validation.filewriter import JsonValidationFileWriter, CsvValidationFileWriter
+from NDATools.upload.cli import ValidatedFile
+from NDATools.upload.validation.api import ValidationV2Credentials, ValidationV2
+from NDATools.upload.validation.results_writer import JsonWriter as JsonValidationFileWriter, \
+    CsvWriter as CsvValidationFileWriter
 
 
 @pytest.fixture
-def validation(shared_datadir):
-    def _validation(errors, warnings):
-        file1 = shared_datadir / 'file.csv'
+def validation(top_level_datadir):
+    def _validation(errors, warnings, manifest_errors):
+        file1 = top_level_datadir / 'file.csv'
         rw_creds = MagicMock(spec=ValidationV2Credentials)
         rw_creds.uuid = str(uuid.uuid4())
         rw_creds.download_errors = MagicMock(return_value=errors or {})
         rw_creds.download_warnings = MagicMock(return_value=warnings or {})
+        rw_creds.down = MagicMock(return_value=warnings or {})
         resource = ValidationV2(**{
             'validation_uuid': rw_creds.uuid,
             'status': 'CompleteWithWarnings' if not errors else 'CompleteWithErrors',
@@ -26,7 +29,7 @@ def validation(shared_datadir):
             'rows': 42,
             'validation_files': dict()
         })
-        return ValidationResponse(file1, rw_creds, resource)
+        return ValidatedFile(file1, v2_creds=rw_creds, v2_resource=resource)
 
     return _validation
 
@@ -34,16 +37,21 @@ def validation(shared_datadir):
 @pytest.fixture
 def validation_with_errors(validation):
     return validation(
-        errors={'error1a': [{'columnName': 'column 1a', 'message': 'error message 1a', 'record': 'record 1a'}],
-                'error1b': [{'columnName': 'column 1b', 'message': 'error message 1b', 'record': 'record 1b'}]},
-        warnings=None)
+        errors={'error1a': [{'columnName': 'column 1a', 'message': 'error message 1a', 'recordNumber': 1}],
+                'error1b': [{'columnName': 'column 1b', 'message': 'error message 1b', 'recordNumber': 1}],
+                'unrecognizedColumnName	': [
+                    {'columnName': 'column 1c', 'message': 'error message 1c', 'recordNumber': None}]
+                },
+        warnings=None,
+        manifest_errors=None)
 
 
 @pytest.fixture
 def validation_with_warnings(validation):
     return validation(errors=None, warnings={
-        'warning1a': [{'columnName': 'column 1a', 'message': 'warning message 1a', 'record': 'record 1a'}],
-        'warning1b': [{'columnName': 'column 1b', 'message': 'warning message 1b', 'record': 'record 1b'}]})
+        'warning1a': [{'columnName': 'column 1a', 'message': 'warning message 1a', 'recordNumber': 1}],
+        'warning1b': [{'columnName': 'column 1b', 'message': 'warning message 1b', 'recordNumber': 1}]},
+                      manifest_errors=None)
 
 
 @pytest.mark.parametrize("testing_errors,file_writer_class", [
@@ -65,17 +73,16 @@ def test_json_validation_file_writer(testing_errors, file_writer_class, tmp_path
     f = validation_writer.errors_file if testing_errors else validation_writer.warnings_file
     with open(f, 'r') as file:
         if file_writer_class == JsonValidationFileWriter:
-            result_list = json.load(file)['Results']
-            for (response, result) in zip(validation_responses, result_list):
+            for (response, result) in zip(validation_responses, json.load(file)['Results']):
                 assert result['File'] == response.file.name
                 assert result['ID'] == response.uuid
                 assert result['Status'] == response.status
                 assert result['Expiration Date'] == ''
                 if testing_errors:
-                    assert result['Errors'] == response.rw_creds.download_errors()
+                    assert result['Errors'] == response._v2_creds.download_errors()
                     assert 'Warnings' not in result
                 else:
-                    assert result['Warnings'] == response.rw_creds.download_warnings()
+                    assert result['Warnings'] == response._v2_creds.download_warnings()
         else:
             csv_reader = csv.DictReader(file)
             for (validation_uuid, warnings_or_errors_it) in itertools.groupby([row for row in csv_reader],
@@ -101,7 +108,7 @@ def test_json_validation_file_writer(testing_errors, file_writer_class, tmp_path
                                 assert error_by_row['MESSAGE'] == 'None'
                                 assert error_by_row['RECORD'] == 'None'
                             else:
-                                err_matches = response.rw_creds.download_errors()[error_code]
+                                err_matches = response._v2_creds.download_errors()[error_code]
                                 error_match = \
                                     list(filter(lambda e: e['record'] == error_by_row['RECORD'], err_matches))[0]
                                 assert error_by_row['COLUMN'] == error_match['column']
@@ -117,6 +124,6 @@ def test_json_validation_file_writer(testing_errors, file_writer_class, tmp_path
                         if error_code == 'None':
                             assert int(error_by_row['COUNT']) == 0
                         else:
-                            err_matches = response.rw_creds.download_warnings()[error_code]
+                            err_matches = response._v2_creds.download_warnings()[error_code]
                             assert int(error_by_row['COUNT']) == len(list(err_matches))
                             assert error_by_row['MESSAGE'] == list(err_matches)[0]['message']

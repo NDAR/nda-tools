@@ -1,0 +1,5 @@
+package_file_id,package_file_expected_location,nda_s3_url,exists,expected_file_size,actual_file_size,e_tag,download_complete_time
+11793784911,,s3://gpop/ndar_data/QueryPackages/PRODDB/618523879050%3Andar_administrator/Package_1189934/package_info.txt,TRUE,127,127,"(None,)",20250130T142932
+11793784912,,s3://gpop/ndar_data/QueryPackages/PRODDB/618523879050%3Andar_administrator/Package_1189934/ndar_subject01.txt,TRUE,706,706,"(None,)",20250130T142932
+11793784909,,s3://amp-scz-dev.nda.nih.gov/collection-1860/submission-65833/image1.png,TRUE,25878,25878,"(None,)",20250130T142932
+11793784913,,s3://gpop/ndar_data/QueryPackages/PRODDB/README.pdf,TRUE,11000,103371,"(None,)",20250130T142932

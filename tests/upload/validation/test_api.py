@@ -6,7 +6,7 @@ from botocore.exceptions import ClientError
 from pydantic import ValidationError
 
 import NDATools
-from NDATools.upload.validation.api import ValidationV2Credentials, ValidationApi, ValidationV2
+from NDATools.upload.validation.api import ValidationV2Credentials, ValidationV2Api, ValidationV2
 
 
 def test_pydantic_validation_errors(monkeypatch, validation_api):
@@ -24,11 +24,11 @@ def test_pydantic_validation_errors(monkeypatch, validation_api):
         m.setattr(NDATools.upload.validation.api, 'post_request', Mock(side_effect=[mock_response]))
         # missing field causes Validation Error
         with pytest.raises(ValidationError):
-            validation_api.initialize_validation_request('fmriresults01.csv')
+            validation_api.request_upload_credentials('fmriresults01.csv')
         # adding the field back resolves the validation error
         mock_response['access_key_id'] = 'fake_access_key'
         m.setattr(NDATools.upload.validation.api, 'post_request', Mock(side_effect=[mock_response]))
-        creds = validation_api.initialize_validation_request('fmriresults01.csv')
+        creds = validation_api.request_upload_credentials('fmriresults01.csv')
         assert creds.secret_access_key == 'fake_secret_key'
         assert creds.access_key_id == 'fake_access_key'
         assert creds.session_token == 'fake_session_token'
@@ -39,6 +39,7 @@ def test_refresh_credentials(monkeypatch):
     with monkeypatch.context() as m:
         mock_boto3 = MagicMock()
         m.setattr(NDATools.upload.validation.api, 'boto3', mock_boto3)
+        m.setattr(time, 'sleep', Mock(side_effect=[None]))
 
         # create mock for a successful get_object response
         mock_stream = Mock()
@@ -108,7 +109,8 @@ def completed_validation(validation):
 
 @pytest.fixture
 def validation_api():
-    tmp = ValidationApi(config=MagicMock())
+    tmp = ValidationV2Api(validation_api_endpoint='https://nda.nih.gov/api/validation', username='test_user',
+                          password='testpass')
     tmp.get_validation = MagicMock()
     return tmp
 
@@ -143,6 +145,7 @@ def test_wait_validation_complete_status_pending_wait_for_manifest_timeout(pendi
 
     with monkeypatch.context() as m:
         m.setattr(NDATools.upload.validation.api, 'exit_error', MagicMock(side_effect=[SystemExit]))
+        m.setattr(time, 'sleep', lambda x: None)
 
         # catch SystemExit here so the test doesn't fail
         with pytest.raises(SystemExit) as exit_info:
@@ -158,8 +161,10 @@ def test_wait_validation_complete_status_error_wait_for_manifest(pending_validat
                                                                  monkeypatch):
     """Test that 'wait_validation_complete' raises a systemExit exception if validation status indicates unexpected backend error"""
     validation_api.get_validation = MagicMock(side_effect=[pending_validation, pending_validation, error_validation])
-    with patch('NDATools.upload.validation.api.exit_error') as mock_exit:
+    with patch('NDATools.upload.validation.api.exit_error') as mock_exit, \
+            patch('time.sleep') as mock_sleep:
         mock_exit.side_effect = SystemExit(1)
+        mock_sleep.side_effect = lambda x: None
 
         # catch SystemExit here so the test doesn't fail
         with pytest.raises(SystemExit) as exit_info:

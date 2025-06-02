@@ -1,22 +1,20 @@
 import datetime
-import functools
 import json
 import logging
 import os
-import random
 import re
 import sys
-import threading
-import time
-import traceback
 import urllib.parse
 from pathlib import Path
-from urllib.parse import urlparse
+from typing import Callable, List, Tuple
+from urllib.parse import urlparse, unquote
 
 import boto3
 import requests
-from botocore.exceptions import ClientError
 from requests.adapters import HTTPAdapter, Retry
+from tqdm.contrib.concurrent import thread_map
+
+from NDATools import exit_error
 
 logger = logging.getLogger(__name__)
 
@@ -59,45 +57,23 @@ class HttpErrorHandlingStrategy():
             message = 'Error authenticating the endpoint: incorrect NDA username or password'
         elif 'content-type' in r.headers and 'json' in r.headers['Content-Type']:
             try:
-                message = r.json()
-                if message.get('message', None):
-                    message = message.get('message')
+                response_json = r.json()
+                if 'message' in response_json:
+                    message = response_json['message']
             except (ValueError, json.JSONDecodeError):
                 message = r.text
         else:
             message = r.text
 
+        could_not_continue = 'An unexpected error was encountered and the program could not continue.'
+        logger.error('\n%s' % could_not_continue)
         if message is not None and len(str(message).strip()) > 0:
-            logger.error(
-                '\nAn unexpected error was encountered and the program could not continue. Error message from service was: \n%s' % message)
-        else:
-            logger.error('\nAn unexpected error was encountered and the program could not continue.\n')
+            logger.error('\nError message from service was: \n%s' % message)
         exit_error()
 
     @staticmethod
     def reraise_status(response):
         response.raise_for_status()
-
-
-def _exit_client(message=None, status_code=1):
-    for t in threading.enumerate():
-        try:
-            t.shutdown_flag.set()
-        except AttributeError as e:
-            continue
-    if message:
-        logger.info('\n\n{}'.format(message))
-    else:
-        logger.info('\n\nExit signal received, shutting down...')
-    os._exit(status_code)
-
-
-def exit_error(message=None):
-    _exit_client(message, status_code=1)
-
-
-def exit_normal(message=None):
-    _exit_client(message, status_code=0)
 
 
 def parse_local_files(directory_list, no_match, full_file_path, no_read_access, skip_local_file_check):
@@ -170,7 +146,7 @@ def sanitize_windows_download_filename(filepath):
 
     if any(char in path for char in forbidden_windows_chars):
         for char in forbidden_windows_chars:
-            filepath = os.path.join(drive, str(filepath).replace(char, urllib.parse.quote(char)))
+            filepath = os.path.join(str(filepath).replace(char, urllib.parse.quote(char)))
     return filepath
 
 
@@ -184,32 +160,13 @@ def check_read_permissions(file):
     return False
 
 
-def evaluate_yes_no_input(message, default_input=None):
+def evaluate_yes_no_input(message):
     while True:
-        default_print = ' (Y/n)' if default_input.upper() == 'Y' else ' (y/N)' if default_input.upper() == 'N' else ''
-        user_input = input('{}{}'.format(message, default_print)) or default_input
-        if str(user_input).upper() in ['Y', 'N']:
+        user_input = input(message)
+        if str(user_input).lower() in ['y', 'n']:
             return user_input.lower()
         else:
-            print('Input not recognized.')
-
-
-def get_error():
-    exc_type, exc_value, exc_tb = sys.exc_info()
-    tbe = traceback.TracebackException(
-        exc_type, exc_value, exc_tb,
-    )
-    ex = ''.join(tbe.format_exception_only())
-    return 'Error: {}'.format(ex)
-
-
-def get_traceback():
-    exc_type, exc_value, exc_tb = sys.exc_info()
-    tbe = traceback.TracebackException(
-        exc_type, exc_value, exc_tb,
-    )
-    tb = ''.join(tbe.format())
-    return tb
+            print("Input not recognized. Please enter 'y', or 'n'")
 
 
 # return bucket and key for url (handles http and s3 protocol)
@@ -224,10 +181,10 @@ def deconstruct_s3_url(url):
         if tmp.hostname == 's3.amazonaws.com':
             bucket = tmp.path.split('/')[1]
             path = '/'.join(tmp.path.split('/')[2:])
-            path = '/' + path
+            path = unquote('/' + path)
         else:
             bucket = tmp.hostname.replace('.s3.amazonaws.com', '')
-            path = tmp.path
+            path = unquote(tmp.path)
     else:
         raise Exception('Invalid URL passed to deconstruct_s3_url method: {}'.format(url))
 
@@ -244,22 +201,6 @@ def human_size(bytes, units=[' bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']):
     return str(round(bytes, 2)) + units[0] if bytes < 1024 else human_size(bytes / 1024, units[1:])
 
 
-def retry_connection_errors(func):
-    @functools.wraps(func)
-    def _retry(*args, **kwargs):
-        tmp = None
-        for i in range(10):
-            try:
-                tmp = func(*args, **kwargs)
-                return tmp
-            except requests.exceptions.ConnectionError as e:
-                if i == 9:
-                    raise e
-                time.sleep(random.randint(10, 30))
-
-    return _retry
-
-
 def is_json(test):
     try:
         json.dumps(test)
@@ -268,7 +209,6 @@ def is_json(test):
         return False
 
 
-@retry_connection_errors
 def _send_prepared_request(prepped, timeout=150, deserialize_handler=DeserializeHandler.convert_json,
                            error_handler=HttpErrorHandlingStrategy.print_and_exit):
     with requests.Session() as session:
@@ -333,17 +273,11 @@ def get_s3_client_with_config(aws_access_key, aws_secret_key, aws_session_token)
                                  region_name='us-east-1').client('s3')
 
 
-def get_s3_resource(aws_access_key, aws_secret_key, aws_session_token, s3_config):
-    return boto3.Session(aws_access_key_id=aws_access_key,
-                         aws_secret_access_key=aws_secret_key,
-                         aws_session_token=aws_session_token).resource('s3', config=s3_config)
-
-
 def collect_directory_list():
     while True:
-        retry = input('Press the "Enter" key to specify directory/directories OR an s3 location by entering -s3 '
-                      '<bucket name> to locate your associated files:')
-        response = retry.split(' ')
+        retry = input(
+            '\nPlease specify the immediate parent directory of the associated file paths specified in the csv, then press Enter. Separate multiple directories by a comma: ')
+        response = retry.split(',')
         directories = list(map(lambda x: Path(x.strip()), response))
         if all(map(lambda x: os.path.isdir(x), directories)):
             return list(map(lambda x: x.resolve(), directories))
@@ -356,26 +290,30 @@ def collect_directory_list():
 
 def get_non_blank_input(prompt, input_name):
     while True:
-        user_input = input(prompt)
-        if user_input.strip():
+        user_input = input(prompt).strip()
+        if user_input:
             return user_input
         else:
             print('{} cannot be blank. Please try again'.format(input_name))
 
 
-def get_object(s3_url, /, access_key_id, secret_access_key, session_token):
-    # split the s3_url to get a bucket and key
-    bucket, key = s3_url.replace("s3://", "").split("/", 1)
-    # use the boto3 client to get the results and display the contents
-    try:
-        result = boto3.client(
-            's3',
-            aws_access_key_id=access_key_id,
-            aws_secret_access_key=secret_access_key,
-            aws_session_token=session_token
-        ).get_object(Bucket=bucket, Key=key)
-        # print(f"{key}: {result['Body'].read(1024).decode('utf-8')}")
-        return result['Body'].read()
-    except ClientError as e:
-        print(f"An error occurred: {e}")
-        exit(1)
+def get_int_input(prompt, input_name):
+    while True:
+        user_input = get_non_blank_input(prompt, input_name)
+        try:
+            return int(user_input)
+        except ValueError:
+            print('{} must be an integer. Please try again'.format(input_name))
+
+
+def get_directory_input(prompt):
+    while True:
+        retry_associated_files_dir = Path(input(prompt))
+        if not retry_associated_files_dir.exists():
+            logger.error(f'{retry_associated_files_dir} does not exist. Please try again.')
+        else:
+            return retry_associated_files_dir
+
+
+def tqdm_thread_map(func: Callable, args: List[Tuple], max_workers: int, disable_tqdm: bool = False):
+    return thread_map(func, args, max_workers=max_workers, total=len(args), disable=disable_tqdm)
