@@ -39,7 +39,7 @@ phases:
               echo "Tagging version: $versionNumber"
               gitTag="$versionNumber"
               git tag "$gitTag"
-              git push --tags
+              git push github --tags
             else
               echo "Version number not found in __init__.py"
               exit 1
