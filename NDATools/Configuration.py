@@ -6,7 +6,7 @@ import os
 import time
 
 import yaml
-from pkg_resources import resource_filename
+from importlib.resources import files
 
 import NDATools
 from NDATools import NDA_TOOLS_LOGGING_YML_FILE
@@ -135,7 +135,7 @@ class ClientConfiguration:
 
     def _check_and_fix_missing_options(self):
         default_config = configparser.ConfigParser()
-        default_file_path = resource_filename(__name__, 'clientscripts/config/settings.cfg')
+        default_file_path = files(__name__) / 'clientscripts/config/settings.cfg'
         default_config.read(default_file_path)
         change_detected = False
         for section in default_config.sections():
