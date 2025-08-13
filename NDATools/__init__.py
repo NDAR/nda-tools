@@ -12,7 +12,7 @@ __version__ = '0.5.0'
 
 import threading
 
-from pkg_resources import resource_filename
+from importlib.resources import files
 
 from typing import Tuple
 
@@ -105,11 +105,11 @@ def create_nda_folders():
     _create_if_not_exists(NDA_TOOLS_SETTINGS_FOLDER)
 
     if not pathlib.Path(NDA_TOOLS_LOGGING_YML_FILE).is_file():
-        shutil.copyfile(resource_filename(__name__, 'clientscripts/config/logging.yml'),
+        shutil.copyfile(files(__name__) / 'clientscripts/config/logging.yml',
                         NDA_TOOLS_LOGGING_YML_FILE)
 
     if not pathlib.Path(NDA_TOOLS_SETTINGS_CFG_FILE).is_file():
-        shutil.copyfile(resource_filename(__name__, 'clientscripts/config/settings.cfg'),
+        shutil.copyfile(files(__name__) / 'clientscripts/config/settings.cfg',
                         NDA_TOOLS_SETTINGS_CFG_FILE)
     # MAC users sometimes see output from python warnings module. Suppress these msgs
     os.environ['PYTHONWARNINGS'] = 'ignore'
