@@ -8,7 +8,7 @@ import pathlib
 import shutil
 import sys
 
-__version__ = '0.5.0'
+__version__ = '0.6.1'
 
 import threading
 
@@ -18,7 +18,9 @@ from typing import Tuple
 
 pypi_version = None
 initialization_complete = False
-print('Running NDATools Version {}'.format(__version__))
+print("\n================================================================================")
+print('\n                  Running NDA Tools Version {}'.format(__version__))
+print("\n================================================================================")
 
 logger = logging.getLogger(__name__)
 

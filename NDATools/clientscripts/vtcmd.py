@@ -11,6 +11,7 @@ from NDATools.Utils import get_non_blank_input, get_int_input
 from NDATools.upload.submission.api import CollectionApi
 from NDATools.upload.submission.resubmission import check_replacement_authorized
 from NDATools.upload.validation.api import ValidationV2Api
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +105,7 @@ def check_args(args, config):
 
 
 def validate(args, config):
-    logger.info(f'\nValidating {len(args.files)} files...')
+    logger.info(f'\n[=== Validating {len(args.files)} files ===]')
     # Perform the validation using v1 or v2 endpoints.
     if config.v2_enabled:
         logger.debug('Using the new validation API.')
@@ -192,9 +193,9 @@ def collect_submission_parameters(config: ClientConfiguration):
 
 def print_submission_complete_message(submission, replacement):
     if replacement:
-        print('\nYou have successfully replaced submission {}.'.format(submission.id))
+        tqdm.write('\nYou have successfully replaced submission {}.'.format(submission.id))
     else:
-        print('\nYou have successfully completed uploading files for submission {} with status: {}'.format
+        tqdm.write('\nYou have successfully completed uploading files for submission {} with status: {}'.format
               (submission.id, submission.status.value))
 
 

@@ -72,12 +72,11 @@ class BatchFileUploader(ABC):
                 search_folders = [pathlib.Path(os.getcwd())]
             self.upload_context = ctx
 
-            with self._construct_tqdm() as progress_bar:
-                for file_batch in self._get_file_batches():
-                    self._upload_batch(file_batch, search_folders, lambda: progress_bar.update(1))
-                self._post_upload_hook()
+            for file_batch in self._get_file_batches():
+                self._upload_batch(file_batch, search_folders)
+            self._post_upload_hook()
 
-    def _upload_batch(self, files: List[Uploadable], search_folders: List[os.PathLike], progress_cb: Callable):
+    def _upload_batch(self, files: List[Uploadable], search_folders: List[os.PathLike]):
         assert len(files) > 0, "no files passed to _upload_batch method"
         self._pre_batch_hook(files, search_folders)
 
@@ -98,14 +97,21 @@ class BatchFileUploader(ABC):
 
         files_found, not_found = group_files_by_path_exists()
 
-        with ThreadPoolExecutor(max_workers=self.max_threads) as executor:
-            futures = [executor.submit(self._upload_file, man) for man in files_found]
+        if len(files_found) > 0:
+            total_bytes = 0
+            for file in files_found:
+                total_bytes += os.path.getsize(file.path)
+            self._construct_tqdm(total_bytes, f"Uploading a batch of {len(files_found)} files ({round(total_bytes / 1024, 2)} KB)")
 
-        for f in as_completed(futures):
-            if f.exception():
-                exit_error()
-            else:
-                progress_cb()
+            with ThreadPoolExecutor(max_workers=self.max_threads) as executor:
+                futures = [executor.submit(self._upload_file, man) for man in files_found]
+
+                for f in as_completed(futures):
+                    if f.exception():
+                        exit_error()
+
+
+        tqdm.write(f"\n{len(files_found)} files have been found and uploaded from {', '.join(str(f) for f in search_folders)}")
 
         self._post_batch_hook(BatchResults(files_found, not_found, search_folders))
 
@@ -118,9 +124,9 @@ class BatchFileUploader(ABC):
     def _upload_file(self, file: Uploadable):
         ...
 
-    def _construct_tqdm(self):
+    def _construct_tqdm(self, total: str, description: str):
         """Default method to construct progress bar. Can be overridden in subclasses"""
-        return tqdm(disable=self.hide_progress)
+        return tqdm(disable=self.hide_progress, total=total, desc=description)
 
     def _pre_batch_hook(self, found: List[Uploadable], search_folders: List[PathLike]):
         ...
