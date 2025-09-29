@@ -64,10 +64,10 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
         super().__init__(max_threads, exit_on_error, hide_progress, batch_size)
         self.api = api
 
-    def _construct_tqdm(self):
+    def _construct_tqdm(self, total: str, description: str):
         """Override progress bar to display total number of files and save to upload ctx"""
-        progress_bar = tqdm(disable=self.hide_progress, total=self.upload_context.total_files,
-                            initial=self.upload_context.upload_progress.uploaded_file_count)
+        progress_bar = tqdm(disable=self.hide_progress, total=total, initial=0, leave=False, desc=description,
+                            unit='B', unit_scale=True, unit_divisor=1024)
         self.upload_context.progress_bar = progress_bar
         return progress_bar
 
@@ -88,6 +88,9 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
             yield [AFUploadable(lookup[c.id], c) for c in creds]
             page_number -= 1
 
+    def _update_bytes_uploaded(self, bytes_uploaded):
+        self.upload_context.progress_bar.update(bytes_uploaded)
+
     def _upload_file(self, up: AFUploadable):
         try:
             file_name = str(up.path.resolve())
@@ -102,11 +105,11 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
                 except botocore.exceptions.ClientError as ce:
                     # only upload the file if it hasn't already been uploaded to s3
                     if str(ce.response['Error']['Code']) == '404':
-                        s3.upload_file(file_name, bucket, key, Config=self.upload_context.transfer_config)
+                        s3.upload_file(file_name, bucket, key, Config=self.upload_context.transfer_config, Callback=self._update_bytes_uploaded)
                     else:
                         raise UploadError(up, ce)
             else:
-                s3.upload_file(file_name, bucket, key, Config=self.upload_context.transfer_config)
+                s3.upload_file(file_name, bucket, key, Config=self.upload_context.transfer_config, Callback=self._update_bytes_uploaded)
         except Exception as e:
             logger.error(f'Unexpected error occurred while uploading {up.search_name}: {e}')
             logger.error(traceback.format_exc())
@@ -133,6 +136,11 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
         self.upload_context.upload_progress.uploaded_file_count += len(updates)
 
     def _post_upload_hook(self):
+        if self.upload_context.remaining_file_count == 0:
+            tqdm.write("\nAll associated files have been uploaded.")
+        if len(self.upload_context.files_not_found) > 0:
+            tqdm.write(f"{len(self.upload_context.files_not_found)} associated files are not found.")
+            
         while self.upload_context.files_not_found:
             searched_folders = self.upload_context.search_folders
             new_dir = self._prompt_for_file_directory(searched_folders)
@@ -142,7 +150,7 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
             self.upload_context.search_folders.clear()
             self.upload_context.search_folders.append(new_dir)
             for file_batch in self._get_file_batches():
-                self._upload_batch(file_batch, self.upload_context.search_folders, lambda: progress_bar.update(1))
+                self._upload_batch(file_batch, self.upload_context.search_folders)
 
     def _prompt_for_file_directory(self, searched_folders: List[pathlib.Path]) -> pathlib.Path:
         # ask the user if they want to continue
@@ -155,7 +163,7 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
                 logger.info(msg)
             else:
                 self.upload_context.display_missing_files_message = True
-            return get_directory_input('Specify the folder containing the associated files:')
+            return get_directory_input('\nSpecify the folder containing the associated files:')
 
 
 KB = 1024

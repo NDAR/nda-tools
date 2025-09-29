@@ -210,7 +210,7 @@ class NdaUploadCli:
                associated_file_dirs: List[PathLike] = None) -> NdaSubmission:
         """Submits data from validated files. A new submission will be created in NDA after this operation succeeds"""
         package = self._build_package(collection_id, title, description, [v.uuid for v in validated_files])
-        logger.info('Requesting submission for package: {}'.format(package.submission_package_uuid))
+        logger.info(f"\n[=== Requesting submission for package: {package.submission_package_uuid} ===]")
         submission = self.submission_api.create_submission(package.submission_package_uuid)
         # print package info to console
         logger.info('')
@@ -302,9 +302,9 @@ class NdaUploadCli:
 
         # Process requests with a status of 'PendingManifests' by uploading manifest files and waiting for status to change
         manifest_requests = [m for m in requests if m.resource.status == ValidationStatus.PENDING_MANIFESTS]
-        logger.info(f'Uploading manifests from {len(manifest_requests)} files')
+        logger.info(f"\n[=== Uploading manifests from {len(manifest_requests)} files ===]")
         self.manifests_uploader.start_upload([m.creds for m in manifest_requests], manifests_dir)
-        logger.info(f'Waiting for {len(manifest_requests)} files to finish validation')
+        logger.info(f"\n[=== Waiting for {len(manifest_requests)} files to finish validation ===]")
 
         def wait_manifest_validation_complete(req: validation_v2_request):
             resource = self.validation_api.wait_validation_complete(req.creds.uuid,
@@ -335,7 +335,7 @@ class NdaUploadCli:
                                  resuming_upload=False) -> None:
         if not associated_file_dirs:
             associated_file_dirs = [os.getcwd()]
-        logger.info('Preparing to upload associated files.')
+        logger.info('[=== Preparing to upload associated files ===]')
         self.associated_files_uploader.start_upload(submission, associated_file_dirs, resuming_upload)
 
     def _build_replacement_package(self, submission_id: int, validated_files: List[ValidatedFile]) -> SubmissionPackage:
