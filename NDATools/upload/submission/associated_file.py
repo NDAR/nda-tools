@@ -104,12 +104,15 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
                     s3.head_object(Bucket=bucket, Key=key)
                 except botocore.exceptions.ClientError as ce:
                     # only upload the file if it hasn't already been uploaded to s3
-                    if str(ce.response['Error']['Code']) == '404':
-                        s3.upload_file(file_name, bucket, key, Config=self.upload_context.transfer_config, Callback=self._update_bytes_uploaded)
+                    # (according to the boto3 documentation, head_object will produce 404 or 403 depending on the permissions)
+                    if str(ce.response['Error']['Code']) in ['404', '403']:
+                        s3.upload_file(file_name, bucket, key, Config=self.upload_context.transfer_config,
+                                       Callback=self._update_bytes_uploaded)
                     else:
                         raise UploadError(up, ce)
             else:
-                s3.upload_file(file_name, bucket, key, Config=self.upload_context.transfer_config, Callback=self._update_bytes_uploaded)
+                s3.upload_file(file_name, bucket, key, Config=self.upload_context.transfer_config,
+                               Callback=self._update_bytes_uploaded)
         except Exception as e:
             logger.error(f'Unexpected error occurred while uploading {up.search_name}: {e}')
             logger.error(traceback.format_exc())
@@ -140,11 +143,10 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
             tqdm.write("\nAll associated files have been uploaded.")
         if len(self.upload_context.files_not_found) > 0:
             tqdm.write(f"{len(self.upload_context.files_not_found)} associated files are not found.")
-            
+
         while self.upload_context.files_not_found:
             searched_folders = self.upload_context.search_folders
             new_dir = self._prompt_for_file_directory(searched_folders)
-            progress_bar = self.upload_context.progress_bar
             # update upload_context variables
             self.upload_context.files_not_found.clear()
             self.upload_context.search_folders.clear()

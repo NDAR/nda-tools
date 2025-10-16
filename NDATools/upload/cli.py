@@ -222,7 +222,7 @@ class NdaUploadCli:
         logger.info('')
 
         if submission.status == SubmissionStatus.UPLOADING:
-            self._upload_associated_files(submission, associated_file_dirs, resuming_upload=True)
+            self._upload_associated_files(submission, associated_file_dirs, resuming_upload=False)
             submission = self.submission_api.get_submission(submission.submission_id)
         return NdaSubmission(submission.submission_id, submission.collection.id, submission.dataset_title,
                              submission.dataset_description, validated_files, submission.status)
@@ -243,7 +243,7 @@ class NdaUploadCli:
         logger.info('Requesting submission for package: {}'.format(package.submission_package_uuid))
         submission = self.submission_api.replace_submission(submission_id, package.submission_package_uuid)
         if submission.status == SubmissionStatus.UPLOADING:
-            self._upload_associated_files(submission, associated_file_dirs, resuming_upload=True)
+            self._upload_associated_files(submission, associated_file_dirs, resuming_upload=False)
             submission = self.submission_api.get_submission(submission.submission_id)
         return NdaSubmission(submission.submission_id, submission.collection.id, submission.dataset_title,
                              submission.dataset_description, validated_files, submission.status)
