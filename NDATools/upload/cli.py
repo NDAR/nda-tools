@@ -12,7 +12,7 @@ from NDATools.Utils import tqdm_thread_map
 from NDATools.upload.submission.api import SubmissionPackage, Submission, SubmissionDetails, PackagingStatus, \
     SubmissionStatus
 from NDATools.upload.submission.resubmission import build_replacement_package_info
-from NDATools.upload.validation.api import ValidationV2
+from NDATools.upload.validation.api import ValidationV2, Qa
 from NDATools.upload.validation.manifests import ManifestFile
 from NDATools.upload.validation.v1 import Validation
 
@@ -162,6 +162,51 @@ class ValidatedFile:
         self._preview(rows, ['Row', 'FileName', 'Message'])
         if len(self.manifest_errors) > limit:
             logger.info('\n...and {} more errors'.format(len(self.manifest_errors) - limit))
+
+
+class QaError:
+    def __init__(self, err_code, *, message, columnName, guid=None, src_subject_id=None):
+        self.message = message
+        self.err_code = err_code
+        self.guid = guid
+        self.src_subject_id = src_subject_id
+        self.column_name = columnName
+
+
+class QaResults:
+    def __init__(self, qa_uuid, errors: dict):
+        self._errors = errors
+        self.qa_uuid = qa_uuid
+
+    def has_errors(self):
+        return len(self._errors) > 0
+
+    @property
+    def errors(self) -> List[QaError]:
+        return [QaError(error_code, **error) for error_code in self._errors.keys() for error in
+                self._errors[error_code]]
+
+    def preview_errors(self, limit=10):
+        logger.info('\nData consistency errors found in validated files:')
+        rows = [
+            [
+                error.err_code,
+                error.guid if error.guid else error.src_subject_id,
+                error.message
+            ] for error in self.errors[:limit]
+        ]
+        self._preview(rows, ['Error', 'Guid/Src-Subject-Id', 'Message'])
+        if len(self.errors) > limit:
+            logger.info('\n...and {} more errors'.format(len(self.errors) - limit))
+
+    def _preview(self, rows, headers):
+        if not rows:
+            return None
+        logger.info('')
+        table = tabulate(rows, headers=headers)
+        logger.info(table)
+        logger.info('')
+        return table
 
 
 class NdaSubmission:
@@ -325,6 +370,13 @@ class NdaUploadCli:
         validated_files.extend(list(
             self._tqdm_thread_map(wait_manifest_validation_complete, manifest_requests)))
         return validated_files
+
+    def qa_validated_files(self, validated_files: List[ValidatedFile]) -> QaResults:
+        qa_result: Qa = self.validation_api.qa_validated_files([f.uuid for f in validated_files],
+                                                               validation_timeout=self.config.validation_timeout,
+                                                               scope=self.config.scope,
+                                                               wait_for_completion=True)
+        return QaResults(qa_result.qa_uuid, qa_result.errors)
 
     def _tqdm_thread_map(self, func: Callable, args: List[Tuple]):
         """Returns an iterator. See https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.Executor.map for more information """

@@ -7,7 +7,7 @@ import pytest
 
 import NDATools
 from NDATools.clientscripts.vtcmd import validate
-from NDATools.upload.cli import ValidatedFile
+from NDATools.upload.cli import ValidatedFile, QaResults
 from NDATools.upload.validation.api import ValidationV2Credentials, ValidationV2
 from NDATools.upload.validation.results_writer import ResultsWriterABC
 from tests.conftest import MockLogger
@@ -86,6 +86,7 @@ def validation_result_writer():
     writer = MagicMock(spec=ResultsWriterABC)
     writer.write_errors = MagicMock()
     writer.write_warnings = MagicMock()
+    writer.write_qa_results = MagicMock()
     return writer
 
 
@@ -105,6 +106,7 @@ def test_validate(test_warnings, test_errors, test_sys_errors,
     config.upload_cli = MagicMock()
     config.is_authenticated = MagicMock(return_value=True)
     config.v2_enabled = True
+    config.qa_enabled = False
 
     errors = {}
     if test_errors:
@@ -132,13 +134,60 @@ def test_validate(test_warnings, test_errors, test_sys_errors,
         except SystemExit:
             assert test_sys_errors or test_errors
             assert NDATools.clientscripts.vtcmd.exit_error.call_count == 1
-            if test_sys_errors:
-                assert mock_logger.any_call_contains('Unexpected error occurred while validating')
 
         # check that program outputs message indicating validation completion
-        assert mock_logger.any_call_contains('All files have finished validating')
-        assert validation_result_writer.write_errors.call_count == 1
+        if test_errors:
+            assert mock_logger.any_call_contains('Complete list of semantic errors saved to')
+        elif not test_sys_errors:
+            assert mock_logger.any_call_contains('All semantic checks have passed')
+        elif test_sys_errors:
+            assert mock_logger.any_call_contains('Unexpected error occurred while validating')
+        assert validation_result_writer.write_errors.call_count == (1 if test_errors or test_sys_errors else 0)
 
         if test_warnings:
             assert mock_logger.any_call_contains('Warnings output to:')
             assert validation_result_writer.write_warnings.call_count == 1
+
+
+@pytest.mark.parametrize('test_errors', [
+    (True),
+    (False),
+])
+def test_qa(test_errors, monkeypatch, config, validation_result_writer, validation_result):
+    """Test that submission is stopped if errors are present """
+    # mock important config variables, including the upload_cli
+    config.validation_results_writer = validation_result_writer
+    config.upload_cli = MagicMock()
+    config.is_authenticated = MagicMock(return_value=True)
+    config.v2_enabled = True
+    config.qa_enabled = True
+    errors = {"inconsistentSex": [
+        {"columnName": "sex", "message": "GUID NDARDF005KBU has multiple values for sex. Values for sex found: M, F.",
+         "guid": "NDARDF005KBU"}]} if test_errors else {}
+
+    mock_result = MagicMock(wraps=QaResults(str(uuid.uuid4()), errors))
+    config.upload_cli.validate = MagicMock(return_value=[validation_result('file1.csv',
+                                                                           {},
+                                                                           {})])
+    config.upload_cli.qa_validated_files = MagicMock(return_value=mock_result)
+
+    with monkeypatch.context() as m:
+        # set this flag to enable printout of extra messages when errors are detected in 1 or more csvs
+        m.setattr(config._args, 'buildPackage', True)
+
+        # setup mocks to test logging calls
+        mock_logger = MockLogger()
+        m.setattr(NDATools.clientscripts.vtcmd.logger, 'info', mock_logger)
+        m.setattr(NDATools.clientscripts.vtcmd, 'exit_error', MagicMock(side_effect=[SystemExit]))
+        try:
+            validate(config._args, config)
+        except SystemExit:
+            assert test_errors
+            assert NDATools.clientscripts.vtcmd.exit_error.call_count == 1
+            assert mock_result.preview_errors.call_count == 1
+        else:
+            assert mock_result.preview_errors.call_count == 0
+
+        assert mock_logger.any_call_contains('All semantic checks have passed')
+        assert mock_logger.any_call_contains('Running preliminary data consistency (QA) checks on')
+        assert validation_result_writer.write_qa_results.call_count == (1 if test_errors else 0)

@@ -3,15 +3,17 @@ import logging
 import random
 import traceback
 
+from tqdm import tqdm
+
 import NDATools
 from NDATools import authenticate
 from NDATools import exit_error
 from NDATools.Configuration import ClientConfiguration
 from NDATools.Utils import get_non_blank_input, get_int_input
+from NDATools.upload.cli import QaResults
 from NDATools.upload.submission.api import CollectionApi
 from NDATools.upload.submission.resubmission import check_replacement_authorized
 from NDATools.upload.validation.api import ValidationV2Api
-from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +109,7 @@ def check_args(args, config):
 def validate(args, config):
     logger.info(f'\n[=== Validating {len(args.files)} files ===]')
     # Perform the validation using v1 or v2 endpoints.
+    logger.info(f'Running semantic checks on {len(args.files)} files...')
     if config.v2_enabled:
         logger.debug('Using the new validation API.')
         if not config.is_authenticated():
@@ -116,24 +119,13 @@ def validate(args, config):
         logger.debug('Using the old validation API.')
         validated_files = config.upload_cli.validate_v1(args.files, config.worker_threads)
 
-    # Save errors to file
-    errors_file = config.validation_results_writer.write_errors(validated_files)
-
-    logger.info(
-        '\nAll files have finished validating. Validation report output to: {}'.format(
-            errors_file))
-    if any(map(lambda x: x.system_error(), validated_files)):
+    system_errors = list(filter(lambda x: x.system_error(), validated_files))
+    if system_errors:
+        errors_file = config.validation_results_writer.write_errors(validated_files)
         msg = 'Unexpected error occurred while validating one or more of the csv files.'
-        msg += '\nPlease email NDAHelp@mail.nih.gov for help in resolving this error and include {} as an attachment to help us resolve the issue'
+        msg += f'\nPlease email NDAHelp@mail.nih.gov for help in resolving this error and include {errors_file} as an attachment to help us resolve the issue'
         logger.info(msg)
         exit_error()
-
-    # Save warnings to file (if requested)
-    if args.warning:
-        warnings_file = config.validation_results_writer.write_warnings(validated_files)
-        logger.info('Warnings output to: {}'.format(warnings_file))
-    elif any(map(lambda x: x.has_warnings(), validated_files)):
-        logger.info('Note: Your data has warnings. To save warnings, run again with -w argument.')
 
     # Preview errors for each file
     has_errors = False
@@ -145,15 +137,47 @@ def validate(args, config):
             else:
                 file.preview_validation_errors(10)
 
+    # Save errors to file
+    if has_errors:
+        errors_file = config.validation_results_writer.write_errors(validated_files)
+        logger.info(
+            f'\nComplete list of semantic errors saved to: {errors_file}')
+    else:
+        logger.info('All semantic checks have passed.')
+
+    # Save warnings to file (if requested)
+    if args.warning:
+        warnings_file = config.validation_results_writer.write_warnings(validated_files)
+        logger.info('Warnings output to: {}'.format(warnings_file))
+    elif any(map(lambda x: x.has_warnings(), validated_files)):
+        logger.info('Note: Your data has warnings. To save warnings, run again with -w argument.')
+
+    if not has_errors and config.qa_enabled:
+        logger.info(
+            f'\nRunning preliminary data consistency (QA) checks on {len(args.files)} files...')
+        qa_results: QaResults = config.upload_cli.qa_validated_files(validated_files)
+        if qa_results.has_errors():
+            has_errors = True
+            qa_results.preview_errors(10)
+            qa_file = config.validation_results_writer.write_qa_results(qa_results)
+            logger.info(f'\nComplete list of qa errors saved to: {qa_file}')
+        else:
+            if args.buildPackage:
+                logger.info(
+                    'All checks have passed. Preparing to submit files\n')
+            else:
+                logger.info(
+                    'All checks have passed. Re-run this command with the -b flag in order to submit\n')
+
     # Exit if user intended to submit and there are any errors
     will_submit = args.buildPackage
     if will_submit and has_errors:
         if args.replace_submission:
-            logger.error('ERROR - At least some of the files failed validation. '
+            logger.error('\nERROR - At least some of the files failed validation. '
                          'All files must pass validation in order to edit submission {}. Please fix these errors and try again.'.format(
                 args.replace_submission))
         else:
-            logger.info('You must correct the above errors before you can submit to NDA')
+            logger.info('\nYou must correct the above errors before you can submit to NDA')
         exit_error()
 
     return validated_files
@@ -196,7 +220,7 @@ def print_submission_complete_message(submission, replacement):
         tqdm.write('\nYou have successfully replaced submission {}.'.format(submission.id))
     else:
         tqdm.write('\nYou have successfully completed uploading files for submission {} with status: {}'.format
-              (submission.id, submission.status.value))
+                   (submission.id, submission.status.value))
 
 
 def replace_submission(validated_files, config):
@@ -212,7 +236,7 @@ def submit(validated_files, config):
     print_submission_complete_message(submission, replacement=False)
 
 
-def set_validation_api_version(config):
+def set_validation_feature_flags(config):
     """Enable v2 of validation svc for some percentage of requests"""
     try:
         api = ValidationV2Api(config.validation_api_endpoint, None, None)
@@ -220,10 +244,15 @@ def set_validation_api_version(config):
         logger.debug('v2_routing percent: {}'.format(percent))
         # route X% of traffic to the new validation API
         config.v2_enabled = random.randint(1, 100) <= (percent * 100)
+
+        percent = api.get_qa_routing_percent()
+        logger.debug('qa enabled percent: {}'.format(percent))
+        config.qa_enabled = random.randint(1, 100) <= (percent * 100)
     except:
         traceback.print_exc()
-        logger.warning('Could not get v2_routing percent. Using the old validation API.')
-        config.v2_enabled = False
+        logger.warning('Could not get validation api config. Using default values.')
+        config.v2_enabled = True
+        config.qa_enabled = True
 
 
 def main():
@@ -234,7 +263,7 @@ def main():
     check_args(args, config)
 
     # route some percentage of requests to the new validation endpoints
-    set_validation_api_version(config)
+    set_validation_feature_flags(config)
 
     if args.resume:
         # submission_id is stored in positional arg 'files'

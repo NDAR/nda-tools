@@ -9,7 +9,7 @@ from collections import defaultdict
 from typing import List
 
 from NDATools import NDA_TOOLS_VAL_FOLDER
-from NDATools.upload.cli import ValidatedFile, ValidationError, ManifestValidationError
+from NDATools.upload.cli import ValidatedFile, ValidationError, ManifestValidationError, QaResults
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +31,7 @@ class ResultsWriterABC(abc.ABC):
         date = time.strftime("%Y%m%dT%H%M%S")
         self.errors_file = os.path.join(results_folder, f'validation_results_{date}{ext.value}')
         self.warnings_file = os.path.join(results_folder, f'validation_warnings_{date}{ext.value}')
+        self.qa_file = os.path.join(results_folder, f'validation_qa_{date}{ext.value}')
 
     @abc.abstractmethod
     def write_errors(self, results: [ValidatedFile]) -> str:
@@ -38,6 +39,10 @@ class ResultsWriterABC(abc.ABC):
 
     @abc.abstractmethod
     def write_warnings(self, results: [ValidatedFile]) -> str:
+        ...
+
+    @abc.abstractmethod
+    def write_qa_results(self, results: QaResults) -> str:
         ...
 
 
@@ -93,6 +98,19 @@ class JsonWriter(ResultsWriterABC):
     def write_warnings(self, results: List[ValidatedFile]):
         self._write(results, False)
         return self.warnings_file
+
+    def write_qa_results(self, qa_results: QaResults):
+        json_data = dict(Results=[])
+        for qa_error in qa_results.errors:
+            json_data['Results'].append({
+                'QA ID': qa_results.qa_uuid,
+                'ERROR CODE': qa_error.err_code,
+                'MESSAGE': qa_error.message,
+                'GUID/SRC-SUBJECT-ID': qa_error.guid if qa_error.guid else qa_error.src_subject_id
+            })
+        with open(self.qa_file, 'w') as f:
+            json.dump(json_data, f, cls=JsonValidationResultsEncoder)
+        return self.qa_file
 
 
 class CsvWriter(ResultsWriterABC):
@@ -176,6 +194,21 @@ class CsvWriter(ResultsWriterABC):
                         'COUNT': '0'
                     })
         return self.warnings_file
+
+    def write_qa_results(self, qa_results: QaResults):
+        fieldnames = ['QA ID', 'ERROR CODE', 'MESSAGE', 'GUID/SRC-SUBJECT-ID']
+        with open(self.qa_file, 'w', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for qa_error in qa_results.errors:
+                row = {
+                    'QA ID': qa_results.qa_uuid,
+                    'ERROR CODE': qa_error.err_code,
+                    'MESSAGE': qa_error.message,
+                    'GUID/SRC-SUBJECT-ID': qa_error.guid if qa_error.guid else qa_error.src_subject_id
+                }
+                writer.writerow(row)
+        return self.qa_file
 
 
 class ResultsWriterFactory:
