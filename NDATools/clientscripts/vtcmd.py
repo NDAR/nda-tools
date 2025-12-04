@@ -109,7 +109,7 @@ def check_args(args, config):
 def validate(args, config):
     logger.info(f'\n[=== Validating {len(args.files)} files ===]')
     # Perform the validation using v1 or v2 endpoints.
-    logger.info(f'Running semantic checks on {len(args.files)} files...')
+    logger.info(f'Running structural checks on {len(args.files)} files...')
     if config.v2_enabled:
         logger.debug('Using the new validation API.')
         if not config.is_authenticated():
@@ -141,9 +141,9 @@ def validate(args, config):
     if has_errors:
         errors_file = config.validation_results_writer.write_errors(validated_files)
         logger.info(
-            f'\nComplete list of semantic errors saved to: {errors_file}')
+            f'\nComplete list of structural errors saved to: {errors_file}')
     else:
-        logger.info('All semantic checks have passed.')
+        logger.info('All structural checks have passed.')
 
     # Save warnings to file (if requested)
     if args.warning:

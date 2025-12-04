@@ -14,8 +14,8 @@ from NDATools import exit_error, NDA_TOOLS_SUBMISSIONS_FOLDER
 from NDATools.Utils import get_s3_client_with_config, deconstruct_s3_url, get_directory_input, SqlUtils
 from NDATools.upload.batch_file_uploader import BatchFileUploader, UploadContext, Uploadable, UploadError, \
     files_not_found_msg, BatchResults
-from NDATools.upload.submission.api import Submission, AssociatedFile, AssociatedFileStatus, BatchUpdate, \
-    AssociatedFileUploadCreds, SubmissionApi, UploadProgress
+from NDATools.upload.submission.api import Submission, AssociatedFile, AssociatedFileUploadCreds, SubmissionApi, \
+    UploadProgress, BatchUpdate, AssociatedFileStatus
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +82,7 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
     def _get_file_batches(self):
         last_page = math.ceil(self.upload_context.remaining_file_count / self.batch_size)
 
-        for page_number in range(last_page):
+        for page_number in range(last_page, -1, -1):
             files: List[AssociatedFile] = self._get_files_by_page(page_number, self.batch_size)
             if not files:
                 break
@@ -125,23 +125,12 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
 
     def _post_batch_hook(self, batch_results: BatchResults):
         """ REST endpoint to update status of files to COMPLETE"""
-        submission_id = self.upload_context.submission.submission_id
-        updates = [BatchUpdate(file.af_file, AssociatedFileStatus.COMPLETE, file.calculate_size()) for file in
-                   batch_results.success]
-        errors = None
-        if len(updates) > 0:
-            errors = self._batch_update_associated_file_status(submission_id, updates)
+        if len(batch_results.success) > 0:
             # it makes sense to show the missing files message if the program successfully processed at least 1 file
             self.upload_context.display_missing_files_message = True
-        if errors:
-            for error in errors:
-                logger.error(f'Error updating status of file {error.search_name.file_user_path}: {error.message}')
-            logger.error(f'There were errors uploading files. \r\n'
-                         f'Please try resuming the submission by running vtcmd -r {submission_id}\r\n'
-                         f'If the error persists, contact NDAHelp@mail.nih.gov for help.')
-            exit_error()
+            self._batch_update_associated_file_status(batch_results.success)
         self.upload_context.files_not_found.extend(batch_results.files_not_found)
-        self.upload_context.upload_progress.uploaded_file_count += len(updates)
+        self.upload_context.upload_progress.uploaded_file_count += len(batch_results.success)
 
     def _post_upload_hook(self):
         if self.upload_context.remaining_file_count == 0:
@@ -180,7 +169,7 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
     def _make_and_connect_submission_db(self):
         self.upload_context.db_connection = sqlite3.connect(self.upload_context.db_path)
         SqlUtils.create_table_from_model(self.upload_context.db_connection, AssociatedFile, "associated_files")
-        logger.debug(f'Saved files from API to temporary database {self.upload_context.db_path}.')
+        logger.debug(f'Saving files from API to temporary database {self.upload_context.db_path}.')
         # TODO add check that batch_size is positive
         creation_batch_size = min(self.batch_size * 1000, 100_000)
         last_page = math.ceil(self.upload_context.remaining_file_count / creation_batch_size)
@@ -195,54 +184,43 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
             page_number -= 1
         logger.debug(f'Saved all files from API to temporary database')
 
-    def _remake_db(self):
-        self._close_and_delete_submission_db()
-        self._make_and_connect_submission_db()
-
     def _check_db_integrity(self):
         exists = SqlUtils.does_table_exists(self.upload_context.db_connection, "associated_files")
         if not exists:
+            if self.upload_context.remaining_file_count > 100_000:
+                tqdm.write(
+                    "Retrieving a listing of the files in the submission. This may take a couple of minutes since the number of files exceeds 100,000")
             self._make_and_connect_submission_db()
-        else:
-            expected_file_count = self.upload_context.total_files
-            actual_file_count = SqlUtils.query(self.upload_context.db_connection, "associated_files", "COUNT(*)")[0][0]
-            if expected_file_count != actual_file_count:
-                logger.warning(
-                    f"The number of files in the database ({actual_file_count}) does not match the expected "
-                    f"number of files ({expected_file_count}).")
-                logger.warning("Attempting to repair database...")
-                self._remake_db()
-            else:
-                expected_uploaded_count = self.upload_context.upload_progress.uploaded_file_count
-                actual_uploaded_count = SqlUtils.query(self.upload_context.db_connection, "associated_files",
-                                                       "COUNT(*)", "status='Complete'")[0][0]
-                if expected_uploaded_count < actual_uploaded_count:
-                    logger.info(
-                        f"The number of uploaded files in the database ({actual_uploaded_count}) is less than the expected "
-                        f"number of uploaded files ({expected_uploaded_count}).")
-                    logger.info("Attempting to resync database...")
-                    self._sync_files_in_db_and_api(expected_uploaded_count, actual_uploaded_count)
 
-    def _get_files_by_page(self, page_number, batch_size):
+    def _get_files_by_page(self, page_number, batch_size) -> List[AssociatedFile]:
         return SqlUtils.paged_query(self.upload_context.db_connection, "associated_files", page_number, batch_size,
                                     AssociatedFile, where_clause=f"status <> 'Complete'")
 
-    def _batch_update_associated_file_status(self, submission_id, updates: List[BatchUpdate]):
+    def _batch_update_associated_file_status(self, updates: List[AFUploadable]):
+        self._mark_files_complete_in_db(updates)
+        self._mark_files_complete_in_api(updates)
+
+    def _mark_files_complete_in_db(self, uploaded: List[Uploadable]):
         # TODO look to see if there are limits to the size of the update clause like there is in oracle
-        self.api.batch_update_associated_file_status(submission_id, updates)
-        ids = ','.join([str(up.file.id) for up in updates])
+        ids = ','.join([str(up.af_file.id) for up in uploaded])
         SqlUtils.update(self.upload_context.db_connection, "associated_files", "status='Complete'",
                         f"id in ({ids})")
 
-    def _sync_files_in_db_and_api(self, expected_uploaded_count, actual_uploaded_count):
-        # since the program uploads and updates AssociatedFiles by id, we know which files need to be updated in the database
-        diff = expected_uploaded_count - actual_uploaded_count
-        assert diff > 0, f"Expected uploaded count ({expected_uploaded_count}) is not greater than actual uploaded count ({actual_uploaded_count})"
-        ids = SqlUtils.query(self.upload_context.db_connection, "associated_files", "id", "status<>'Complete'", "id",
-                             limit=diff)
-        ids_clause = ','.join([str(id) for id in ids])
-        SqlUtils.update(self.upload_context.db_connection, "associated_files", "status='Complete'",
-                        f"id in ({ids_clause})")
+    def _mark_files_complete_in_api(self, uploaded: List[AFUploadable]):
+        """ REST endpoint to update status of files to COMPLETE"""
+        submission_id = self.upload_context.submission.submission_id
+        updates = [BatchUpdate(file.af_file, AssociatedFileStatus.COMPLETE, file.calculate_size()) for file in uploaded]
+        errors = None
+        if len(updates) > 0:
+            errors = self.api.batch_update_associated_file_status(submission_id, updates)
+        # TODO update this to ignore already completed errors
+        if errors:
+            for error in errors:
+                logger.error(f'Error updating status of file {error.search_name.file_user_path}: {error.message}')
+            logger.error(f'There were errors uploading files. \r\n'
+                         f'Please try resuming the submission by running vtcmd -r {submission_id}\r\n'
+                         f'If the error persists, contact NDAHelp@mail.nih.gov for help.')
+            exit_error()
 
 
 KB = 1024
