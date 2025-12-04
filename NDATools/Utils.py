@@ -400,9 +400,18 @@ class SqlUtils:
         return cursor.fetchone() is not None
 
     @staticmethod
-    def query(db_connection, table_name, select_clause="*", where_clause="1=1"):
+    def query(db_connection, table_name, select_clause="*", where_clause=None, order_by_clause=None, limit=None,
+              offset=None):
         cursor = db_connection.cursor()
-        sql = f"SELECT {select_clause} FROM {table_name} WHERE {where_clause};"
+        sql = f"SELECT {select_clause} FROM {table_name}"
+        if where_clause:
+            sql += f" WHERE {where_clause} "
+        if order_by_clause:
+            sql += f" ORDER BY {order_by_clause}"
+        if limit:
+            sql += f" LIMIT {str(limit)}"
+        if offset:
+            sql += f" OFFSET {str(offset)}"
         cursor.execute(sql, ())
         return cursor.fetchall()
 

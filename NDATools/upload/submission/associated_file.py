@@ -82,18 +82,16 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
     def _get_file_batches(self):
         last_page = math.ceil(self.upload_context.remaining_file_count / self.batch_size)
 
-        page_number = last_page - 1  # pages are 0 based
-        while page_number >= 0:
-            submission = self.upload_context.submission
+        for page_number in range(last_page):
             files: List[AssociatedFile] = self._get_files_by_page(page_number, self.batch_size)
             if not files:
                 break
             # hash files by id to make searching easier
             lookup = {file.id: file for file in files}
-            creds: List[AssociatedFileUploadCreds] = self.api.get_upload_credentials(submission.submission_id,
-                                                                                     list(lookup.keys()))
+            creds: List[AssociatedFileUploadCreds] = self.api.get_upload_credentials(
+                self.upload_context.submission.submission_id,
+                list(lookup.keys()))
             yield [AFUploadable(lookup[c.id], c) for c in creds]
-            page_number -= 1
 
     def _update_bytes_uploaded(self, bytes_uploaded):
         self.upload_context.progress_bar.update(bytes_uploaded)
@@ -206,26 +204,24 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
         if not exists:
             self._make_and_connect_submission_db()
         else:
-            corrupt = False
             expected_file_count = self.upload_context.total_files
             actual_file_count = SqlUtils.query(self.upload_context.db_connection, "associated_files", "COUNT(*)")[0][0]
             if expected_file_count != actual_file_count:
                 logger.warning(
                     f"The number of files in the database ({actual_file_count}) does not match the expected "
                     f"number of files ({expected_file_count}).")
-                corrupt = True
+                logger.warning("Attempting to repair database...")
+                self._remake_db()
             else:
                 expected_uploaded_count = self.upload_context.upload_progress.uploaded_file_count
                 actual_uploaded_count = SqlUtils.query(self.upload_context.db_connection, "associated_files",
                                                        "COUNT(*)", "status='Complete'")[0][0]
-                if expected_uploaded_count != actual_uploaded_count:
-                    logger.warning(
-                        f"The number of uploaded files in the database ({actual_uploaded_count}) does not match the expected "
+                if expected_uploaded_count < actual_uploaded_count:
+                    logger.info(
+                        f"The number of uploaded files in the database ({actual_uploaded_count}) is less than the expected "
                         f"number of uploaded files ({expected_uploaded_count}).")
-                    corrupt = True
-            if corrupt:
-                logger.warning("Attempting to repair database...")
-                self._remake_db()
+                    logger.info("Attempting to resync database...")
+                    self._sync_files_in_db_and_api(expected_uploaded_count, actual_uploaded_count)
 
     def _get_files_by_page(self, page_number, batch_size):
         return SqlUtils.paged_query(self.upload_context.db_connection, "associated_files", page_number, batch_size,
@@ -237,6 +233,16 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
         ids = ','.join([str(up.file.id) for up in updates])
         SqlUtils.update(self.upload_context.db_connection, "associated_files", "status='Complete'",
                         f"id in ({ids})")
+
+    def _sync_files_in_db_and_api(self, expected_uploaded_count, actual_uploaded_count):
+        # since the program uploads and updates AssociatedFiles by id, we know which files need to be updated in the database
+        diff = expected_uploaded_count - actual_uploaded_count
+        assert diff > 0, f"Expected uploaded count ({expected_uploaded_count}) is not greater than actual uploaded count ({actual_uploaded_count})"
+        ids = SqlUtils.query(self.upload_context.db_connection, "associated_files", "id", "status<>'Complete'", "id",
+                             limit=diff)
+        ids_clause = ','.join([str(id) for id in ids])
+        SqlUtils.update(self.upload_context.db_connection, "associated_files", "status='Complete'",
+                        f"id in ({ids_clause})")
 
 
 KB = 1024
