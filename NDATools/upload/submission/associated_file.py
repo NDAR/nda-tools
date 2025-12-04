@@ -85,8 +85,7 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
         page_number = last_page - 1  # pages are 0 based
         while page_number >= 0:
             submission = self.upload_context.submission
-            files: List[AssociatedFile] = self.api.get_files_by_page(submission.submission_id, page_number,
-                                                                     self.batch_size)
+            files: List[AssociatedFile] = self._get_files_by_page(page_number, self.batch_size)
             if not files:
                 break
             # hash files by id to make searching easier
@@ -133,7 +132,7 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
                    batch_results.success]
         errors = None
         if len(updates) > 0:
-            errors = self.api.batch_update_associated_file_status(submission_id, updates)
+            errors = self._batch_update_associated_file_status(submission_id, updates)
             # it makes sense to show the missing files message if the program successfully processed at least 1 file
             self.upload_context.display_missing_files_message = True
         if errors:
@@ -183,23 +182,28 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
     def _make_and_connect_submission_db(self):
         self.upload_context.db_connection = sqlite3.connect(self.upload_context.db_path)
         SqlUtils.create_table_from_model(self.upload_context.db_connection, AssociatedFile, "associated_files")
-
-        last_page = math.ceil(self.upload_context.remaining_file_count / self.batch_size)
+        logger.debug(f'Saved files from API to temporary database {self.upload_context.db_path}.')
+        # TODO add check that batch_size is positive
+        creation_batch_size = min(self.batch_size * 1000, 100_000)
+        last_page = math.ceil(self.upload_context.remaining_file_count / creation_batch_size)
 
         page_number = last_page - 1  # pages are 0 based
         while page_number >= 0:
-            submission = self.upload_context.submission
-            files: List[AssociatedFile] = self.api.get_files_by_page(submission.submission_id, page_number,
-                                                                     self.batch_size)
-            SqlUtils.bulk_insert(self.upload_context.db_connection, "associated_files", self.upload_context.db_path)
+            files: List[AssociatedFile] = self.api.get_files_by_page(self.upload_context.submission.submission_id,
+                                                                     page_number, creation_batch_size,
+                                                                     exclude_uploaded=False)
+            SqlUtils.bulk_insert(self.upload_context.db_connection, "associated_files", files)
+            logger.debug(f'Saved {len(files)} files from page {page_number}')
+            page_number -= 1
+        logger.debug(f'Saved all files from API to temporary database')
 
     def _remake_db(self):
         self._close_and_delete_submission_db()
         self._make_and_connect_submission_db()
 
     def _check_db_integrity(self):
-        not_exists = SqlUtils.does_table_exists(self.upload_context.db_connection, "associated_files")
-        if not_exists:
+        exists = SqlUtils.does_table_exists(self.upload_context.db_connection, "associated_files")
+        if not exists:
             self._make_and_connect_submission_db()
         else:
             corrupt = False
@@ -207,21 +211,32 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
             actual_file_count = SqlUtils.query(self.upload_context.db_connection, "associated_files", "COUNT(*)")[0][0]
             if expected_file_count != actual_file_count:
                 logger.warning(
-                    f"The number of files in the database ({actual_file_count}) does not match the expected ")
-                logger.warning(f"number of files ({expected_file_count}).")
+                    f"The number of files in the database ({actual_file_count}) does not match the expected "
+                    f"number of files ({expected_file_count}).")
                 corrupt = True
             else:
                 expected_uploaded_count = self.upload_context.upload_progress.uploaded_file_count
                 actual_uploaded_count = SqlUtils.query(self.upload_context.db_connection, "associated_files",
-                                                       "COUNT(*) WHERE status='COMPLETE'")[0][0]
+                                                       "COUNT(*)", "status='Complete'")[0][0]
                 if expected_uploaded_count != actual_uploaded_count:
                     logger.warning(
-                        f"The number of uploaded files in the database ({actual_uploaded_count}) does not match the expected ")
-                    logger.warning(f"number of uploaded files ({expected_uploaded_count}).")
+                        f"The number of uploaded files in the database ({actual_uploaded_count}) does not match the expected "
+                        f"number of uploaded files ({expected_uploaded_count}).")
                     corrupt = True
             if corrupt:
                 logger.warning("Attempting to repair database...")
                 self._remake_db()
+
+    def _get_files_by_page(self, page_number, batch_size):
+        return SqlUtils.paged_query(self.upload_context.db_connection, "associated_files", page_number, batch_size,
+                                    AssociatedFile, where_clause=f"status <> 'Complete'")
+
+    def _batch_update_associated_file_status(self, submission_id, updates: List[BatchUpdate]):
+        # TODO look to see if there are limits to the size of the update clause like there is in oracle
+        self.api.batch_update_associated_file_status(submission_id, updates)
+        ids = ','.join([str(up.file.id) for up in updates])
+        SqlUtils.update(self.upload_context.db_connection, "associated_files", "status='Complete'",
+                        f"id in ({ids})")
 
 
 KB = 1024

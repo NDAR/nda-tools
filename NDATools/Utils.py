@@ -374,14 +374,16 @@ class SqlUtils:
     # PAGED QUERY
     # ------------------------------------------------------------
     @staticmethod
-    def paged_query(conn, table_name: str, page: int, page_size: int, model: Type[BaseModel]):
+    def paged_query(conn, table_name: str, page: int, page_size: int, model: Type[BaseModel],
+                    order_by_clause: str = "ID", where_clause: str = "1=1"):
         cursor = conn.cursor()
 
         offset = (page - 1) * page_size
         sql = f"""
             SELECT * 
             FROM {table_name}
-            ORDER BY id
+            WHERE {where_clause}
+            ORDER BY {order_by_clause}
             LIMIT ? OFFSET ?;
         """
         cursor.execute(sql, (page_size, offset))
@@ -403,3 +405,9 @@ class SqlUtils:
         sql = f"SELECT {select_clause} FROM {table_name} WHERE {where_clause};"
         cursor.execute(sql, ())
         return cursor.fetchall()
+
+    @staticmethod
+    def update(db_connection, table, set_clause, where_clause):
+        cursor = db_connection.cursor()
+        sql = f"UPDATE {table} SET {set_clause} WHERE {where_clause};"
+        cursor.execute(sql, ())
