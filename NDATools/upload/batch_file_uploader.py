@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from concurrent.futures import as_completed, ThreadPoolExecutor
 from os import PathLike
 from threading import RLock
-from typing import List, Callable, Union
+from typing import List, Union
 
 from tqdm import tqdm
 
@@ -72,6 +72,7 @@ class BatchFileUploader(ABC):
                 search_folders = [pathlib.Path(os.getcwd())]
             self.upload_context = ctx
 
+            self._pre_upload_hook()
             for file_batch in self._get_file_batches():
                 self._upload_batch(file_batch, search_folders)
             self._post_upload_hook()
@@ -101,7 +102,8 @@ class BatchFileUploader(ABC):
             total_bytes = 0
             for file in files_found:
                 total_bytes += os.path.getsize(file.path)
-            self._construct_tqdm(total_bytes, f"Uploading a batch of {len(files_found)} files ({round(total_bytes / 1024, 2)} KB)")
+            self._construct_tqdm(total_bytes,
+                                 f"Uploading a batch of {len(files_found)} files ({round(total_bytes / 1024, 2)} KB)")
 
             with ThreadPoolExecutor(max_workers=self.max_threads) as executor:
                 futures = [executor.submit(self._upload_file, man) for man in files_found]
@@ -110,8 +112,8 @@ class BatchFileUploader(ABC):
                     if f.exception():
                         exit_error()
 
-
-        tqdm.write(f"\n{len(files_found)} files have been found and uploaded from {', '.join(str(f) for f in search_folders)}")
+        tqdm.write(
+            f"\n{len(files_found)} files have been found and uploaded from {', '.join(str(f) for f in search_folders)}")
 
         self._post_batch_hook(BatchResults(files_found, not_found, search_folders))
 
@@ -135,6 +137,9 @@ class BatchFileUploader(ABC):
         _process_not_found_files(batch_results.files_not_found, batch_results.search_folders)
 
     def _post_upload_hook(self):
+        ...
+
+    def _pre_upload_hook(self):
         ...
 
 

@@ -1,6 +1,8 @@
 import logging
 import math
+import os
 import pathlib
+import sqlite3
 import traceback
 from typing import List
 
@@ -8,8 +10,8 @@ import botocore
 from boto3.s3.transfer import TransferConfig
 from tqdm import tqdm
 
-from NDATools import exit_error
-from NDATools.Utils import get_s3_client_with_config, deconstruct_s3_url, get_directory_input
+from NDATools import exit_error, NDA_TOOLS_SUBMISSIONS_FOLDER
+from NDATools.Utils import get_s3_client_with_config, deconstruct_s3_url, get_directory_input, SqlUtils
 from NDATools.upload.batch_file_uploader import BatchFileUploader, UploadContext, Uploadable, UploadError, \
     files_not_found_msg, BatchResults
 from NDATools.upload.submission.api import Submission, AssociatedFile, AssociatedFileStatus, BatchUpdate, \
@@ -49,6 +51,8 @@ class AFUploadContext(UploadContext):
         self.progress_bar = None
         # initialize this to false, and toggle to true after we prompt user to enter folder
         self.display_missing_files_message = False
+        self.db_path = pathlib.Path(NDA_TOOLS_SUBMISSIONS_FOLDER, f'{submission.submission_id}.db')
+        self.db_connection = sqlite3.connect(self.db_path)
 
     @property
     def total_files(self):
@@ -70,6 +74,10 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
                             unit='B', unit_scale=True, unit_divisor=1024)
         self.upload_context.progress_bar = progress_bar
         return progress_bar
+
+    def _pre_upload_hook(self):
+        '''Get all the files in the submission from the API and save it to a temporary sql lite db'''
+        self._check_db_integrity()
 
     def _get_file_batches(self):
         last_page = math.ceil(self.upload_context.remaining_file_count / self.batch_size)
@@ -141,6 +149,7 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
     def _post_upload_hook(self):
         if self.upload_context.remaining_file_count == 0:
             tqdm.write("\nAll associated files have been uploaded.")
+            self._close_and_delete_submission_db()
         if len(self.upload_context.files_not_found) > 0:
             tqdm.write(f"{len(self.upload_context.files_not_found)} associated files are not found.")
 
@@ -166,6 +175,53 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
             else:
                 self.upload_context.display_missing_files_message = True
             return get_directory_input('\nSpecify the folder containing the associated files:')
+
+    def _close_and_delete_submission_db(self):
+        self.upload_context.db_connection.close()
+        os.remove(self.upload_context.db_path)
+
+    def _make_and_connect_submission_db(self):
+        self.upload_context.db_connection = sqlite3.connect(self.upload_context.db_path)
+        SqlUtils.create_table_from_model(self.upload_context.db_connection, AssociatedFile, "associated_files")
+
+        last_page = math.ceil(self.upload_context.remaining_file_count / self.batch_size)
+
+        page_number = last_page - 1  # pages are 0 based
+        while page_number >= 0:
+            submission = self.upload_context.submission
+            files: List[AssociatedFile] = self.api.get_files_by_page(submission.submission_id, page_number,
+                                                                     self.batch_size)
+            SqlUtils.bulk_insert(self.upload_context.db_connection, "associated_files", self.upload_context.db_path)
+
+    def _remake_db(self):
+        self._close_and_delete_submission_db()
+        self._make_and_connect_submission_db()
+
+    def _check_db_integrity(self):
+        not_exists = SqlUtils.does_table_exists(self.upload_context.db_connection, "associated_files")
+        if not_exists:
+            self._make_and_connect_submission_db()
+        else:
+            corrupt = False
+            expected_file_count = self.upload_context.total_files
+            actual_file_count = SqlUtils.query(self.upload_context.db_connection, "associated_files", "COUNT(*)")[0][0]
+            if expected_file_count != actual_file_count:
+                logger.warning(
+                    f"The number of files in the database ({actual_file_count}) does not match the expected ")
+                logger.warning(f"number of files ({expected_file_count}).")
+                corrupt = True
+            else:
+                expected_uploaded_count = self.upload_context.upload_progress.uploaded_file_count
+                actual_uploaded_count = SqlUtils.query(self.upload_context.db_connection, "associated_files",
+                                                       "COUNT(*) WHERE status='COMPLETE'")[0][0]
+                if expected_uploaded_count != actual_uploaded_count:
+                    logger.warning(
+                        f"The number of uploaded files in the database ({actual_uploaded_count}) does not match the expected ")
+                    logger.warning(f"number of uploaded files ({expected_uploaded_count}).")
+                    corrupt = True
+            if corrupt:
+                logger.warning("Attempting to repair database...")
+                self._remake_db()
 
 
 KB = 1024

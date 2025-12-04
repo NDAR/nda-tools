@@ -81,7 +81,8 @@ NDA_TOOLS_VAL_FOLDER = os.path.join(
     NDA_TOOLS_VTCMD_FOLDER, 'validation_results')
 NDA_TOOLS_SUB_PACKAGE_FOLDER = os.path.join(
     NDA_TOOLS_VTCMD_FOLDER, 'submission_package')
-
+NDA_TOOLS_SUBMISSIONS_FOLDER = os.path.join(
+    NDA_TOOLS_VTCMD_FOLDER, 'submissions')
 NDA_TOOLS_PACKAGE_FILE_METADATA_TEMPLATE = 'package_file_metadata_%s.txt'
 NDA_TOOLS_DEFAULT_LOG_FORMAT = '%(asctime)s:%(levelname)s:%(message)s'
 NDA_TOOLS_SETTINGS_FOLDER = os.path.join(os.path.expanduser('~'), '.NDATools')
@@ -105,6 +106,7 @@ def create_nda_folders():
     _create_if_not_exists(NDA_TOOLS_VAL_FOLDER)
     _create_if_not_exists(NDA_TOOLS_SUB_PACKAGE_FOLDER)
     _create_if_not_exists(NDA_TOOLS_SETTINGS_FOLDER)
+    _create_if_not_exists(NDA_TOOLS_SUBMISSIONS_FOLDER)
 
     if not pathlib.Path(NDA_TOOLS_LOGGING_YML_FILE).is_file():
         t = files('NDATools').joinpath('clientscripts/config/logging.yml')

@@ -6,11 +6,12 @@ import re
 import sys
 import urllib.parse
 from pathlib import Path
-from typing import Callable, List, Tuple
+from typing import Callable, List, Tuple, Type
 from urllib.parse import urlparse, unquote
 
 import boto3
 import requests
+from pydantic import BaseModel
 from requests.adapters import HTTPAdapter, Retry
 from tqdm.contrib.concurrent import thread_map
 
@@ -317,3 +318,88 @@ def get_directory_input(prompt):
 
 def tqdm_thread_map(func: Callable, args: List[Tuple], max_workers: int, disable_tqdm: bool = False):
     return thread_map(func, args, max_workers=max_workers, total=len(args), disable=disable_tqdm)
+
+
+class SqlUtils:
+    # ------------------------------------------------------------
+    # CREATE SQLITE DATABASE AND TABLE FROM PYDANTIC MODEL
+    # ------------------------------------------------------------
+    @staticmethod
+    def create_table_from_model(conn, model: Type[BaseModel], table_name: str):
+        """Creates a table from a Pydantic model."""
+        cursor = conn.cursor()
+
+        # Map Python/Pydantic types to SQLite types
+        type_map = {
+            int: "INTEGER",
+            float: "REAL",
+            str: "TEXT",
+            bool: "INTEGER",  # SQLite has no BOOL; use INTEGER(0/1)
+        }
+
+        columns = []
+        for field_name, field in model.model_fields.items():
+            python_type = field.annotation
+            sql_type = type_map.get(python_type, "TEXT")  # fallback to TEXT
+            col_def = f"{field_name} {sql_type}"
+            if field_name == "id":
+                col_def += " PRIMARY KEY"
+            columns.append(col_def)
+
+        column_sql = ", ".join(columns)
+        sql = f"CREATE TABLE IF NOT EXISTS {table_name} ({column_sql});"
+
+        cursor.execute(sql)
+        conn.commit()
+
+    # ------------------------------------------------------------
+    # BULK INSERT FROM A LIST OF PYDANTIC MODELS
+    # ------------------------------------------------------------
+    @staticmethod
+    def bulk_insert(conn, table_name: str, objects: List[BaseModel]):
+        cursor = conn.cursor()
+        if not objects:
+            return
+
+        fields = objects[0].model_dump().keys()
+        placeholders = ", ".join(["?"] * len(fields))
+        sql = f"INSERT INTO {table_name} ({', '.join(fields)}) VALUES ({placeholders});"
+
+        values = [tuple(obj.model_dump().values()) for obj in objects]
+
+        cursor.executemany(sql, values)
+        conn.commit()
+
+    # ------------------------------------------------------------
+    # PAGED QUERY
+    # ------------------------------------------------------------
+    @staticmethod
+    def paged_query(conn, table_name: str, page: int, page_size: int, model: Type[BaseModel]):
+        cursor = conn.cursor()
+
+        offset = (page - 1) * page_size
+        sql = f"""
+            SELECT * 
+            FROM {table_name}
+            ORDER BY id
+            LIMIT ? OFFSET ?;
+        """
+        cursor.execute(sql, (page_size, offset))
+
+        rows = cursor.fetchall()
+        # Convert rows to Pydantic objects
+        return [model(**dict(zip([col[0] for col in cursor.description], row)))
+                for row in rows]
+
+    @staticmethod
+    def does_table_exists(db_connection, param):
+        cursor = db_connection.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (param,))
+        return cursor.fetchone() is not None
+
+    @staticmethod
+    def query(db_connection, table_name, select_clause="*", where_clause="1=1"):
+        cursor = db_connection.cursor()
+        sql = f"SELECT {select_clause} FROM {table_name} WHERE {where_clause};"
+        cursor.execute(sql, ())
+        return cursor.fetchall()
