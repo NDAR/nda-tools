@@ -137,9 +137,9 @@ def test_validate(test_warnings, test_errors, test_sys_errors,
 
         # check that program outputs message indicating validation completion
         if test_errors:
-            assert mock_logger.any_call_contains('Complete list of semantic errors saved to')
+            assert mock_logger.any_call_contains('Complete list of structural errors saved to')
         elif not test_sys_errors:
-            assert mock_logger.any_call_contains('All semantic checks have passed')
+            assert mock_logger.any_call_contains('All structural checks have passed')
         elif test_sys_errors:
             assert mock_logger.any_call_contains('Unexpected error occurred while validating')
         assert validation_result_writer.write_errors.call_count == (1 if test_errors or test_sys_errors else 0)
@@ -188,6 +188,6 @@ def test_qa(test_errors, monkeypatch, config, validation_result_writer, validati
         else:
             assert mock_result.preview_errors.call_count == 0
 
-        assert mock_logger.any_call_contains('All semantic checks have passed')
+        assert mock_logger.any_call_contains('All structural checks have passed')
         assert mock_logger.any_call_contains('Running preliminary data consistency (QA) checks on')
         assert validation_result_writer.write_qa_results.call_count == (1 if test_errors else 0)
