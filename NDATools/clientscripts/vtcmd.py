@@ -64,8 +64,8 @@ def parse_args():
                         help='Use this argument to replace a submission that has QA errors or that NDA staff has authorized manually to replace.')
 
     parser.add_argument('-r', '--resume', action='store_true',
-                        help='Restart an in-progress submission, resuming from the last successful part in a multi-part'
-                             'upload. Must enter a valid submission ID.')
+                        help='Restart an in-progress submission, resuming from the last successful part in a multi-part '
+                             'upload. A valid Submission ID must immediately follow -r, i.e., vtcmd -r 12345')
 
     parser.add_argument('-j', '--JSON', action='store_true',
                         help='Flag whether to additionally download validation results in JSON format.')
