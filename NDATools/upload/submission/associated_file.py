@@ -170,7 +170,6 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
         self.upload_context.db_connection = sqlite3.connect(self.upload_context.db_path)
         SqlUtils.create_table_from_model(self.upload_context.db_connection, AssociatedFile, "associated_files")
         logger.debug(f'Saving files from API to temporary database {self.upload_context.db_path}.')
-        # TODO add check that batch_size is positive
         creation_batch_size = min(self.batch_size * 1000, 100_000)
         last_page = math.ceil(self.upload_context.remaining_file_count / creation_batch_size)
 
@@ -197,14 +196,17 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
                                     AssociatedFile, where_clause=f"status <> 'Complete'")
 
     def _batch_update_associated_file_status(self, updates: List[AFUploadable]):
-        self._mark_files_complete_in_db(updates)
         self._mark_files_complete_in_api(updates)
+        self._mark_files_complete_in_db(updates)
 
     def _mark_files_complete_in_db(self, uploaded: List[Uploadable]):
-        # TODO look to see if there are limits to the size of the update clause like there is in oracle
-        ids = ','.join([str(up.af_file.id) for up in uploaded])
-        SqlUtils.update(self.upload_context.db_connection, "associated_files", "status='Complete'",
-                        f"id in ({ids})")
+        ids = [up.af_file.id for up in uploaded]
+        # split ids into a list of lists each containing at most 1000 numbers
+        id_chunks = [ids[i:i + 1000] for i in range(0, len(ids), 1000)]
+        for id_chunk in id_chunks:
+            ids_clause = ','.join([str(id) for id in id_chunk])
+            SqlUtils.update(self.upload_context.db_connection, "associated_files", "status='Complete'",
+                            f"id in ({ids_clause})")
 
     def _mark_files_complete_in_api(self, uploaded: List[AFUploadable]):
         """ REST endpoint to update status of files to COMPLETE"""
@@ -213,14 +215,16 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
         errors = None
         if len(updates) > 0:
             errors = self.api.batch_update_associated_file_status(submission_id, updates)
-        # TODO update this to ignore already completed errors
         if errors:
-            for error in errors:
-                logger.error(f'Error updating status of file {error.search_name.file_user_path}: {error.message}')
-            logger.error(f'There were errors uploading files. \r\n'
-                         f'Please try resuming the submission by running vtcmd -r {submission_id}\r\n'
-                         f'If the error persists, contact NDAHelp@mail.nih.gov for help.')
-            exit_error()
+            # filter out errors where the error message indicates that the file already has a status of COMPLETE
+            real_errors = [e for e in errors if not e.message.startswith('Cannot change "status" for submission file')]
+            if real_errors:
+                for error in real_errors:
+                    logger.error(f'Error updating status of file {error.search_name.file_user_path}: {error.message}')
+                logger.error(f'There were errors uploading files. \r\n'
+                             f'Please try resuming the submission by running vtcmd -r {submission_id}\r\n'
+                             f'If the error persists, contact NDAHelp@mail.nih.gov for help.')
+                exit_error()
 
 
 KB = 1024

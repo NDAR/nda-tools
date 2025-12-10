@@ -18,6 +18,13 @@ from NDATools.upload.validation.api import ValidationV2Api
 logger = logging.getLogger(__name__)
 
 
+def positive_int(value):
+    ivalue = int(value)
+    if ivalue <= 0:
+        raise argparse.ArgumentTypeError(f"{value} is not a positive integer")
+    return ivalue
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description='This application allows you to validate files and submit data into NDA. '
@@ -45,7 +52,7 @@ def parse_args():
     parser.add_argument('-b', '--buildPackage', action='store_true',
                         help='Flag whether to construct the submission package')
 
-    parser.add_argument('-c', '--collectionID', metavar='<arg>', type=int, action='store',
+    parser.add_argument('-c', '--collectionID', metavar='<arg>', type=positive_int, action='store',
                         help='The integer part of an NDA collection ID, i.e., for collection C1234, enter 1234')
 
     parser.add_argument('-d', '--description', metavar='<arg>', type=str, action='store',
@@ -70,10 +77,10 @@ def parse_args():
     parser.add_argument('-j', '--JSON', action='store_true',
                         help='Flag whether to additionally download validation results in JSON format.')
 
-    parser.add_argument('-wt', '--workerThreads', metavar='<arg>', type=int, action='store',
+    parser.add_argument('-wt', '--workerThreads', metavar='<arg>', type=positive_int, action='store',
                         help='Number of worker threads')
 
-    parser.add_argument('-bc', '--batch', metavar='<arg>', type=int, action='store',
+    parser.add_argument('-bc', '--batch', metavar='<arg>', type=positive_int, action='store',
                         help='Batch size', default=50)
 
     parser.add_argument('--hideProgress', action='store_true', help='Hides upload/processing progress')
@@ -81,7 +88,7 @@ def parse_args():
     parser.add_argument('-f', '--force', action='store_true',
                         help='Ignores all warnings and continues without prompting for input from the user.')
 
-    parser.add_argument('--validation-timeout', default=300, type=int, action='store',
+    parser.add_argument('--validation-timeout', default=300, type=positive_int, action='store',
                         help='Timeout in seconds until the program errors out with an error. '
                              'In most cases the default value of ''300'' seconds should be sufficient to validate submissions however it may'
                              'be necessary to increase this value to a specific duration.')
