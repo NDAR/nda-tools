@@ -64,7 +64,7 @@ class BatchFileUploader(ABC):
         self.exit_on_error = exit_on_error
         self.batch_size = batch_size
         self.upload_context = None
-        self.upload_lock = RLock()  # lock to prevent concurrent uploads
+        self.upload_lock = RLock()  # lock to prevent multiple threads from using the same instance of BatchFileUploader simultaneously
 
     def start_upload(self, search_folders: List[os.PathLike], ctx: UploadContext = None):
         with self.upload_lock:

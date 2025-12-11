@@ -41,7 +41,7 @@ class AFUploadable(Uploadable):
 
 class AFUploadContext(UploadContext):
     def __init__(self, submission: Submission, resuming_upload: bool, upload_progress: UploadProgress,
-                 transfer_config: TransferConfig, search_folders: List[pathlib.Path]):
+                 transfer_config: TransferConfig, search_folders: List[pathlib.Path], db_folder=None):
         self.submission = submission
         self.resuming_upload = resuming_upload
         self.upload_progress = upload_progress
@@ -51,7 +51,9 @@ class AFUploadContext(UploadContext):
         self.progress_bar = None
         # initialize this to false, and toggle to true after we prompt user to enter folder
         self.display_missing_files_message = False
-        self.db_path = pathlib.Path(NDA_TOOLS_SUBMISSIONS_FOLDER, f'{submission.submission_id}.db')
+        if not db_folder:
+            db_folder = NDA_TOOLS_SUBMISSIONS_FOLDER
+        self.db_path = pathlib.Path(db_folder, f'{submission.submission_id}.db')
         self.db_connection = sqlite3.connect(self.db_path)
 
     @property
@@ -232,12 +234,14 @@ GB = KB * KB * KB
 
 class AssociatedFileUploader:
 
-    def __init__(self, api: SubmissionApi, max_threads, exit_on_error=False, hide_progress=False, batch_size=50):
+    def __init__(self, api: SubmissionApi, max_threads, exit_on_error=False, hide_progress=False, batch_size=50,
+                 db_folder=None):
         self.api = api
         self.uploader = _AssociatedBatchFileUploader(api, max_threads, exit_on_error, hide_progress, batch_size)
 
-    def start_upload(self, submission: Submission, search_folders: List[pathlib.Path], resuming_upload: bool):
+    def start_upload(self, submission: Submission, search_folders: List[pathlib.Path], resuming_upload: bool,
+                     db_folder=None):
         upload_progress = self.api.get_upload_progress(submission.submission_id)
         transfer_config = TransferConfig(multipart_threshold=5 * GB, use_threads=False)
-        ctx = AFUploadContext(submission, resuming_upload, upload_progress, transfer_config, search_folders)
+        ctx = AFUploadContext(submission, resuming_upload, upload_progress, transfer_config, search_folders, db_folder)
         self.uploader.start_upload(search_folders, ctx)
