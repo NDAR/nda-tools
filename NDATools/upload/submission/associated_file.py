@@ -80,10 +80,9 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
         self._check_db_integrity()
 
     def _get_file_batches(self):
-        last_page = math.ceil(self.upload_context.remaining_file_count / self.batch_size)
 
-        for page_number in range(last_page, -1, -1):
-            files: List[AssociatedFile] = self._get_files_by_page(page_number, self.batch_size)
+        while True:
+            files: List[AssociatedFile] = self._get_next_file_batch()
             if not files:
                 break
             # hash files by id to make searching easier
@@ -191,8 +190,8 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
                     "Retrieving a listing of the files in the submission. This may take a couple of minutes since the number of files exceeds 100,000")
             self._make_and_connect_submission_db()
 
-    def _get_files_by_page(self, page_number, batch_size) -> List[AssociatedFile]:
-        return SqlUtils.paged_query(self.upload_context.db_connection, "associated_files", page_number, batch_size,
+    def _get_next_file_batch(self) -> List[AssociatedFile]:
+        return SqlUtils.paged_query(self.upload_context.db_connection, "associated_files", 1, self.batch_size,
                                     AssociatedFile, where_clause=f"status <> 'Complete'")
 
     def _batch_update_associated_file_status(self, updates: List[AFUploadable]):

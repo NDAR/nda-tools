@@ -376,6 +376,7 @@ class SqlUtils:
     @staticmethod
     def paged_query(conn, table_name: str, page: int, page_size: int, model: Type[BaseModel],
                     order_by_clause: str = "ID", where_clause: str = "1=1"):
+        assert page > 0, "Page number must be greater than 0"
         cursor = conn.cursor()
 
         offset = (page - 1) * page_size
@@ -420,3 +421,4 @@ class SqlUtils:
         cursor = db_connection.cursor()
         sql = f"UPDATE {table} SET {set_clause} WHERE {where_clause};"
         cursor.execute(sql, ())
+        cursor.connection.commit()
