@@ -83,9 +83,20 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
 
     def _get_file_batches(self):
 
+        # create temp table for current batch of files
+        SqlUtils.run_ddl(self.upload_context.db_connection,
+                         "CREATE TEMPORARY TABLE current_batch as select * from associated_files where status <> 'Complete' order by id")
+
+        page = 0
         while True:
-            files: List[AssociatedFile] = self._get_next_file_batch()
+            # query from temp table one page at a time
+            page += 1
+            files = SqlUtils.paged_query(self.upload_context.db_connection, "current_batch", page, self.batch_size,
+                                         AssociatedFile)
+
             if not files:
+                # drop temp table in case we need to restart the upload on files that were not found in the last batch
+                SqlUtils.run_ddl(self.upload_context.db_connection, "DROP TABLE current_batch")
                 break
             # hash files by id to make searching easier
             lookup = {file.id: file for file in files}
@@ -191,10 +202,6 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
                 tqdm.write(
                     "Retrieving a listing of the files in the submission. This may take a couple of minutes since the number of files exceeds 100,000")
             self._make_and_connect_submission_db()
-
-    def _get_next_file_batch(self) -> List[AssociatedFile]:
-        return SqlUtils.paged_query(self.upload_context.db_connection, "associated_files", 1, self.batch_size,
-                                    AssociatedFile, where_clause=f"status <> 'Complete'")
 
     def _batch_update_associated_file_status(self, updates: List[AFUploadable]):
         self._mark_files_complete_in_api(updates)

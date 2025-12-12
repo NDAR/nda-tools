@@ -375,7 +375,7 @@ class SqlUtils:
     # ------------------------------------------------------------
     @staticmethod
     def paged_query(conn, table_name: str, page: int, page_size: int, model: Type[BaseModel],
-                    order_by_clause: str = "ID", where_clause: str = "1=1"):
+                    order_by_clause: str = "ID", where_clause: str = "true"):
         assert page > 0, "Page number must be greater than 0"
         cursor = conn.cursor()
 
@@ -421,4 +421,10 @@ class SqlUtils:
         cursor = db_connection.cursor()
         sql = f"UPDATE {table} SET {set_clause} WHERE {where_clause};"
         cursor.execute(sql, ())
+        cursor.connection.commit()
+
+    @staticmethod
+    def run_ddl(db_connection, ddl):
+        cursor = db_connection.cursor()
+        cursor.execute(ddl)
         cursor.connection.commit()

@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from concurrent.futures import as_completed, ThreadPoolExecutor
 from os import PathLike
 from threading import RLock
-from typing import List, Union
+from typing import List, Union, Optional
 
 from tqdm import tqdm
 
@@ -126,7 +126,7 @@ class BatchFileUploader(ABC):
     def _upload_file(self, file: Uploadable):
         ...
 
-    def _construct_tqdm(self, total: str, description: str):
+    def _construct_tqdm(self, total: Optional[float], description: str):
         """Default method to construct progress bar. Can be overridden in subclasses"""
         return tqdm(disable=self.hide_progress, total=total, desc=description)
 

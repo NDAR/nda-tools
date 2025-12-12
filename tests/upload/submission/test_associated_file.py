@@ -35,8 +35,7 @@ def fake_exit(message=None):
 
 
 @pytest.fixture
-def upload_creds1(get_associated_files):
-    associated_file1 = get_associated_files[0]
+def upload_creds1(associated_file1):
     return AssociatedFileUploadCreds(submissionFileId=associated_file1.id,
                                      destination_uri=associated_file1.file_remote_path,
                                      source_uri=associated_file1.file_user_path, access_key='135DFVDFBNDL',
@@ -45,8 +44,7 @@ def upload_creds1(get_associated_files):
 
 
 @pytest.fixture
-def upload_creds2(get_associated_files):
-    associated_file2 = get_associated_files[1]
+def upload_creds2(associated_file2):
     return AssociatedFileUploadCreds(submissionFileId=associated_file2.id,
                                      destination_uri=associated_file2.file_remote_path,
                                      source_uri=associated_file2.file_user_path, access_key='135DFVDFBNDL',
@@ -131,12 +129,14 @@ def test_start_upload_happy_path(mock_get_cli, mock_s3_client, get_submission, g
 @patch('NDATools.upload.submission.associated_file.get_s3_client_with_config')
 def test_start_upload_files_not_found_reenter(mock_get_cli, mock_input, mock_s3_client, get_submission,
                                               get_associated_files,
-                                              datadir, submission_api_mock, upload_progress):
+                                              datadir, submission_api_mock, upload_progress, upload_creds1,
+                                              upload_creds2):
     create_associated_files(datadir, name2='another_associated_file/readme2.txt')
     search_folders = [datadir]
     resuming_upload = False
     mock_input.return_value = datadir / 'another_associated_file'
     mock_get_cli.return_value = mock_s3_client
+    submission_api_mock.get_upload_credentials.side_effect = [[upload_creds1], [upload_creds2], [upload_creds2]]
 
     associated_file_uploader = AssociatedFileUploader(submission_api_mock, 1, False, False, 1)
     associated_file_uploader.start_upload(get_submission, search_folders, resuming_upload, datadir)
