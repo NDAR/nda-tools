@@ -4,7 +4,7 @@ import os
 import pathlib
 import sqlite3
 import traceback
-from typing import List
+from typing import List, Optional
 
 import botocore
 from boto3.s3.transfer import TransferConfig
@@ -70,7 +70,7 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
         super().__init__(max_threads, exit_on_error, hide_progress, batch_size)
         self.api = api
 
-    def _construct_tqdm(self, total: str, description: str):
+    def _construct_tqdm(self, total: Optional[float], description: str):
         """Override progress bar to display total number of files and save to upload ctx"""
         progress_bar = tqdm(disable=self.hide_progress, total=total, initial=0, leave=False, desc=description,
                             unit='B', unit_scale=True, unit_divisor=1024)
