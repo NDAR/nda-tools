@@ -1,5 +1,4 @@
 import logging
-import math
 import os
 import pathlib
 import sqlite3
@@ -15,7 +14,7 @@ from NDATools.Utils import get_s3_client_with_config, deconstruct_s3_url, get_di
 from NDATools.upload.batch_file_uploader import BatchFileUploader, UploadContext, Uploadable, UploadError, \
     files_not_found_msg, BatchResults
 from NDATools.upload.submission.api import Submission, AssociatedFile, AssociatedFileUploadCreds, SubmissionApi, \
-    UploadProgress, BatchUpdate, AssociatedFileStatus
+    BatchUpdate, AssociatedFileStatus, UploadProgress
 
 logger = logging.getLogger(__name__)
 
@@ -40,11 +39,11 @@ class AFUploadable(Uploadable):
 
 
 class AFUploadContext(UploadContext):
-    def __init__(self, submission: Submission, resuming_upload: bool, upload_progress: UploadProgress,
+    def __init__(self, submission: Submission, resuming_upload: bool,
                  transfer_config: TransferConfig, search_folders: List[pathlib.Path], db_folder=None):
         self.submission = submission
         self.resuming_upload = resuming_upload
-        self.upload_progress = upload_progress
+        self.upload_progress = None
         self.transfer_config = transfer_config
         self.files_not_found = []
         self.search_folders = search_folders
@@ -57,7 +56,7 @@ class AFUploadContext(UploadContext):
         self.db_connection = sqlite3.connect(self.db_path)
 
     @property
-    def total_files(self):
+    def file_count_in_submission(self):
         return self.upload_progress.associated_file_count
 
     @property
@@ -179,29 +178,40 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
         os.remove(self.upload_context.db_path)
 
     def _make_and_connect_submission_db(self):
+        logger.debug(
+            f'Creating temporary database at {self.upload_context.db_path}')
         self.upload_context.db_connection = sqlite3.connect(self.upload_context.db_path)
         SqlUtils.create_table_from_model(self.upload_context.db_connection, AssociatedFile, "associated_files")
-        logger.debug(f'Saving files from API to temporary database {self.upload_context.db_path}.')
-        creation_batch_size = min(self.batch_size * 1000, 100_000)
-        last_page = math.ceil(self.upload_context.remaining_file_count / creation_batch_size)
-
-        page_number = last_page - 1  # pages are 0 based
-        while page_number >= 0:
+        logger.info(
+            'Retrieving a listing of the files in the submission. This may take a couple of minutes if the number of files in your submission exceeds 100,000')
+        db_creation_batch_size = min(self.batch_size * 1000, 100_000)
+        page_number = 0
+        is_large_submission = False
+        while True:
             files: List[AssociatedFile] = self.api.get_files_by_page(self.upload_context.submission.submission_id,
-                                                                     page_number, creation_batch_size,
+                                                                     page_number, db_creation_batch_size,
                                                                      exclude_uploaded=False)
+            if not files:
+                break
             SqlUtils.bulk_insert(self.upload_context.db_connection, "associated_files", files)
-            logger.debug(f'Saved {len(files)} files from page {page_number}')
-            page_number -= 1
-        logger.debug(f'Saved all files from API to temporary database')
+
+            if page_number == 0:
+                is_large_submission = len(files) == db_creation_batch_size
+            # display progress for large submissions
+            if is_large_submission:
+                logger.info(f'Retrieved {len(files)} files from page {page_number}')
+            # dont bother making another api call if the number of retrieved results is less than the batch size
+            if len(files) < db_creation_batch_size:
+                break
+
+            page_number += 1
+        logger.debug(f'Finished retrieving all files from submission')
 
     def _check_db_integrity(self):
         exists = SqlUtils.does_table_exists(self.upload_context.db_connection, "associated_files")
         if not exists:
-            if self.upload_context.remaining_file_count > 100_000:
-                tqdm.write(
-                    "Retrieving a listing of the files in the submission. This may take a couple of minutes since the number of files exceeds 100,000")
             self._make_and_connect_submission_db()
+        self._calculate_upload_progress()
 
     def _batch_update_associated_file_status(self, updates: List[AFUploadable]):
         self._mark_files_complete_in_api(updates)
@@ -234,6 +244,13 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
                              f'If the error persists, contact NDAHelp@mail.nih.gov for help.')
                 exit_error()
 
+    def _calculate_upload_progress(self):
+        total_file_count = SqlUtils.query(self.upload_context.db_connection, "associated_files", "count(*)")[0][0]
+        uploaded_file_count = SqlUtils.query(self.upload_context.db_connection, "associated_files", "count(*)",
+                                             where_clause="status = 'Complete'")[0][0]
+        self.upload_context.upload_progress = UploadProgress(uploaded_file_count=uploaded_file_count,
+                                                             associated_file_count=total_file_count)
+
 
 KB = 1024
 GB = KB * KB * KB
@@ -248,7 +265,6 @@ class AssociatedFileUploader:
 
     def start_upload(self, submission: Submission, search_folders: List[pathlib.Path], resuming_upload: bool,
                      db_folder=None):
-        upload_progress = self.api.get_upload_progress(submission.submission_id)
         transfer_config = TransferConfig(multipart_threshold=5 * GB, use_threads=False)
-        ctx = AFUploadContext(submission, resuming_upload, upload_progress, transfer_config, search_folders, db_folder)
+        ctx = AFUploadContext(submission, resuming_upload, transfer_config, search_folders, db_folder)
         self.uploader.start_upload(search_folders, ctx)

@@ -70,8 +70,7 @@ def associated_file2(get_associated_files):
 @pytest.fixture
 def submission_api_mock(upload_progress, associated_file1, associated_file2, upload_creds1, upload_creds2):
     mock_submission_api = MagicMock(spec=SubmissionApi)
-    mock_submission_api.get_upload_progress.return_value = upload_progress
-    mock_submission_api.get_files_by_page.side_effect = [[associated_file1, associated_file2]]
+    mock_submission_api.get_files_by_page.side_effect = [[associated_file1, associated_file2], []]
     mock_submission_api.get_upload_credentials.side_effect = [[upload_creds1], [upload_creds2]]
     mock_submission_api.batch_update_associated_file_status.side_effect = [None, None]
     return mock_submission_api
@@ -105,7 +104,7 @@ def create_associated_files(datadir, name1='readme.txt', name2='readme2.txt'):
 
 @patch('NDATools.upload.submission.associated_file.get_s3_client_with_config')
 def test_start_upload_happy_path(mock_get_cli, mock_s3_client, get_submission, get_associated_files, datadir,
-                                 submission_api_mock, upload_progress):
+                                 submission_api_mock):
     create_associated_files(datadir)
     search_folders = [datadir]
     resuming_upload = False
@@ -116,10 +115,9 @@ def test_start_upload_happy_path(mock_get_cli, mock_s3_client, get_submission, g
 
     verify_upload_context(upload_context=associated_file_uploader.uploader.upload_context,
                           submission_id=get_submission.submission_id,
-                          resuming_upload=resuming_upload,
-                          upload_progress=upload_progress, search_folders=search_folders, num_of_files_not_found=0)
+                          resuming_upload=resuming_upload, search_folders=search_folders, num_of_files_not_found=0)
 
-    verify_submission_api(mock_submission_api=submission_api_mock, submission_id=get_submission.submission_id,
+    verify_submission_api(mock_submission_api=submission_api_mock,
                           get_upload_credentials_call_ct=2, batch_update_associated_file_status_call_ct=2)
 
     assert mock_s3_client.upload_file.call_count == 2
@@ -129,7 +127,7 @@ def test_start_upload_happy_path(mock_get_cli, mock_s3_client, get_submission, g
 @patch('NDATools.upload.submission.associated_file.get_s3_client_with_config')
 def test_start_upload_files_not_found_reenter(mock_get_cli, mock_input, mock_s3_client, get_submission,
                                               get_associated_files,
-                                              datadir, submission_api_mock, upload_progress, upload_creds1,
+                                              datadir, submission_api_mock, upload_creds1,
                                               upload_creds2):
     create_associated_files(datadir, name2='another_associated_file/readme2.txt')
     search_folders = [datadir]
@@ -143,10 +141,9 @@ def test_start_upload_files_not_found_reenter(mock_get_cli, mock_input, mock_s3_
 
     verify_upload_context(upload_context=associated_file_uploader.uploader.upload_context,
                           submission_id=get_submission.submission_id,
-                          resuming_upload=resuming_upload,
-                          upload_progress=upload_progress, search_folders=search_folders, num_of_files_not_found=0)
+                          resuming_upload=resuming_upload, search_folders=search_folders, num_of_files_not_found=0)
 
-    verify_submission_api(mock_submission_api=submission_api_mock, submission_id=get_submission.submission_id,
+    verify_submission_api(mock_submission_api=submission_api_mock,
                           get_upload_credentials_call_ct=3, batch_update_associated_file_status_call_ct=2)
 
     assert mock_s3_client.upload_file.call_count == 2
@@ -157,7 +154,7 @@ def test_start_upload_files_not_found_reenter(mock_get_cli, mock_input, mock_s3_
 @patch('NDATools.upload.submission.associated_file.get_directory_input')
 @patch('NDATools.upload.submission.associated_file.get_s3_client_with_config')
 def test_start_upload_files_not_found_exit(mock_get_cli, mock_input, mock_exit, mock_s3_client, get_submission,
-                                           get_associated_files, datadir, submission_api_mock, upload_progress):
+                                           get_associated_files, datadir, submission_api_mock):
     create_associated_file1(datadir)
     search_folders = [datadir]
     resuming_upload = False
@@ -169,10 +166,9 @@ def test_start_upload_files_not_found_exit(mock_get_cli, mock_input, mock_exit, 
 
     verify_upload_context(upload_context=associated_file_uploader.uploader.upload_context,
                           submission_id=get_submission.submission_id,
-                          resuming_upload=resuming_upload,
-                          upload_progress=upload_progress, search_folders=search_folders, num_of_files_not_found=1)
+                          resuming_upload=resuming_upload, search_folders=search_folders, num_of_files_not_found=1)
 
-    verify_submission_api(mock_submission_api=submission_api_mock, submission_id=get_submission.submission_id,
+    verify_submission_api(mock_submission_api=submission_api_mock,
                           get_upload_credentials_call_ct=2, batch_update_associated_file_status_call_ct=1)
 
     assert mock_s3_client.upload_file.call_count == 1
@@ -184,7 +180,7 @@ def test_start_upload_files_not_found_exit(mock_get_cli, mock_input, mock_exit, 
 @patch('NDATools.upload.submission.associated_file.get_s3_client_with_config')
 def test_start_upload_s3_upload_error(mock_get_cli, mock_exit, mock_s3_client, get_submission, get_associated_files,
                                       datadir,
-                                      submission_api_mock, upload_progress):
+                                      submission_api_mock):
     create_associated_files(datadir)
     search_folders = [datadir]
     resuming_upload = False
@@ -198,10 +194,9 @@ def test_start_upload_s3_upload_error(mock_get_cli, mock_exit, mock_s3_client, g
 
     verify_upload_context(upload_context=associated_file_uploader.uploader.upload_context,
                           submission_id=get_submission.submission_id,
-                          resuming_upload=resuming_upload,
-                          upload_progress=upload_progress, search_folders=search_folders, num_of_files_not_found=0)
+                          resuming_upload=resuming_upload, search_folders=search_folders, num_of_files_not_found=0)
 
-    verify_submission_api(mock_submission_api=submission_api_mock, submission_id=get_submission.submission_id,
+    verify_submission_api(mock_submission_api=submission_api_mock,
                           get_upload_credentials_call_ct=1, batch_update_associated_file_status_call_ct=0)
 
     assert mock_s3_client.upload_file.call_count == 1
@@ -210,8 +205,7 @@ def test_start_upload_s3_upload_error(mock_get_cli, mock_exit, mock_s3_client, g
 
 @patch('NDATools.upload.submission.associated_file.get_s3_client_with_config')
 def test_start_upload_resume_upload(mock_get_cli, mock_s3_client, get_submission, get_associated_files, datadir,
-                                    submission_api_mock,
-                                    upload_progress):
+                                    submission_api_mock):
     create_associated_files(datadir)
     search_folders = [datadir]
     resuming_upload = True
@@ -226,34 +220,67 @@ def test_start_upload_resume_upload(mock_get_cli, mock_s3_client, get_submission
 
     verify_upload_context(upload_context=associated_file_uploader.uploader.upload_context,
                           submission_id=get_submission.submission_id,
-                          resuming_upload=resuming_upload,
-                          upload_progress=upload_progress, search_folders=search_folders, num_of_files_not_found=0)
+                          resuming_upload=resuming_upload, search_folders=search_folders, num_of_files_not_found=0)
 
-    verify_submission_api(mock_submission_api=submission_api_mock, submission_id=get_submission.submission_id,
+    verify_submission_api(mock_submission_api=submission_api_mock,
                           get_upload_credentials_call_ct=2, batch_update_associated_file_status_call_ct=2)
 
     assert mock_s3_client.upload_file.call_count == 1
     assert mock_s3_client.head_object.call_count == 2
 
 
-def verify_upload_context(upload_context, submission_id, resuming_upload, upload_progress, search_folders,
+def get_completed_associated_files(n):
+    start_id = 1000  # set start-id to a number greater than file-id 222 which was used for the associated_file2 fixture
+    for i in range(n):
+        file_id = start_id + i
+        yield AssociatedFile(id=file_id, file_user_path=f'{file_id}.txt',
+                             file_remote_path=f's3://nda-central-dev/collection-80/submission-89075/associated-files/{file_id}.txt',
+                             status=AssociatedFileStatus.COMPLETE, size=2074)
+
+
+@patch('NDATools.upload.submission.associated_file.get_s3_client_with_config')
+def test_start_upload_resume_xxl_upload_with_already_completed_files(mock_get_cli, mock_s3_client, get_submission,
+                                                                     get_associated_files, datadir,
+                                                                     submission_api_mock,
+                                                                     upload_progress,
+                                                                     associated_file1,
+                                                                     associated_file2):
+    create_associated_files(datadir)
+    search_folders = [datadir]
+    resuming_upload = True
+    mock_get_cli.return_value = mock_s3_client
+    submission_api_mock.get_files_by_page.side_effect = [[e for e in get_completed_associated_files(1000)],
+                                                         [associated_file1, associated_file2], []]
+
+    client_error = ClientError({'Error': {'Code': '404', 'Message': 'Not Found'}}, 'HeadObject')
+    mock_s3_client.head_object.side_effect = [client_error]
+    mock_s3_client.upload_file.side_effect = [None]
+
+    associated_file_uploader = AssociatedFileUploader(submission_api_mock, 1, False, False, 1)
+    associated_file_uploader.start_upload(get_submission, search_folders, resuming_upload, datadir)
+
+    verify_upload_context(upload_context=associated_file_uploader.uploader.upload_context,
+                          submission_id=get_submission.submission_id,
+                          resuming_upload=resuming_upload, search_folders=search_folders, num_of_files_not_found=0)
+
+    verify_submission_api(mock_submission_api=submission_api_mock,
+                          get_upload_credentials_call_ct=2, batch_update_associated_file_status_call_ct=2)
+
+    assert mock_s3_client.upload_file.call_count == 1
+    assert mock_s3_client.head_object.call_count == 2
+
+
+def verify_upload_context(upload_context, submission_id, resuming_upload, search_folders,
                           num_of_files_not_found):
     assert upload_context.submission.submission_id == submission_id
     assert upload_context.resuming_upload == resuming_upload
-    assert upload_context.upload_progress == upload_progress
     assert upload_context.transfer_config.multipart_threshold == 5 * 1024 * 1024 * 1024
     assert upload_context.search_folders == search_folders
     assert "Uploading a batch of 1 files" in upload_context.progress_bar.desc
     assert len(upload_context.files_not_found) == num_of_files_not_found
 
 
-def verify_submission_api(mock_submission_api, submission_id, get_upload_credentials_call_ct,
+def verify_submission_api(mock_submission_api, get_upload_credentials_call_ct,
                           batch_update_associated_file_status_call_ct):
-    mock_submission_api.get_upload_progress.assert_called_with(submission_id)
     assert mock_submission_api.get_upload_credentials.call_count == get_upload_credentials_call_ct
     assert mock_submission_api.batch_update_associated_file_status.call_count == batch_update_associated_file_status_call_ct
-
-# def verify_sql_lite(db_path):
-#     assert os.path.exists(db_path)
-#     assert os.path.isfile(db_path)
-#     assert os.stat(db_path).st_size > 0
