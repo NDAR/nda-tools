@@ -253,8 +253,8 @@ def test_start_upload_resume_xxl_upload_with_already_completed_files(mock_get_cl
                                                          [associated_file1, associated_file2], []]
 
     client_error = ClientError({'Error': {'Code': '404', 'Message': 'Not Found'}}, 'HeadObject')
-    mock_s3_client.head_object.side_effect = [client_error]
-    mock_s3_client.upload_file.side_effect = [None]
+    mock_s3_client.head_object.side_effect = [client_error, client_error]
+    mock_s3_client.upload_file.side_effect = [None, None]
 
     associated_file_uploader = AssociatedFileUploader(submission_api_mock, 1, False, False, 1)
     associated_file_uploader.start_upload(get_submission, search_folders, resuming_upload, datadir)
@@ -266,7 +266,7 @@ def test_start_upload_resume_xxl_upload_with_already_completed_files(mock_get_cl
     verify_submission_api(mock_submission_api=submission_api_mock,
                           get_upload_credentials_call_ct=2, batch_update_associated_file_status_call_ct=2)
 
-    assert mock_s3_client.upload_file.call_count == 1
+    assert mock_s3_client.upload_file.call_count == 2
     assert mock_s3_client.head_object.call_count == 2
 
 

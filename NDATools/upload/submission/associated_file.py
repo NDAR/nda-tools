@@ -83,6 +83,7 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
     def _get_file_batches(self):
 
         # create temp table for current batch of files
+        SqlUtils.run_ddl(self.upload_context.db_connection, "DROP TABLE if exists current_batch")
         SqlUtils.run_ddl(self.upload_context.db_connection,
                          "CREATE TEMPORARY TABLE current_batch as select * from associated_files where status <> 'Complete' order by id")
 
@@ -94,8 +95,6 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
                                          AssociatedFile)
 
             if not files:
-                # drop temp table in case we need to restart the upload on files that were not found in the last batch
-                SqlUtils.run_ddl(self.upload_context.db_connection, "DROP TABLE current_batch")
                 break
             # hash files by id to make searching easier
             lookup = {file.id: file for file in files}
