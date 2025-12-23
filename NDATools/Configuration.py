@@ -72,6 +72,7 @@ class ClientConfiguration:
 
         if self._is_vtcmd():
             self.v2_enabled = False
+            self.qa_enabled = False
             self.validation_results_writer = ResultsWriterFactory.get_writer(file_format='json' if args.JSON else 'csv')
             self.validation_api = None
             self.submission_api = None

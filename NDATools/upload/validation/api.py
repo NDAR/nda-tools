@@ -9,7 +9,7 @@ from typing import Union, List
 import boto3
 import requests
 from botocore.exceptions import ClientError
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from NDATools import exit_error
 from NDATools.Utils import get_request, post_request
@@ -131,6 +131,22 @@ class ManifestError(BaseModel):
     errors: List[str]
 
 
+class Qa(BaseModel):
+    qa_uuid: str = Field(..., alias='qa-uuid')
+    status: str
+    done: bool
+    errors: dict
+
+    @field_validator("errors", mode='before')
+    @classmethod
+    def parse_errors(cls, v) -> dict:
+        if isinstance(v, str):
+            if v:
+                return json.loads(v)
+            return {}
+        raise ValueError(f"Invalid errors format: {v}")
+
+
 class ValidationV2(BaseModel):
     uuid: str = Field(..., alias='validation_uuid')
     status: str
@@ -164,6 +180,28 @@ class ValidationV2Api:
         self.api_v2_endpoint = f"{validation_api_endpoint}/v2/"
         self.auth = requests.auth.HTTPBasicAuth(username, password)
         self._refresh_creds_lock = RLock()
+
+    def _start_qa_request(self, validation_uuids: List[str], scope=None) -> Qa:
+        url = f"{self.api_v1_endpoint}/qa"
+        payload = {"validation_uuids": validation_uuids}
+        if scope:
+            payload["scope"] = scope
+
+        tmp = post_request(url, auth=self.auth, payload=payload)
+        return Qa(**tmp)
+
+    def get_qa(self, qa_uuid) -> Qa:
+        url = f"{self.api_v1_endpoint}/qa/{qa_uuid}"
+        tmp = get_request(url, auth=self.auth)
+        return Qa(**tmp)
+
+    def qa_validated_files(self, validation_uuids: List[str], scope=None, wait_for_completion=True,
+                           validation_timeout: int = 600) -> Qa:
+        qa = self._start_qa_request(validation_uuids, scope)
+        if not wait_for_completion:
+            return qa
+        else:
+            return self.wait_qa_complete(qa.qa_uuid, validation_timeout)
 
     def request_upload_credentials(self, file_name: str, scope=None) -> ValidationV2Credentials:
         payload = {
@@ -210,6 +248,24 @@ class ValidationV2Api:
             page += 1
         return results
 
+    def wait_qa_complete(self, qa_uuid, timeout_seconds) -> Qa:
+        timeout = time.time() + timeout_seconds
+        poll_interval_sec = 1
+        while True:
+            qa = self.get_qa(qa_uuid)
+            status = qa.status.lower()
+            if 'complete' in status:
+                break
+            elif 'error' in status:
+                exit_error()
+            else:
+                time.sleep(poll_interval_sec)  # Wait before checking again
+                poll_interval_sec = min(poll_interval_sec * 1.5, 10)
+                if time.time() > timeout:
+                    logger.error(f"Validation timed out for uuid {qa_uuid}")
+                    exit_error()
+        return qa
+
     def wait_validation_complete(self, uuid, timeout_seconds, wait_manifest_upload=False) -> ValidationV2:
         timeout = time.time() + timeout_seconds
         poll_interval_sec = 1
@@ -234,3 +290,10 @@ class ValidationV2Api:
     def get_v2_routing_percent(self):
         api_config = get_request(f'{self.api_v1_endpoint}/config')
         return api_config['v2Routing']['percent']
+
+    def get_qa_routing_percent(self):
+        api_config = get_request(f'{self.api_v1_endpoint}/config')
+        if 'qaRouting' in api_config:
+            return api_config['qaRouting']['percent']
+        else:
+            return 1.0
