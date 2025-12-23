@@ -12,7 +12,7 @@ To use nda-tools, you must first have an NDA account with the necessary permissi
 
 1) [Create an NDA account](https://nda.nih.gov/nda/creating-an-nda-account), if you haven't already.
 2) [Set up and install `nda-tools`.](#how-to-set-up-nda-tools)
-2) [Run commands to submit or download data.](#youre-ready)
+3) [Run commands to submit or download data.](#youre-ready)
 
 ## [How to set up nda-tools](#how-to-set-up-nda-tools)
 
@@ -27,7 +27,7 @@ To start, open your machine's Command Prompt, Windows Terminal, or command line 
 
 nda-tools requires Python 3. Check if Python 3 is already installed:
 
-```
+```bash
 python --version
 ```
 
@@ -56,7 +56,7 @@ python --version
 
 pip (Python’s package manager) is required to install nda-tools. Check if it's installed:
 
-```
+```bash
 pip --version
 ```
 
@@ -77,7 +77,7 @@ pip --version
 
 #### Ensure you have Python and pip installed. Run this command to install nda-tools:
 
-```
+```bash
 pip install nda-tools
 ```
 
@@ -89,7 +89,7 @@ pip install nda-tools
 
 #### Verify Installation by running:
 
-```
+```bash
 vtcmd -h
 ```
 
@@ -98,9 +98,9 @@ vtcmd -h
 **Notes:**
 
 - If the nda-tools needs special permission, try the following command:
-    - `pip install nda-tools --user`
+  - `pip install nda-tools --user`
 - If multiple Python or pip versions exists on your your machine, try the following command instead:
-    - `python -m NDATools.clientscripts.[NDAtoolcommand]`
+  - `python -m NDATools.clientscripts.[NDAtoolcommand]`
 
 ### [Step 4: Authenticate with nda-tools](#step-4-authenticate-with-nda-tools)
 
@@ -111,7 +111,7 @@ NDA login credentials. More details on [Keyring Documentation](https://pypi.org/
 
 First, check if it's installed:
 
-```
+```bash
 pip show keyring
 ```
 
@@ -121,9 +121,9 @@ If keyring version information is returned, then it already exists.
 
 If not, install it:
 
-```
+```bash
 pip install keyring
-``` 
+```
 
 #### For Linux Users
 
@@ -143,7 +143,7 @@ credentials*).
 
 If you're **not** prompted, manually store your credentials by running:
 
-  ```
+  ```bash
   keyring.set_password('nda-tools', 'your-username', 'your-password')
   ```
 
@@ -154,7 +154,7 @@ After the first login, your credentials will be saved in keyring and automatical
 If your NDA account password has changed since your last usage of nda-tools, you can update the password in keyring by
 running the following command:
 
-  ```
+  ```bash
   python -c "import keyring; keyring.set_password('nda-tools', 'your_username_here', 'your_password_here')"
   ```
 
@@ -163,12 +163,14 @@ running the following command:
 Once you have python, pip, and nda-tools installed, and have entered your NDA credentials, you're ready to use the tool.
 
 - View  **upload / data submission** options:
-  ```
+
+  ```bash
   vtcmd -h
   ```
 
 - View  **download** options:
-  ```
+
+  ```bash
   downloadcmd -h
   ```
 
@@ -181,8 +183,8 @@ Once you have python, pip, and nda-tools installed, and have entered your NDA cr
 
 - If your command-line inputs have special characters (i.e., passwords) or spaces (i.e., in directory/filenames),
   you may need to enclose them in quotations.
-    - If you are using windows, use double-quotes: " "
-    - If you are using Mac OSX or Linux, use single-quotes: ' '
+  - If you are using windows, use double-quotes: " "
+  - If you are using Mac OSX or Linux, use single-quotes: ' '
 - Upon your first run, the client will prompt you to enter your username and password, which it will store in your
   operating system's credential manager. You may go back and edit your credentials at any time.
 
@@ -194,11 +196,11 @@ and 'User' sections with preferred locations for validation results, user login,
 
 - While arguments are not positional, the first argument should be the list of files to validate.
 
-    - The list of files has no command-line switch so it can get interpreted as part of a preceding argument.
-    - For example, there is no way to differentiate whether the csv file is part of the -l argument or a second
+  - The list of files has no command-line switch so it can get interpreted as part of a preceding argument.
+  - For example, there is no way to differentiate whether the csv file is part of the -l argument or a second
       argument:
 
-  ```
+  ```bash
    vtcmd -l "Users/[youruser]/Documents/MultipleDataTypes" \
    "Users/[youruser]/Documents/MultipleDataTypes/Stage_Testing_BigFiles_genomics_sample03.csv"
   ```
@@ -232,27 +234,27 @@ You should **not** include the 'data/' folder as part of the directory name.
 To start validation, you must enter a list of files (or a file path if not in the current directory), separated by a
 space:
 
-```
+```bash
 vtcmd MultipleDataTypes/genomics_sample03.csv testdata/with_associated_files/genomics_sample03.csv
 ```
 
 If your data includes manifest files, you must enter the directories where the manifest files are located, separated by
 a space:
 
-```
+```bash
 vtcmd submission_data/sample_imagingcollection01.csv  -m submission_data/Manifests
 ```
 
 If there are associated files, enter the directories where they are found, separated by a space:
 
-```
+```bash
 vtcmd MultipleDataTypes/genomics_sample03.csv testdata/with_associated_files/genomics_sample03.csv -l MultipleDataTypes testdata/with_associated_files
 ```
 
 If the files are located somewhere other than the current working directory, then you must enter the full path to the
 files:
 
-```
+```bash
 vtcmd MultipleDataTypes/genomics_sample03.csv testdata/with_associated_files/genomics_sample03.csv -l Users/[youruser]/Downloads/SubmissionData testdata/with_associated_files
 ```
 
@@ -260,7 +262,7 @@ If your associated files are in S3, then you must include the bucket name, acces
 
 - The access and secret key can be stored in the settings.cfg file as well.
 
-```
+```bash
 vtcmd MultipleDataTypes/genomics_sample03.csv testdata/with_associated_files/genomics_sample03.csv -s3 my_bucket -ak XXXXXXXXXXXXXX -sk XXXXXXXXXXXXXX
 ```
 
@@ -397,7 +399,7 @@ of the key that is used to encrypt the bucket.
 
 The following statement should be added to your key's policy:
 
-```
+```json
 {
     "Sid": "EnableUseForFederatedNDA",
     "Effect": "Allow",
@@ -412,4 +414,4 @@ The following statement should be added to your key's policy:
 ## Further Assistance
 
 If you have any problems with this Validation Tool Python client or would like to provide feedback/comments, please
-email us at [NDAHelp@mail.nih.gov ](mailto:NDAHelp@mail.nih.gov).
+email us at [NDAHelp@mail.nih.gov](mailto:NDAHelp@mail.nih.gov).

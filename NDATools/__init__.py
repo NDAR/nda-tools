@@ -9,7 +9,7 @@ import pathlib
 import shutil
 import sys
 
-__version__ = '0.6.1.dev2'
+__version__ = '0.6.1.dev3'
 
 import threading
 from importlib.resources import files
