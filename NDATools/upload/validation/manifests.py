@@ -82,9 +82,9 @@ class _ManifestFileBatchUploader(BatchFileUploader):
             logger.error(traceback.format_exc())
             raise UploadError(file, e)
 
-    def _construct_tqdm(self):
+    def _construct_tqdm(self, total: str, description: str):
         """Use the default tqdm but insert into the UploadContext to use inside _post_batch_hook"""
-        progressbar = tqdm(disable=True)
+        progressbar = tqdm(disable=True, total=total, desc=description)
         self.upload_context.progress_bar = progressbar
         return progressbar
 
@@ -107,7 +107,7 @@ class _ManifestFileBatchUploader(BatchFileUploader):
                     new_dir = get_directory_input(
                         'Your data contains manifest files. Specify the folder containing the manifest files:')
 
-                self._upload_batch(br.files_not_found, [new_dir], lambda: self.upload_context.progress_bar.update(1))
+                self._upload_batch(br.files_not_found, [new_dir])
 
 
 class ManifestFileUploader:

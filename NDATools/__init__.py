@@ -1,6 +1,7 @@
 from __future__ import print_function
 
 import getpass
+import importlib.resources
 import json
 import logging
 import os
@@ -8,17 +9,18 @@ import pathlib
 import shutil
 import sys
 
-__version__ = '0.5.0'
+__version__ = '0.6.0'
 
 import threading
-
-from pkg_resources import resource_filename
+from importlib.resources import files
 
 from typing import Tuple
 
 pypi_version = None
 initialization_complete = False
-print('Running NDATools Version {}'.format(__version__))
+print("\n================================================================================")
+print('\n                  Running NDA Tools Version {}'.format(__version__))
+print("\n================================================================================")
 
 logger = logging.getLogger(__name__)
 
@@ -105,12 +107,14 @@ def create_nda_folders():
     _create_if_not_exists(NDA_TOOLS_SETTINGS_FOLDER)
 
     if not pathlib.Path(NDA_TOOLS_LOGGING_YML_FILE).is_file():
-        shutil.copyfile(resource_filename(__name__, 'clientscripts/config/logging.yml'),
-                        NDA_TOOLS_LOGGING_YML_FILE)
+        t = files('NDATools').joinpath('clientscripts/config/logging.yml')
+        with importlib.resources.as_file(t) as f:
+            shutil.copyfile(f, NDA_TOOLS_LOGGING_YML_FILE)
 
     if not pathlib.Path(NDA_TOOLS_SETTINGS_CFG_FILE).is_file():
-        shutil.copyfile(resource_filename(__name__, 'clientscripts/config/settings.cfg'),
-                        NDA_TOOLS_SETTINGS_CFG_FILE)
+        t = files('NDATools').joinpath('clientscripts/config/settings.cfg')
+        with importlib.resources.as_file(t) as f:
+            shutil.copyfile(f, NDA_TOOLS_SETTINGS_CFG_FILE)
     # MAC users sometimes see output from python warnings module. Suppress these msgs
     os.environ['PYTHONWARNINGS'] = 'ignore'
 

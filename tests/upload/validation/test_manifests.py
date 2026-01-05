@@ -1,4 +1,5 @@
 import builtins
+import os
 import uuid
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -141,7 +142,7 @@ def test_upload_manifest_not_found_interactive(top_level_datadir, validation_cre
         m.setattr('builtins.input', MagicMock(return_value=correct_directory))
         manifest_uploader.start_upload([validation_creds], tmp_path)
         assert manifest_uploader.uploader._post_batch_hook.call_count == 2
-        validation_creds.upload.assert_called_with(f'{correct_directory}/{found_manifest["localFileName"]}',
+        validation_creds.upload.assert_called_with(f'{os.path.join(correct_directory, found_manifest["localFileName"])}',
                                                    found_manifest['s3Destination'])
         assert validation_creds.upload.call_count == 1
         builtins.input.assert_called_once_with(

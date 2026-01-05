@@ -221,6 +221,8 @@ def test_submit_no_files(monkeypatch, upload_creds, ndar_subject01, user_collect
                   MagicMock(return_value=results_writer))
         # set the routing percent for v2 to 100
         m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'get_v2_routing_percent', MagicMock(return_value=1))
+        # disable qa
+        m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'get_qa_routing_percent', MagicMock(return_value=0))
         m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'request_upload_credentials',
                   MagicMock(return_value=ndar_subject01_creds))
         m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'wait_validation_complete',
@@ -243,7 +245,7 @@ def test_submit_no_files(monkeypatch, upload_creds, ndar_subject01, user_collect
             'You have successfully completed uploading files for submission')
         # run verifications against mock methods
         ndar_subject01_creds._s3_transfer.upload_file.assert_called_once()
-        results_writer.write_errors.assert_called_once()
+        results_writer.write_errors.assert_not_called()  # not called if no errors
         results_writer.write_warnings.assert_not_called()
 
 
@@ -260,6 +262,8 @@ def test_resume(monkeypatch, upload_creds, ndar_subject01, user_collections, com
 
         # set the routing percent for v2 to 100
         m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'get_v2_routing_percent', MagicMock(return_value=1))
+        # disable qa
+        m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'get_qa_routing_percent', MagicMock(return_value=0))
 
         # first return a completed submission and confirm that the
         m.setattr(NDATools.upload.submission.api.SubmissionApi, 'get_submission',
@@ -330,6 +334,8 @@ def test_replace_submission(monkeypatch, upload_creds, ndar_subject01, image03, 
 
         # mock validation api calls
         m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'get_v2_routing_percent', MagicMock(return_value=1))
+        m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'get_qa_routing_percent', MagicMock(return_value=0))
+
         m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'request_upload_credentials',
                   MagicMock(side_effect=[image03_creds]))
         m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'wait_validation_complete',
@@ -393,6 +399,7 @@ def test_submit_with_manifests(monkeypatch, upload_creds, fmriresults01, fmrires
 
         # mock validation api calls
         m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'get_v2_routing_percent', MagicMock(return_value=1))
+        m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'get_qa_routing_percent', MagicMock(return_value=0))
         m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'request_upload_credentials',
                   MagicMock(side_effect=[fmriresults01_creds]))
         m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'wait_validation_complete',

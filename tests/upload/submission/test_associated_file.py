@@ -309,7 +309,7 @@ def verify_upload_context(upload_context, submission_id, resuming_upload, upload
     assert upload_context.upload_progress == upload_progress
     assert upload_context.transfer_config.multipart_threshold == 5 * 1024 * 1024 * 1024
     assert upload_context.search_folders == search_folders
-    assert upload_context.progress_bar.total == upload_progress.associated_file_count
+    assert "Uploading a batch of 1 files" in upload_context.progress_bar.desc
     assert len(upload_context.files_not_found) == num_of_files_not_found
 
 

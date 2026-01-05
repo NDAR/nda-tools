@@ -12,7 +12,7 @@ from NDATools.Utils import tqdm_thread_map
 from NDATools.upload.submission.api import SubmissionPackage, Submission, SubmissionDetails, PackagingStatus, \
     SubmissionStatus
 from NDATools.upload.submission.resubmission import build_replacement_package_info
-from NDATools.upload.validation.api import ValidationV2
+from NDATools.upload.validation.api import ValidationV2, Qa
 from NDATools.upload.validation.manifests import ManifestFile
 from NDATools.upload.validation.v1 import Validation
 
@@ -164,6 +164,51 @@ class ValidatedFile:
             logger.info('\n...and {} more errors'.format(len(self.manifest_errors) - limit))
 
 
+class QaError:
+    def __init__(self, err_code, *, message, columnName, guid=None, src_subject_id=None):
+        self.message = message
+        self.err_code = err_code
+        self.guid = guid
+        self.src_subject_id = src_subject_id
+        self.column_name = columnName
+
+
+class QaResults:
+    def __init__(self, qa_uuid, errors: dict):
+        self._errors = errors
+        self.qa_uuid = qa_uuid
+
+    def has_errors(self):
+        return len(self._errors) > 0
+
+    @property
+    def errors(self) -> List[QaError]:
+        return [QaError(error_code, **error) for error_code in self._errors.keys() for error in
+                self._errors[error_code]]
+
+    def preview_errors(self, limit=10):
+        logger.info('\nData consistency errors found in validated files:')
+        rows = [
+            [
+                error.err_code,
+                error.guid if error.guid else error.src_subject_id,
+                error.message
+            ] for error in self.errors[:limit]
+        ]
+        self._preview(rows, ['Error', 'Guid/Src-Subject-Id', 'Message'])
+        if len(self.errors) > limit:
+            logger.info('\n...and {} more errors'.format(len(self.errors) - limit))
+
+    def _preview(self, rows, headers):
+        if not rows:
+            return None
+        logger.info('')
+        table = tabulate(rows, headers=headers)
+        logger.info(table)
+        logger.info('')
+        return table
+
+
 class NdaSubmission:
     def __init__(self, id: int, collection_id: int, title: str, description: str, validated_files: List[ValidatedFile],
                  status: SubmissionStatus):
@@ -210,7 +255,7 @@ class NdaUploadCli:
                associated_file_dirs: List[PathLike] = None) -> NdaSubmission:
         """Submits data from validated files. A new submission will be created in NDA after this operation succeeds"""
         package = self._build_package(collection_id, title, description, [v.uuid for v in validated_files])
-        logger.info('Requesting submission for package: {}'.format(package.submission_package_uuid))
+        logger.info(f"\n[=== Requesting submission for package: {package.submission_package_uuid} ===]")
         submission = self.submission_api.create_submission(package.submission_package_uuid)
         # print package info to console
         logger.info('')
@@ -222,7 +267,7 @@ class NdaUploadCli:
         logger.info('')
 
         if submission.status == SubmissionStatus.UPLOADING:
-            self._upload_associated_files(submission, associated_file_dirs, resuming_upload=True)
+            self._upload_associated_files(submission, associated_file_dirs, resuming_upload=False)
             submission = self.submission_api.get_submission(submission.submission_id)
         return NdaSubmission(submission.submission_id, submission.collection.id, submission.dataset_title,
                              submission.dataset_description, validated_files, submission.status)
@@ -243,7 +288,7 @@ class NdaUploadCli:
         logger.info('Requesting submission for package: {}'.format(package.submission_package_uuid))
         submission = self.submission_api.replace_submission(submission_id, package.submission_package_uuid)
         if submission.status == SubmissionStatus.UPLOADING:
-            self._upload_associated_files(submission, associated_file_dirs, resuming_upload=True)
+            self._upload_associated_files(submission, associated_file_dirs, resuming_upload=False)
             submission = self.submission_api.get_submission(submission.submission_id)
         return NdaSubmission(submission.submission_id, submission.collection.id, submission.dataset_title,
                              submission.dataset_description, validated_files, submission.status)
@@ -302,9 +347,9 @@ class NdaUploadCli:
 
         # Process requests with a status of 'PendingManifests' by uploading manifest files and waiting for status to change
         manifest_requests = [m for m in requests if m.resource.status == ValidationStatus.PENDING_MANIFESTS]
-        logger.info(f'Uploading manifests from {len(manifest_requests)} files')
+        logger.info(f"\n[=== Uploading manifests from {len(manifest_requests)} files ===]")
         self.manifests_uploader.start_upload([m.creds for m in manifest_requests], manifests_dir)
-        logger.info(f'Waiting for {len(manifest_requests)} files to finish validation')
+        logger.info(f"\n[=== Waiting for {len(manifest_requests)} files to finish validation ===]")
 
         def wait_manifest_validation_complete(req: validation_v2_request):
             resource = self.validation_api.wait_validation_complete(req.creds.uuid,
@@ -326,6 +371,13 @@ class NdaUploadCli:
             self._tqdm_thread_map(wait_manifest_validation_complete, manifest_requests)))
         return validated_files
 
+    def qa_validated_files(self, validated_files: List[ValidatedFile]) -> QaResults:
+        qa_result: Qa = self.validation_api.qa_validated_files([f.uuid for f in validated_files],
+                                                               validation_timeout=self.config.validation_timeout,
+                                                               scope=self.config.scope,
+                                                               wait_for_completion=True)
+        return QaResults(qa_result.qa_uuid, qa_result.errors)
+
     def _tqdm_thread_map(self, func: Callable, args: List[Tuple]):
         """Returns an iterator. See https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.Executor.map for more information """
         return tqdm_thread_map(func, args, max_workers=self.config.worker_threads,
@@ -335,7 +387,7 @@ class NdaUploadCli:
                                  resuming_upload=False) -> None:
         if not associated_file_dirs:
             associated_file_dirs = [os.getcwd()]
-        logger.info('Preparing to upload associated files.')
+        logger.info('[=== Preparing to upload associated files ===]')
         self.associated_files_uploader.start_upload(submission, associated_file_dirs, resuming_upload)
 
     def _build_replacement_package(self, submission_id: int, validated_files: List[ValidatedFile]) -> SubmissionPackage:

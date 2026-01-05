@@ -1,4 +1,5 @@
 import configparser
+import importlib
 import logging
 import logging.config
 import multiprocessing
@@ -6,7 +7,6 @@ import os
 import time
 
 import yaml
-from pkg_resources import resource_filename
 
 import NDATools
 from NDATools import NDA_TOOLS_LOGGING_YML_FILE
@@ -18,6 +18,7 @@ from NDATools.upload.validation.manifests import ManifestFileUploader
 from NDATools.upload.validation.results_writer import ResultsWriterFactory
 
 logger = logging.getLogger(__name__)
+from importlib.resources import files
 
 
 class LoggingConfiguration:
@@ -71,6 +72,7 @@ class ClientConfiguration:
 
         if self._is_vtcmd():
             self.v2_enabled = False
+            self.qa_enabled = False
             self.validation_results_writer = ResultsWriterFactory.get_writer(file_format='json' if args.JSON else 'csv')
             self.validation_api = None
             self.submission_api = None
@@ -135,8 +137,9 @@ class ClientConfiguration:
 
     def _check_and_fix_missing_options(self):
         default_config = configparser.ConfigParser()
-        default_file_path = resource_filename(__name__, 'clientscripts/config/settings.cfg')
-        default_config.read(default_file_path)
+        t = files('NDATools').joinpath('clientscripts/config/settings.cfg')
+        with importlib.resources.as_file(t) as f:
+            default_config.read(f)
         change_detected = False
         for section in default_config.sections():
             if section not in self.config.sections():
