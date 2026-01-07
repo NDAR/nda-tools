@@ -106,6 +106,9 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
     def _update_bytes_uploaded(self, bytes_uploaded):
         self.upload_context.progress_bar.update(bytes_uploaded)
 
+    def _update_bytes_uploaded(self, bytes_uploaded):
+        self.upload_context.progress_bar.update(bytes_uploaded)
+
     def _upload_file(self, up: AFUploadable):
         try:
             file_name = str(up.path.resolve())
