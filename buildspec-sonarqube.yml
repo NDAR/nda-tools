@@ -6,9 +6,9 @@ phases:
       python: 3.10
     commands:
       - PIPELINE_NAME=$(echo ${CODEBUILD_INITIATOR} | cut -d'/' -f2)
-      - echo "Pipeline Name: ${PIPELINE_NAME}"
+      - echo "Pipeline Name- ${PIPELINE_NAME}"
       - BRANCH_NAME=$(aws codepipeline get-pipeline --name ${PIPELINE_NAME} --query "pipeline.stages[?name=='Source'].actions[0].configuration.BranchName" --output text)
-      - echo "Branch Name: ${BRANCH_NAME}"
+      - echo "Branch Name- ${BRANCH_NAME}"
       - apt-get update > /dev/null 2>&1
       - apt-get install -y jq wget tar > /dev/null 2>&1
       - wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-4.7.0.2747-linux.zip
