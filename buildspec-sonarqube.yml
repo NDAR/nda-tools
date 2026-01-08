@@ -18,7 +18,8 @@ phases:
   pre_build:
     on-failure: ABORT
     commands:
-      - pip install coverage pytest keyring keyrings.alt
+      - pip install keyrings.alt
+      - pip install -e '.[test]'
       - echo Fetching AWS CodeArtifact auth token...
       - export CODEARTIFACT_AUTH_TOKEN=`aws codeartifact get-authorization-token --domain nda --domain-owner ${CODEARTIFACT_DOMAIN_OWNER} --region us-east-1 --query authorizationToken --output text`
 
