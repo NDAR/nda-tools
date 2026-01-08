@@ -31,7 +31,7 @@ phases:
       - sonar-scanner -Dsonar.login=${SONAR_LOGIN} -Dsonar.host.url=${SONAR_URL} -Dsonar.projectKey=${SONAR_PROJECT_KEY} -Dsonar.sources=. -Dsonar.branch.name=$BRANCH_NAME -Dsonar.log.level=WARN
       - sleep 5
       - curl --location --user "${SONAR_LOGIN}:" "${SONAR_URL}/api/qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}&branch=$BRANCH_NAME" > result.json
-      - echo Retrieved SonarQube results:
+      - echo Retrieved SonarQube results
       - cat result.json
 
   post_build:
