@@ -23,7 +23,7 @@ phases:
     commands:
       - coverage run -m pytest && coverage xml --rcfile=.coveragerc
       - echo starting sonarqube static code analysis scan......
-      - pysonar-scanner -Dsonar.login=${SONAR_LOGIN} -Dsonar.host.url=${SONAR_URL} -Dsonar.projectKey=${SONAR_PROJECT_KEY} -Dsonar.sources=. -Dsonar.branch.name=$BRANCH_NAME -Dsonar.log.level=WARN
+      - pysonar-scanner -Dsonar.python.version=3.10 -Dsonar.python.coverage.reportPaths=.coverage -Dsonar.login=${SONAR_LOGIN} -Dsonar.host.url=${SONAR_URL} -Dsonar.projectKey=${SONAR_PROJECT_KEY} -Dsonar.sources=. -Dsonar.branch.name=$BRANCH_NAME -Dsonar.log.level=WARN
       - sleep 5
       - curl --location --user "${SONAR_LOGIN}:" "${SONAR_URL}/api/qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}&branch=$BRANCH_NAME" > result.json
       - echo Retrieved SonarQube results
