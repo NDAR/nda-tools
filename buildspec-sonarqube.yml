@@ -4,6 +4,7 @@ phases:
   install:
     runtime-versions:
       python: 3.10
+      java: corretto17
     commands:
       - PIPELINE_NAME=$(echo ${CODEBUILD_INITIATOR} | cut -d'/' -f2)
       - echo "Pipeline Name- ${PIPELINE_NAME}"
