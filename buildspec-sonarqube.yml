@@ -4,7 +4,7 @@ phases:
   install:
     runtime-versions:
       python: 3.10
-      java: corretto17
+      java: latest
     commands:
       - PIPELINE_NAME=$(echo ${CODEBUILD_INITIATOR} | cut -d'/' -f2)
       - echo "Pipeline Name- ${PIPELINE_NAME}"
@@ -15,6 +15,7 @@ phases:
       - wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-4.7.0.2747-linux.zip
       - unzip ./sonar-scanner-cli-4.7.0.2747-linux.zip > /dev/null 2>&1
       - export PATH=$PATH:$(pwd)/sonar-scanner-4.7.0.2747-linux/bin
+      - java -version
 
   pre_build:
     on-failure: ABORT
