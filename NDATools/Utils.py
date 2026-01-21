@@ -1,4 +1,3 @@
-import datetime
 import json
 import logging
 import os
@@ -211,23 +210,32 @@ def is_json(test):
 
 
 def _send_prepared_request(prepped, timeout=150, deserialize_handler=DeserializeHandler.convert_json,
-                           error_handler=HttpErrorHandlingStrategy.print_and_exit):
+                           error_handler=HttpErrorHandlingStrategy.print_and_exit, debug=False):
+    def print_url(r, *args, **kwargs):
+        retry_count = len(r.raw.retries.history)
+        retry_count_desc = f' Retry Count: {retry_count}' if retry_count else ''
+        logger.debug(
+            '{} {} (elapsed = {})- STATUS {}.{}'.format(r.request.method, r.request.url, r.elapsed,
+                                                        r.status_code, retry_count_desc))
+
     with requests.Session() as session:
         retries = Retry(total=10,
                         backoff_factor=0.1,
                         status_forcelist=[502, 503, 504])
-        logger.debug('{} {} @ {}'.format(prepped.method, prepped.url, datetime.datetime.now()))
-        session.mount(prepped.url, HTTPAdapter(max_retries=retries))
+        session.mount('https://', HTTPAdapter(max_retries=retries))
+        # get the logging level for NDATools
+        logger_level = logging.getLogger('NDATools').getEffectiveLevel()
+        if logger_level == logging.DEBUG:
+            # session.hooks['response'].append(print_url)
+            prepped.hooks.update({'response': print_url})
         tmp = session.send(prepped, timeout=timeout)
-        logger.debug(
-            '{} {} (elapsed = {})- STATUS {}'.format(prepped.method, prepped.url, tmp.elapsed, tmp.status_code))
         if not tmp.ok:
             error_handler(tmp)
     return deserialize_handler(tmp)
 
 
 def get_request(url, headers={}, auth=None, timeout=150, deserialize_handler=DeserializeHandler.convert_json,
-                error_handler=HttpErrorHandlingStrategy.print_and_exit):
+                error_handler=HttpErrorHandlingStrategy.print_and_exit, debug=False):
     req = requests.Request('GET', url, auth=auth, headers=headers)
     return _send_prepared_request(req.prepare(), timeout=timeout, deserialize_handler=deserialize_handler,
                                   error_handler=error_handler)
@@ -235,7 +243,7 @@ def get_request(url, headers={}, auth=None, timeout=150, deserialize_handler=Des
 
 def post_request(url, payload=None, headers={}, auth=None, timeout=150,
                  deserialize_handler=DeserializeHandler.convert_json,
-                 error_handler=HttpErrorHandlingStrategy.print_and_exit):
+                 error_handler=HttpErrorHandlingStrategy.print_and_exit, debug=False):
     data_param, headers = get_data_and_header_params(payload, headers)
     req = requests.Request('POST', url, auth=auth, headers=headers, **data_param)
     return _send_prepared_request(req.prepare(), timeout=timeout, deserialize_handler=deserialize_handler,
@@ -244,7 +252,7 @@ def post_request(url, payload=None, headers={}, auth=None, timeout=150,
 
 def put_request(url, payload=None, headers={}, auth=None, timeout=150,
                 deserialize_handler=DeserializeHandler.convert_json,
-                error_handler=HttpErrorHandlingStrategy.print_and_exit):
+                error_handler=HttpErrorHandlingStrategy.print_and_exit, debug=False):
     data_param, headers = get_data_and_header_params(payload, headers)
     req = requests.Request('PUT', url, auth=auth, headers=headers, **data_param)
     return _send_prepared_request(req.prepare(), timeout=timeout, deserialize_handler=deserialize_handler,
