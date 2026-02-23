@@ -61,8 +61,8 @@ if __name__ == '__main__':
     parser_manifests.add_argument('-o', '--output-directory', type=existing_dir, default='.')
     parser_manifests.add_argument('-ir', '--include-regex', type=str, default='.*')
     parser_manifests.add_argument('-er', '--exclude-regex', type=str, default=None)
-    parser_manifests.add_argument('-c', '--include-checksum-calculation', action='store_true')
-    parser_manifests.add_argument('-s', '--include-file-size', action='store_true')
+    parser_manifests.add_argument('-c', '--include-checksum-calculation', action='store_false')
+    parser_manifests.add_argument('-s', '--include-file-size', action='store_false')
     parser_manifests.set_defaults(func=generate_manifests)
 
     args = parser.parse_args()

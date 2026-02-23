@@ -183,8 +183,8 @@ Once you have python, pip, and nda-tools installed, and have entered your NDA cr
 
 - If your command-line inputs have special characters (i.e., passwords) or spaces (i.e., in directory/filenames),
   you may need to enclose them in quotations.
-  - If you are using windows, use double-quotes: " "
-  - If you are using Mac OSX or Linux, use single-quotes: ' '
+    - If you are using windows, use double-quotes: " "
+    - If you are using Mac OSX or Linux, use single-quotes: ' '
 - Upon your first run, the client will prompt you to enter your username and password, which it will store in your
   operating system's credential manager. You may go back and edit your credentials at any time.
 
@@ -196,8 +196,8 @@ and 'User' sections with preferred locations for validation results, user login,
 
 - While arguments are not positional, the first argument should be the list of files to validate.
 
-  - The list of files has no command-line switch so it can get interpreted as part of a preceding argument.
-  - For example, there is no way to differentiate whether the csv file is part of the -l argument or a second
+    - The list of files has no command-line switch so it can get interpreted as part of a preceding argument.
+    - For example, there is no way to differentiate whether the csv file is part of the -l argument or a second
       argument:
 
   ```bash
@@ -281,6 +281,55 @@ Once package submission and upload are complete, you will receive an email in yo
 submission was successful.
 A local version of the package will be saved automatically to **~\nda-tools\vtcmd\submission_package\\** folder
 and can be found on the collection submission tab on the NDA site.
+
+### Generating Manifest Files
+
+Manifests are special files in NDA that allow one subject record to be associated with multiple associated files.
+Manifests are generally used as alternatives to File type elements when the number of files being submitted per subject
+exceeds
+the number of File type elements present in the data structure. Not all data structures include manifest elements, but
+they
+are present on the most popular NDA imaging structures (i.e., fmriresults01 and image03).
+
+Manifests are JSON files that must adhere to a [specific schema](https://github.com/NDAR/manifest-data/tree/master) and
+are uploaded at the same time that nda data structures are validated.
+
+When data-sets are organized by subject, the manifests can be generated automatically using the `generate-manifests`
+command.
+
+To use this functionality, run:
+
+```bash
+python -m NDATools.clientscripts.nda generate-manifests -i <subject-directory> -o <output-directory>
+```
+
+#### Arguments:
+
+- `-i, --subject-directory`: The directory containing the subdirectories you want to generate manifests for. Defaults to
+  the current directory.
+- `-o, --output-directory`: The directory where the generated JSON manifest files will be saved. Defaults to the current
+  directory.
+- `-ir, --include-regex`: A regular expression to filter which files are included in the manifest.
+- `-er, --exclude-regex`: A regular expression to exclude specific files from the manifest. If a file matches both
+  include and exclude regexes, it will be excluded.
+- `-c, --include-checksum-calculation`: If specified, the manifest will include the MD5 checksum for each file.
+- `-s, --include-file-size`: If specified, the manifest will include the size (in bytes) of each file.
+
+#### Example:
+
+```bash
+python -m NDATools.clientscripts.nda generate-manifests -i ./my_data -o ./manifests
+```
+
+This command will scan `./my_data`, and for each subdirectory inside it, create a JSON file in `./manifests` containing
+the paths, names, MD5 checksums, and sizes of all files found recursively within that subdirectory (excluding symbolic
+links).
+
+After this command completes, the manifest directory can be supplied to the vtcmd using the -m argument. for example:
+
+```bash
+vtcmd ./my_data/genomics_sample03.csv -m ./manifests 
+```
 
 ### Fixing QA Errors
 
@@ -401,13 +450,16 @@ The following statement should be added to your key's policy:
 
 ```json
 {
-    "Sid": "EnableUseForFederatedNDA",
-    "Effect": "Allow",
-    "Principal": {
-        "AWS":  "arn:aws:iam::618523879050:user/DownloadManager"
-    },
-    "Action": ["kms:GenerateDataKey","kms:Decrypt"],
-    "Resource": "*"
+  "Sid": "EnableUseForFederatedNDA",
+  "Effect": "Allow",
+  "Principal": {
+    "AWS": "arn:aws:iam::618523879050:user/DownloadManager"
+  },
+  "Action": [
+    "kms:GenerateDataKey",
+    "kms:Decrypt"
+  ],
+  "Resource": "*"
 }
 ```
 
