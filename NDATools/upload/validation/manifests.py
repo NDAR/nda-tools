@@ -1,7 +1,11 @@
+import hashlib
+import json
 import logging
 import os
+import re
 import traceback
 from os import PathLike
+from pathlib import Path
 from typing import List, Union
 
 from tqdm import tqdm
@@ -126,3 +130,87 @@ class ManifestFileUploader:
             manifest_dirs = [manifest_dirs]
 
         self.uploader.start_upload(manifest_dirs, MFUploadContext(creds))
+
+
+class ManifestRecord:
+    def __init__(self, path, name, md5sum=None, size=None):
+        self.path = path
+        self.name = name
+        self.md5sum = md5sum
+        self.size = size
+
+    def to_dict(self):
+        d = {
+            "path": self.path,
+            "name": self.name
+        }
+        if self.md5sum is not None:
+            d["md5sum"] = self.md5sum
+        if self.size is not None:
+            d["size"] = self.size
+        return d
+
+
+def generate_manifests(subject_directory, output_directory, include_regex='.*', exclude_regex=None,
+                       include_checksum=False, include_size=False):
+    subject_path = Path(subject_directory).resolve()
+    output_path = Path(output_directory).resolve()
+
+    include_re = re.compile(include_regex) if include_regex else None
+    exclude_re = re.compile(exclude_regex) if exclude_regex else None
+
+    # Scan the subject-directory and create a json file for each directory found.
+    # The requirement says: "it should scan the directory specified as the 'subject-directory' argument,
+    # and it should should create a json file for each directory found."
+    # AND "The name of the manifest file should be the name of the directory in the subject-directory."
+
+    for entry in os.scandir(subject_path):
+        if entry.is_dir(follow_symlinks=False):
+            dir_path = Path(entry.path)
+            manifest_name = entry.name
+            records = []
+
+            for root, dirs, files in os.walk(dir_path):
+                # Symbolic links should be excluded from the search.
+                # os.walk by default does not follow symlinks.
+
+                for file in files:
+                    file_path = Path(root) / file
+                    if file_path.is_symlink():
+                        continue
+
+                    # Regex filtering
+                    if exclude_re and exclude_re.search(file):
+                        continue
+                    if include_re and not include_re.search(file):
+                        continue
+
+                    # Relative path calculation
+                    # "No folder names prior to the subject-directory should be included in the "path" attribute."
+                    # This means if subject_directory is /a/b and we are looking at /a/b/c/d.txt,
+                    # the path should be b/c/d.txt.
+                    rel_path = file_path.relative_to(subject_path.parent)
+
+                    md5sum = None
+                    if include_checksum:
+                        hash_md5 = hashlib.md5()
+                        with open(file_path, "rb") as f:
+                            for chunk in iter(lambda: f.read(4096), b""):
+                                hash_md5.update(chunk)
+                        md5sum = hash_md5.hexdigest()
+
+                    size = None
+                    if include_size:
+                        size = file_path.stat().st_size
+
+                    record = ManifestRecord(str(rel_path), file, md5sum, size)
+                    records.append(record.to_dict())
+
+            if records:
+                manifest_file = output_path / f"{manifest_name}.json"
+                with open(manifest_file, 'w') as f:
+                    json.dump({"files": records}, f, indent=2)
+            else:
+                manifest_file = output_path / f"{manifest_name}.json"
+                with open(manifest_file, 'w') as f:
+                    json.dump({"files": []}, f, indent=2)

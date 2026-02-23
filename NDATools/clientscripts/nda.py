@@ -3,6 +3,7 @@ import logging
 import pathlib
 
 from NDATools import exit_error
+from NDATools.upload.validation import manifests
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,14 @@ def submit(args):
 
 
 def generate_manifests(args):
-    exit_error('This command is not yet implemented')
+    manifests.generate_manifests(
+        args.subject_directory,
+        args.output_directory,
+        include_regex=args.include_regex,
+        exclude_regex=args.exclude_regex,
+        include_checksum=args.include_checksum_calculation,
+        include_size=args.include_file_size
+    )
 
 
 def existing_dir(path):
@@ -49,10 +57,12 @@ if __name__ == '__main__':
     parser_submit.set_defaults(func=submit)
 
     parser_manifests = subparser.add_parser('generate-manifests', help='Generate manifest files for a collection')
-    parser_manifests.add_argument('i', '--subject-directory', type=existing_dir, default='.')
-    parser.add_argument('o', '--output-directory', type=existing_dir, default='.')
-    parser.add_argument('i', '--include-regex', type=str, default='.*')
-    parser.add_argument('e', '--exclude-regex', type=str, default=None)
+    parser_manifests.add_argument('-i', '--subject-directory', type=existing_dir, default='.')
+    parser_manifests.add_argument('-o', '--output-directory', type=existing_dir, default='.')
+    parser_manifests.add_argument('-ir', '--include-regex', type=str, default='.*')
+    parser_manifests.add_argument('-er', '--exclude-regex', type=str, default=None)
+    parser_manifests.add_argument('-c', '--include-checksum-calculation', action='store_true')
+    parser_manifests.add_argument('-s', '--include-file-size', action='store_true')
     parser_manifests.set_defaults(func=generate_manifests)
 
     args = parser.parse_args()
