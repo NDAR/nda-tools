@@ -1,6 +1,4 @@
 import json
-import shutil
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -26,9 +24,11 @@ class TestManifestRecord:
 
 class TestGenerateManifests:
     @pytest.fixture
-    def test_dir(self):
-        tmpdir = tempfile.mkdtemp()
-        subject_dir = Path(tmpdir) / "subject"
+    def test_dir(self, tmp_path):
+        tmpdir = tmp_path / "test_generate_manifests"
+        tmpdir.mkdir()
+
+        subject_dir = tmpdir / "subject"
         subject_dir.mkdir()
 
         # Create subdirectories and files
@@ -51,9 +51,7 @@ class TestGenerateManifests:
         output_dir = Path(tmpdir) / "output"
         output_dir.mkdir()
 
-        yield subject_dir, output_dir
-
-        shutil.rmtree(tmpdir)
+        return subject_dir, output_dir
 
     def test_basic_generation(self, test_dir):
         subject_dir, output_dir = test_dir
