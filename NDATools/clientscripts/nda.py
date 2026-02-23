@@ -1,3 +1,4 @@
+import argparse
 import logging
 import pathlib
 
@@ -13,6 +14,17 @@ def validate(args):
 
 def submit(args):
     exit_error('This command is not yet implemented')
+
+
+def generate_manifests(args):
+    exit_error('This command is not yet implemented')
+
+
+def existing_dir(path):
+    p = pathlib.Path(path)
+    if not p.is_dir():
+        raise argparse.ArgumentTypeError(f"{path} is not a valid directory")
+    return p
 
 
 if __name__ == '__main__':
@@ -35,3 +47,13 @@ if __name__ == '__main__':
     parser_submit.add_argument('-m', '--manifests-dir', type=pathlib.Path)
     # parser_submit.add_argument('-r', '--resume', type=pathlib.Path)
     parser_submit.set_defaults(func=submit)
+
+    parser_manifests = subparser.add_parser('generate-manifests', help='Generate manifest files for a collection')
+    parser_manifests.add_argument('i', '--subject-directory', type=existing_dir, default='.')
+    parser.add_argument('o', '--output-directory', type=existing_dir, default='.')
+    parser.add_argument('i', '--include-regex', type=str, default='.*')
+    parser.add_argument('e', '--exclude-regex', type=str, default=None)
+    parser_manifests.set_defaults(func=generate_manifests)
+
+    args = parser.parse_args()
+    args.func(args)
