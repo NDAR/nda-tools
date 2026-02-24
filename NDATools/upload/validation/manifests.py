@@ -159,14 +159,12 @@ def generate_manifests(subject_directory, output_directory, include_regex='.*', 
     include_re = re.compile(include_regex) if include_regex else None
     exclude_re = re.compile(exclude_regex) if exclude_regex else None
 
-    # Scan the subject-directory and create a json file for each directory found.
-    # The requirement says: "it should scan the directory specified as the 'subject-directory' argument,
-    # and it should should create a json file for each directory found."
-    # AND "The name of the manifest file should be the name of the directory in the subject-directory."
-
+    # Scan the subject-directory and create a manifest for each directory found.
+    empty_dirs = []
     for entry in os.scandir(subject_path):
         if entry.is_dir(follow_symlinks=False):
             dir_path = Path(entry.path)
+            # name of the folder in the subject-directory should be the name of the manifest-file that is created
             manifest_name = entry.name
             records = []
 
@@ -179,17 +177,18 @@ def generate_manifests(subject_directory, output_directory, include_regex='.*', 
                     if file_path.is_symlink():
                         continue
 
-                    # Regex filtering
-                    if exclude_re and exclude_re.search(file):
-                        continue
-                    if include_re and not include_re.search(file):
-                        continue
-
                     # Relative path calculation
-                    # "No folder names prior to the subject-directory should be included in the "path" attribute."
-                    # This means if subject_directory is /a/b and we are looking at /a/b/c/d.txt,
-                    # the path should be b/c/d.txt.
-                    rel_path = file_path.relative_to(subject_path.parent)
+                    # if subject_directory is /a/b and we are looking at /a/b/c/d.txt,
+                    # the path should be c/d.txt.
+                    rel_path = file_path.relative_to(subject_path)
+
+                    # Regex filtering
+                    if exclude_re and exclude_re.search(str(rel_path)):
+                        logger.debug(f"Excluding file {str(rel_path)} due to regex exclusion")
+                        continue
+                    if include_re and not include_re.search(str(rel_path)):
+                        logger.debug(f"Excluding file {str(rel_path)} due to regex inclusion")
+                        continue
 
                     md5sum = None
                     if include_checksum:
@@ -205,12 +204,21 @@ def generate_manifests(subject_directory, output_directory, include_regex='.*', 
 
                     record = ManifestRecord(str(rel_path), file, md5sum, size)
                     records.append(record.to_dict())
-
-            if records:
-                manifest_file = output_path / f"{manifest_name}.json"
-                with open(manifest_file, 'w') as f:
-                    json.dump({"files": records}, f, indent=2)
+            if not records:
+                empty_dirs.append(dir_path)
             else:
                 manifest_file = output_path / f"{manifest_name}.json"
                 with open(manifest_file, 'w') as f:
-                    json.dump({"files": []}, f, indent=2)
+                    json.dump({"files": records}, f, indent=2)
+                logged_name = f"{str(output_directory / manifest_name)}.json"
+                logger.info(
+                    f"Generated {logged_name} for directory {dir_path} containing {len(records)} files")
+
+    if empty_dirs:
+        dir_str = '\n'.join([str(d) for d in empty_dirs])
+        logger.warning(
+            f"No manifests were created for the following directories: \n{dir_str}")
+        if exclude_re or include_re:
+            logger.warning(
+                "If manifests were supposed to be created for these directories, please check your regex patterns."
+                "\nHint: you can rerun the command with the '--verbose' option to see which files were included/excluded because of the regular-expression pattern")

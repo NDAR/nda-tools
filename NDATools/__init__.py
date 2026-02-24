@@ -70,6 +70,7 @@ def check_version():
 NDA_ORGINIZATION_ROOT_FOLDER = os.path.join(os.path.expanduser('~'), 'NDA')
 NDA_TOOLS_ROOT_FOLDER = os.path.join(NDA_ORGINIZATION_ROOT_FOLDER, 'nda-tools')
 NDA_TOOLS_VTCMD_FOLDER = os.path.join(NDA_TOOLS_ROOT_FOLDER, 'vtcmd')
+NDA_TOOLS_NDA_FOLDER = os.path.join(NDA_TOOLS_ROOT_FOLDER, 'nda')
 NDA_TOOLS_DOWNLOADCMD_FOLDER = os.path.join(
     NDA_TOOLS_ROOT_FOLDER, 'downloadcmd')
 NDA_TOOLS_DOWNLOADS_FOLDER = os.path.join(
@@ -88,6 +89,7 @@ NDA_TOOLS_DEFAULT_LOG_FORMAT = '%(asctime)s:%(levelname)s:%(message)s'
 NDA_TOOLS_SETTINGS_FOLDER = os.path.join(os.path.expanduser('~'), '.NDATools')
 NDA_TOOLS_LOGGING_YML_FILE = os.path.join(NDA_TOOLS_SETTINGS_FOLDER, 'logging.yml')
 NDA_TOOLS_SETTINGS_CFG_FILE = os.path.join(NDA_TOOLS_SETTINGS_FOLDER, 'settings.cfg')
+NDA_TOOLS_NDA_LOGS_FOLDER = os.path.join(NDA_TOOLS_NDA_FOLDER, 'logs')
 
 
 def create_nda_folders():
@@ -107,6 +109,8 @@ def create_nda_folders():
     _create_if_not_exists(NDA_TOOLS_SUB_PACKAGE_FOLDER)
     _create_if_not_exists(NDA_TOOLS_SETTINGS_FOLDER)
     _create_if_not_exists(NDA_TOOLS_SUBMISSIONS_FOLDER)
+    _create_if_not_exists(NDA_TOOLS_NDA_FOLDER)
+    _create_if_not_exists(NDA_TOOLS_NDA_LOGS_FOLDER)
 
     if not pathlib.Path(NDA_TOOLS_LOGGING_YML_FILE).is_file():
         t = files('NDATools').joinpath('clientscripts/config/logging.yml')
@@ -121,7 +125,7 @@ def create_nda_folders():
     os.environ['PYTHONWARNINGS'] = 'ignore'
 
 
-def prerun_checks_and_setup():
+def init_checks_and_program_folders():
     check_version()
     create_nda_folders()
 
@@ -192,14 +196,27 @@ def _get_user_credentials(config) -> Tuple[str, str]:
     return username, password
 
 
-def init_and_create_configuration(args, logs_folder, auth_req=True):
-    from NDATools.Configuration import ClientConfiguration, LoggingConfiguration
-    prerun_checks_and_setup()
+def init_logging(args, logs_folder):
+    from NDATools.Configuration import LoggingConfiguration
     LoggingConfiguration.load_config(logs_folder, args.verbose, args.log_dir)
+
+
+def init(args, logs_folder):
+    init_checks_and_program_folders()
+    init_logging(args, logs_folder)
+
+
+def create_configuration(args, auth_req=True):
+    from NDATools.Configuration import ClientConfiguration
     config = ClientConfiguration(args)
     if auth_req:
         authenticate(config)
     return config
+
+
+def init_and_create_configuration(args, logs_folder, auth_req=True):
+    init(args, logs_folder)
+    return create_configuration(args, auth_req)
 
 
 def authenticate(config):

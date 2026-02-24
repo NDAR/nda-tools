@@ -2,6 +2,7 @@ import argparse
 import logging
 import pathlib
 
+import NDATools
 from NDATools import exit_error
 from NDATools.upload.validation import manifests
 
@@ -18,6 +19,7 @@ def submit(args):
 
 
 def generate_manifests(args):
+    NDATools.init(args, NDATools.NDA_TOOLS_NDA_LOGS_FOLDER)
     manifests.generate_manifests(
         args.subject_directory,
         args.output_directory,
@@ -40,29 +42,30 @@ if __name__ == '__main__':
 
     parser = ArgumentParser()
     subparser = parser.add_subparsers()
-    # TODO add 'download' subcommand
-    parser_validate = subparser.add_parser('validate',
-                                           help='validate data against NDA data-dictionary. Does not submit data')
-
-    parser_validate.add_argument('files', type=pathlib.Path)
-    parser_validate.set_defaults(func=validate)
-
-    parser_submit = subparser.add_parser('submit',
-                                         help='Submit data to an NDA collection. Data is validated before being submitted')
-
-    parser_submit.add_argument('files', type=pathlib.Path)
-    parser_submit.add_argument('-a', '--associated-files-dir', type=pathlib.Path)
-    parser_submit.add_argument('-m', '--manifests-dir', type=pathlib.Path)
-    # parser_submit.add_argument('-r', '--resume', type=pathlib.Path)
-    parser_submit.set_defaults(func=submit)
+    # parser_validate = subparser.add_parser('validate',
+    #                                        help='validate data against NDA data-dictionary. Does not submit data')
+    #
+    # parser_validate.add_argument('files', type=pathlib.Path)
+    # parser_validate.set_defaults(func=validate)
+    #
+    # parser_submit = subparser.add_parser('submit',
+    #                                      help='Submit data to an NDA collection. Data is validated before being submitted')
+    #
+    # parser_submit.add_argument('files', type=pathlib.Path)
+    # parser_submit.add_argument('-a', '--associated-files-dir', type=pathlib.Path)
+    # parser_submit.add_argument('-m', '--manifests-dir', type=pathlib.Path)
+    # parser_submit.set_defaults(func=submit)
+    parser.add_argument('--log-dir', type=pathlib.Path, help='Customize the file directory of logs. '
+                                                             'If this value is not provided or the provided directory does not exist, logs will be saved to NDA/nda-tools/nda/logs inside your home folder.')
 
     parser_manifests = subparser.add_parser('generate-manifests', help='Generate manifest files for a collection')
     parser_manifests.add_argument('-i', '--subject-directory', type=existing_dir, default='.')
     parser_manifests.add_argument('-o', '--output-directory', type=existing_dir, default='.')
-    parser_manifests.add_argument('-ir', '--include-regex', type=str, default='.*')
+    parser_manifests.add_argument('-ir', '--include-regex', type=str, default=None)
     parser_manifests.add_argument('-er', '--exclude-regex', type=str, default=None)
-    parser_manifests.add_argument('-c', '--include-checksum-calculation', action='store_false')
-    parser_manifests.add_argument('-s', '--include-file-size', action='store_false')
+    parser_manifests.add_argument('-c', '--include-checksum-calculation', action='store_true')
+    parser_manifests.add_argument('-s', '--include-file-size', action='store_true')
+    parser_manifests.add_argument('-v', '--verbose', action='store_true')
     parser_manifests.set_defaults(func=generate_manifests)
 
     args = parser.parse_args()
