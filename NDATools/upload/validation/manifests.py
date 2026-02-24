@@ -210,7 +210,7 @@ def generate_manifests(subject_directory, output_directory, include_regex='.*', 
                 manifest_file = output_path / f"{manifest_name}.json"
                 with open(manifest_file, 'w') as f:
                     json.dump({"files": records}, f, indent=2)
-                logged_name = f"{str(output_directory / manifest_name)}.json"
+                logged_name = f"{str(Path(output_directory) / manifest_name)}.json"
                 logger.info(
                     f"Generated {logged_name} for directory {dir_path} containing {len(records)} files")
 

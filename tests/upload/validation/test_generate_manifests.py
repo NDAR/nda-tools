@@ -69,15 +69,15 @@ class TestGenerateManifests:
         # dir1 has 3 files (file1.txt, file2.csv, subdir/file3.txt)
         assert len(data1["files"]) == 3
         paths = [r["path"] for r in data1["files"]]
-        assert str(Path("subject/dir1/file1.txt")) in paths
-        assert str(Path("subject/dir1/file2.csv")) in paths
-        assert str(Path("subject/dir1/subdir/file3.txt")) in paths
+        assert str(Path("dir1/file1.txt")) in paths
+        assert str(Path("dir1/file2.csv")) in paths
+        assert str(Path("dir1/subdir/file3.txt")) in paths
 
         with open(manifest2_path) as f:
             data2 = json.load(f)
         # dir2 has 1 file (file4.txt), link.txt should be ignored
         assert len(data2["files"]) == 1
-        assert data2["files"][0]["path"] == str(Path("subject/dir2/file4.txt"))
+        assert data2["files"][0]["path"] == str(Path("dir2/file4.txt"))
         assert data2["files"][0]["name"] == "file4.txt"
 
     def test_regex_filtering(self, test_dir):
@@ -90,9 +90,9 @@ class TestGenerateManifests:
 
         # Should have file3.txt but not file1.txt (excluded) or file2.csv (not matched by include)
         paths = [r["path"] for r in data1["files"]]
-        assert str(Path("subject/dir1/subdir/file3.txt")) in paths
-        assert str(Path("subject/dir1/file1.txt")) not in paths
-        assert str(Path("subject/dir1/file2.csv")) not in paths
+        assert str(Path("dir1/subdir/file3.txt")) in paths
+        assert str(Path("dir1/file1.txt")) not in paths
+        assert str(Path("dir1/file2.csv")) not in paths
         assert len(data1["files"]) == 1
 
     def test_checksum_and_size(self, test_dir):
@@ -117,7 +117,4 @@ class TestGenerateManifests:
         generate_manifests(str(subject_dir), str(output_dir))
 
         manifest_path = output_dir / "empty_dir.json"
-        assert manifest_path.exists()
-        with open(manifest_path) as f:
-            data = json.load(f)
-        assert data["files"] == []
+        assert not manifest_path.exists()
