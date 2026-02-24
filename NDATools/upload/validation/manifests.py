@@ -169,8 +169,6 @@ def generate_manifests(subject_directory, output_directory, include_regex='.*', 
             records = []
 
             for root, dirs, files in os.walk(dir_path):
-                # Symbolic links should be excluded from the search.
-                # os.walk by default does not follow symlinks.
 
                 for file in files:
                     file_path = Path(root) / file

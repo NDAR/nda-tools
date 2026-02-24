@@ -96,7 +96,7 @@ def parse_args():
                         help='Enables detailed logging.')
 
     parser.add_argument('--log-dir', type=str, action='store', help='Customize the file directory of logs. '
-                                                                    'If this value is not provided or the provided directory does not exist, logs will be saved to NDA/nda-tools/vtcmd/logs inside your root folder.')
+                                                                    'If this value is not provided or the provided directory does not exist, logs will be saved to NDA/nda-tools/vtcmd/logs inside your home folder.')
 
     args = parser.parse_args()
 

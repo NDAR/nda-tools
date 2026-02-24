@@ -37,28 +37,22 @@ def existing_dir(path):
     return p
 
 
-if __name__ == '__main__':
+def create_dir_if_not_exists(path):
+    p = pathlib.Path(path)
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def main():
     from argparse import ArgumentParser
 
     parser = ArgumentParser()
     subparser = parser.add_subparsers()
-    # parser_validate = subparser.add_parser('validate',
-    #                                        help='validate data against NDA data-dictionary. Does not submit data')
-    #
-    # parser_validate.add_argument('files', type=pathlib.Path)
-    # parser_validate.set_defaults(func=validate)
-    #
-    # parser_submit = subparser.add_parser('submit',
-    #                                      help='Submit data to an NDA collection. Data is validated before being submitted')
-    #
-    # parser_submit.add_argument('files', type=pathlib.Path)
-    # parser_submit.add_argument('-a', '--associated-files-dir', type=pathlib.Path)
-    # parser_submit.add_argument('-m', '--manifests-dir', type=pathlib.Path)
-    # parser_submit.set_defaults(func=submit)
+
     parser.add_argument('--log-dir', type=pathlib.Path, help='Customize the file directory of logs. '
                                                              'If this value is not provided or the provided directory does not exist, logs will be saved to NDA/nda-tools/nda/logs inside your home folder.')
 
-    parser_manifests = subparser.add_parser('generate-manifests', help='Generate manifest files for a collection')
+    parser_manifests = subparser.add_parser('generate-manifests', help='Generate manifest files for a submission')
     parser_manifests.add_argument('-i', '--subject-directory', type=existing_dir, default='.')
     parser_manifests.add_argument('-o', '--output-directory', type=existing_dir, default='.')
     parser_manifests.add_argument('-ir', '--include-regex', type=str, default=None)
@@ -70,3 +64,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     args.func(args)
+
+
+if __name__ == '__main__':
+    main()
