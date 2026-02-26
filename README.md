@@ -325,12 +325,13 @@ python -m NDATools.clientscripts.nda generate-manifests -i ./subject-data -o ./s
 ```
 
 after this command runs, there will be .json file for each directory in the subject-data folder. A submission can then
-be
-created using the manifests by running
+be created using the manifests by running:
 
 ```bash
 vtcmd genomics_sample03.csv -m ./subject-data -l ./subject-data 
 ```
+
+(replace genomics_sample03.csv with the name of the csv file(s) you want to submit)
 
 2. Exclude all .txt files from the manifests:
 
