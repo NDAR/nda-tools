@@ -312,23 +312,43 @@ python -m NDATools.clientscripts.nda generate-manifests -i <subject-directory> -
 - `-ir, --include-regex`: A regular expression to filter which files are included in the manifest.
 - `-er, --exclude-regex`: A regular expression to exclude specific files from the manifest. If a file matches both
   include and exclude regexes, it will be excluded.
-- `-c, --include-checksum-calculation`: If specified, the manifest will include the MD5 checksum for each file.
-- `-s, --include-file-size`: If specified, the manifest will include the size (in bytes) of each file.
 
-#### Example:
+**Note** - Symbolic links are skipped when generating manifests.
+
+#### Examples:
+
+1. If data for all subjects are grouped by directories in a folder called 'subject-data' run the following command to
+   generate the manifests for each subject:
 
 ```bash
-python -m NDATools.clientscripts.nda generate-manifests -i ./my_data -o ./manifests
+python -m NDATools.clientscripts.nda generate-manifests -i ./subject-data -o ./subject-data
 ```
 
-This command will scan `./my_data`, and for each subdirectory inside it, create a JSON file in `./manifests` containing
-the paths, names, MD5 checksums, and sizes of all files found recursively within that subdirectory (excluding symbolic
-links).
-
-After this command completes, the manifest directory can be supplied to the vtcmd using the -m argument. for example:
+after this command runs, there will be .json file for each directory in the subject-data folder. A submission can then
+be
+created using the manifests by running
 
 ```bash
-vtcmd ./my_data/genomics_sample03.csv -m ./manifests 
+vtcmd genomics_sample03.csv -m ./subject-data -l ./subject-data 
+```
+
+2. Exclude all .txt files from the manifests:
+
+```bash
+python -m NDATools.clientscripts.nda generate-manifests -i ./subject-data -o ./subject-data -er '\.txt$'
+```
+
+3. Include all files from directories beginning with 'NDAR', but exclude all .txt files from the manifests:
+
+```bash
+python -m NDATools.clientscripts.nda generate-manifests -i ./subject-data -o ./subject-data -er '\.txt$' -ir '^NDAR'
+```
+
+4. Wildcard matching is also supported (but it must be entered with single quotes to be interpreted correctly by most
+   shells):
+
+```bash
+python -m NDATools.clientscripts.nda generate-manifests -i ./subject-data -o ./subject-data -ir 'ndar.*/session/.*'
 ```
 
 ### Fixing QA Errors
