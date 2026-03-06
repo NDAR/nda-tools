@@ -354,14 +354,15 @@ python -m NDATools.clientscripts.nda generate-manifests -i ./subject-data -o ./s
 ```
 
 **Note** - the examples above use double quotes to enclose the regular expression, which should work in Windows shells (
-Powershell and cmd) and Linux/Mac shells (Bash). The type of quotes (single, double or none) used may be important. You
-should consult your shell documentation if the value of the regular expressions, which are printed out at the begining
+Powershell and cmd) and Linux/Mac shells (Bash). The type of quotes (single, double, or none) used may be important. You
+should consult your shell documentation if the value of the regular expressions, which are printed out at the beginning
 of program execution, do not match what you expect.
 
 ### Fixing QA Errors
 
 A QA check is performed on all data after it has been submitted to NDA for inconsistencies in data-points including sex,
-subjeckey, interview age and interview date. If any problems are found with the data, an email will be sent to the users
+subjeckey, interview age, and interview date. If any problems are found with the data, an email will be sent to the
+users
 who created the submission along with a report of the errors that were found by NDA.
 
 To fix the data in NDA for your submission, you need to replace all of the csv files which contained errors in your
@@ -370,14 +371,14 @@ To do this you must:
 
 <ol>
 <li>Retrieve the csv files with that were used to create the original submission and which contain data that needs to be corrected.
-This includes all csv files where data needs to be added, removed or updated.</li>
-<li>Correct the files by adding, removing or updating information as needed.</li>
+This includes all csv files where data needs to be added, removed, or updated.</li>
+<li>Correct the files by adding, removing, or updating information as needed.</li>
 <li>Run the vtcmd with the -rs command line argument. Specify the value of the submission which you need to correct data for. Then list all of the csv files that you made corrections to. If there was a csv
 file from the original submission that did not contain any changes, it is not necessary to supply the file as an argument at this time.  
  </li>
 </ol>
 
-For example, if the original submission with id 123456 consisted of file1.csv, file2.csv and file3.csv, and corrections
+For example, if the original submission with id 123456 consisted of file1.csv, file2.csv, and file3.csv, and corrections
 needed to be made to
 file1.csv and file2.csv, the command to fix qa errors will look like:  
 <code>
