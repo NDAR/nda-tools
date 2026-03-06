@@ -159,6 +159,18 @@ def generate_manifests(subject_directory, output_directory, include_regex='.*', 
     include_re = re.compile(include_regex) if include_regex else None
     exclude_re = re.compile(exclude_regex) if exclude_regex else None
 
+    msg = f'generating manifests'
+    if include_re:
+        msg += f" using the include_regex {include_regex}"
+        if exclude_re:
+            msg += " and"
+    if exclude_re:
+        msg += f" using the exclude_regex {exclude_regex}"
+    msg += f" in {subject_directory} and saving them to {output_directory}"
+    if include_regex and exclude_regex:
+        msg += " If a file matches both include_regex and exclude_regex, it will be excluded"
+    logger.info(msg)
+
     # Scan the subject-directory and create a manifest for each directory found.
     empty_dirs = []
     for entry in os.scandir(subject_path):

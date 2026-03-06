@@ -336,21 +336,27 @@ vtcmd genomics_sample03.csv -m ./subject-data -l ./subject-data
 2. Exclude all .txt files from the manifests:
 
 ```bash
-python -m NDATools.clientscripts.nda generate-manifests -i ./subject-data -o ./subject-data -er '\.txt$'
+python -m NDATools.clientscripts.nda generate-manifests -i ./subject-data -o ./subject-data -er "\.txt$"
 ```
 
 3. Include all files from directories beginning with 'NDAR', but exclude all .txt files from the manifests:
 
 ```bash
-python -m NDATools.clientscripts.nda generate-manifests -i ./subject-data -o ./subject-data -er '\.txt$' -ir '^NDAR'
+python -m NDATools.clientscripts.nda generate-manifests -i ./subject-data -o ./subject-data -er "\.txt$" -ir "^NDAR"
+
 ```
 
 4. Wildcard matching is also supported (but it must be entered with single quotes to be interpreted correctly by most
    shells):
 
 ```bash
-python -m NDATools.clientscripts.nda generate-manifests -i ./subject-data -o ./subject-data -ir 'ndar.*/session/.*'
+python -m NDATools.clientscripts.nda generate-manifests -i ./subject-data -o ./subject-data -ir "ndar.*/session/.*"
 ```
+
+**Note** - the examples above use double quotes to enclose the regular expression, which should work in Windows shells (
+Powershell and cmd) and Linux/Mac shells (Bash). The type of quotes (single, double or none) used may be important. You
+should consult your shell documentation if the value of the regular expressions, which are printed out at the begining
+of program execution, do not match what you expect.
 
 ### Fixing QA Errors
 
