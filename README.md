@@ -333,30 +333,43 @@ vtcmd genomics_sample03.csv -m ./subject-data -l ./subject-data
 
 (replace genomics_sample03.csv with the name of the csv file(s) you want to submit)
 
-2. Exclude all .txt files from the manifests:
+2. Exclude all files with extension = '.txt', 'tsv' and 'mat' from the manifests:
 
 ```bash
-python -m NDATools.clientscripts.nda generate-manifests -i ./subject-data -o ./subject-data -er "\.txt$"
+python -m NDATools.clientscripts.nda generate-manifests -i ./subject-data -o ./subject-data -er "\.(txt|tsv|mat)$"
 ```
 
-3. Include all files from directories beginning with 'NDAR', but exclude all .txt files from the manifests:
+3. Exclude only .mat files from the manifests:
+
+```bash
+python -m NDATools.clientscripts.nda generate-manifests -i ./subject-data -o ./subject-data -er "\.mat$"
+```
+
+4. Include all files from directories beginning with 'NDAR', but exclude all .txt files from the manifests:
 
 ```bash
 python -m NDATools.clientscripts.nda generate-manifests -i ./subject-data -o ./subject-data -er "\.txt$" -ir "^NDAR"
 
 ```
 
-4. Wildcard matching is also supported (but it must be entered with single quotes to be interpreted correctly by most
+5. Wildcard matching is also supported (but it must be entered with quotes to be interpreted correctly by most
    shells):
 
 ```bash
-python -m NDATools.clientscripts.nda generate-manifests -i ./subject-data -o ./subject-data -ir "ndar.*/session/.*"
+python -m NDATools.clientscripts.nda generate-manifests -i ./subject-data -o ./subject-data -ir "session/.*"
 ```
 
-**Note** - the examples above use double quotes to enclose the regular expression, which should work in Windows shells (
-Powershell and cmd) and Linux/Mac shells (Bash). The type of quotes (single, double, or none) used may be important. You
-should consult your shell documentation if the value of the regular expressions, which are printed out at the beginning
-of program execution, do not match what you expect.
+**Notes**
+
+1. the examples above use double quotes to enclose the regular expression, which should work in Windows shells (
+   Powershell and cmd) and Linux/Mac shells (Bash). The type of quotes (single, double, or none) used may be important.
+   You
+   should consult your shell documentation if the value of the regular expressions, which are printed out at the
+   beginning
+   of program execution, do not match what you expect.
+2. On windows machines, the file separator is '\' and not '/', which needs to be escaped with another '\' in the
+   regular expression. In the last example, the regular expression on a windows maachine should be `-ir "session\\.*"`
+   instead of `ir "session/.*"`:
 
 ### Fixing QA Errors
 
