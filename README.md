@@ -367,8 +367,8 @@ python -m NDATools.clientscripts.nda generate-manifests -i ./subject-data -o ./s
    should consult your shell documentation if the value of the regular expressions, which are printed out at the
    beginning
    of program execution, do not match what you expect.
-2. On windows machines, the file separator is '\' and not '/', which needs to be escaped with another '\' in the
-   regular expression. In the last example, the regular expression on a windows maachine should be `-ir "session\\.*"`
+2. On windows machines, the file separator is '\\' and not '/', which needs to be escaped with another '\\' in the
+   regular expression. In the last example, the regular expression on a windows machine should be `-ir "session\\.*"`
    instead of `ir "session/.*"`:
 
 ### Fixing QA Errors
