@@ -361,7 +361,7 @@ python -m NDATools.clientscripts.nda generate-manifests -i ./subject-data -o ./s
 
 **Notes**
 
-1. the examples above use double quotes to enclose the regular expression, which should work in Windows shells (
+1. The examples above use double quotes to enclose the regular expression, which should work in Windows shells (
    Powershell and cmd) and Linux/Mac shells (Bash). The type of quotes (single, double, or none) used may be important.
    You
    should consult your shell documentation if the value of the regular expressions, which are printed out at the
