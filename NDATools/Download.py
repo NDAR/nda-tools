@@ -104,6 +104,7 @@ class Download(Protocol):
         self.username = download_config.username
         self.password = download_config.password
         self.auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
+        self.reauth_func = getattr(download_config, 'reauthenticate', None)
 
         # Instance Variables from 'args'
         if args.directory:
@@ -893,7 +894,8 @@ class Download(Protocol):
                 url += '&s3SourcePrefix={}'.format(s3_dest_prefix)
         tmp = get_request(url, auth=self.auth,
                           error_handler=HttpErrorHandlingStrategy.reraise_status,
-                          deserialize_handler=DeserializeHandler.none)
+                          deserialize_handler=DeserializeHandler.none,
+                          reauth_func=self.reauth_func)
         return json.loads(tmp.text)
 
     def generate_metadata_and_get_creds(self):
@@ -939,13 +941,15 @@ class Download(Protocol):
               '/{}/files/package_file_metadata'.format(self.package_id)
         tmp = get_request(url, auth=self.auth,
                           error_handler=HttpErrorHandlingStrategy.reraise_status,
-                          deserialize_handler=DeserializeHandler.convert_json)
+                          deserialize_handler=DeserializeHandler.convert_json,
+                          reauth_func=self.reauth_func)
         return tmp
 
     def get_package_file(self, file_id):
         url = self.package_url + \
               '/{}/files/{}'.format(self.package_id, file_id)
-        tmp = get_request(url, auth=self.auth, deserialize_handler=DeserializeHandler.convert_json)
+        tmp = get_request(url, auth=self.auth, deserialize_handler=DeserializeHandler.convert_json,
+                          reauth_func=self.reauth_func)
         return tmp
 
     def get_files_from_datastructure(self, data_structure):
@@ -957,7 +961,8 @@ class Download(Protocol):
         url = self.package_url + \
               '/{}/files?page=1&size=all&types=Package%20Metadata&regex={}'.format(self.package_id,
                                                                                    'datastructure_manifest.txt')
-        tmp = get_request(url, auth=self.auth, deserialize_handler=DeserializeHandler.none)
+        tmp = get_request(url, auth=self.auth, deserialize_handler=DeserializeHandler.none,
+                          reauth_func=self.reauth_func)
         results = json.loads(tmp.text)['results']
         # return None instead of empty list, since this method is always supposed to return 1 thing
         return results[0] if results else None
@@ -965,7 +970,8 @@ class Download(Protocol):
     def get_data_structure_files(self):
         url = self.package_url + \
               '/{}/files?page=1&size=all&types=Data'.format(self.package_id)
-        tmp = get_request(url, auth=self.auth, deserialize_handler=DeserializeHandler.none)
+        tmp = get_request(url, auth=self.auth, deserialize_handler=DeserializeHandler.none,
+                          reauth_func=self.reauth_func)
         tmp.raise_for_status()
         results = json.loads(tmp.text)['results']
         return [r for r in results if r['nda_file_type'] == 'Data']
@@ -974,7 +980,8 @@ class Download(Protocol):
         url = self.package_url + \
               '/{}/files?page=1&size=all&types=Package%20Metadata&types=Data&regex={}'.format(self.package_id,
                                                                                               short_name)
-        tmp = get_request(url, auth=self.auth, deserialize_handler=DeserializeHandler.none)
+        tmp = get_request(url, auth=self.auth, deserialize_handler=DeserializeHandler.none,
+                          reauth_func=self.reauth_func)
         tmp.raise_for_status()
         results = json.loads(tmp.text)['results']
         # return None instead of empty list, since this method is always supposed to return 1 thing
@@ -982,12 +989,14 @@ class Download(Protocol):
 
     def get_package_file_info(self, file_id):
         url = self.package_url + '/{}/files/{}'.format(self.package_id, file_id)
-        tmp = get_request(url, auth=self.auth, deserialize_handler=DeserializeHandler.none)
+        tmp = get_request(url, auth=self.auth, deserialize_handler=DeserializeHandler.none,
+                          reauth_func=self.reauth_func)
         return json.loads(tmp.text)
 
     def get_package_info(self):
         url = self.package_url + '/{}'.format(self.package_id)
-        tmp = get_request(url, auth=self.auth, deserialize_handler=DeserializeHandler.none)
+        tmp = get_request(url, auth=self.auth, deserialize_handler=DeserializeHandler.none,
+                          reauth_func=self.reauth_func)
         return json.loads(tmp.text)
 
     def get_package_files_by_page(self, page, batch_size):
@@ -997,7 +1006,8 @@ class Download(Protocol):
         try:
             tmp = get_request(url, auth=self.auth,
                               error_handler=HttpErrorHandlingStrategy.reraise_status,
-                              deserialize_handler=DeserializeHandler.none)
+                              deserialize_handler=DeserializeHandler.none,
+                              reauth_func=self.reauth_func)
             tmp.raise_for_status()
             response = json.loads(tmp.text)
             return response['results']
@@ -1022,7 +1032,8 @@ class Download(Protocol):
         url = self.package_url + '/{}/files/batchGeneratePresignedUrls'.format(self.package_id)
         response = post_request(url, payload=id_list, auth=self.auth,
                                 error_handler=HttpErrorHandlingStrategy.print_and_exit,
-                                deserialize_handler=DeserializeHandler.convert_json)
+                                deserialize_handler=DeserializeHandler.convert_json,
+                                reauth_func=self.reauth_func)
         creds = {e['package_file_id']: e['downloadURL'] for e in response['presignedUrls']}
         logger.debug('Finished retrieving credentials')
         return creds
@@ -1092,5 +1103,6 @@ class Download(Protocol):
     def request_metadata_file_creation(self):
         url = self.package_creation_url + \
               '/{}/create-package-metadata-file'.format(self.package_id)
-        tmp = post_request(url, auth=self.auth, deserialize_handler=DeserializeHandler.none)
+        tmp = post_request(url, auth=self.auth, deserialize_handler=DeserializeHandler.none,
+                           reauth_func=self.reauth_func)
         return tmp

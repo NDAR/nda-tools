@@ -1,5 +1,8 @@
 import builtins
 import getpass
+import requests
+import threading
+import time
 from unittest.mock import patch, MagicMock
 
 import keyring
@@ -171,3 +174,151 @@ def test_no_keyring(monkeypatch, mock_settings_with_user):
         assert NDATools._get_keyring == False
         assert NDATools.keyring.get_password.call_count == 1
         assert NDATools.logger.warning.any_call_contains('could not retrieve password from keyring:')
+
+
+def test_client_configuration_auth_uses_latest_credentials(monkeypatch):
+    client_config = ClientConfiguration(MagicMock())
+    client_config.username = 'first_user'
+    client_config.password = 'first_password'
+
+    auth = client_config.get_auth()
+
+    request1 = requests.Request('GET', 'https://nda.nih.gov/api/user').prepare()
+    auth(request1)
+
+    client_config.password = 'second_password'
+    request2 = requests.Request('GET', 'https://nda.nih.gov/api/user').prepare()
+    auth(request2)
+
+    assert request1.headers['Authorization'] != request2.headers['Authorization']
+
+
+def test_client_configuration_reauthenticate_uses_stored_credentials(monkeypatch):
+    client_config = ClientConfiguration(MagicMock())
+    client_config.username = username
+    client_config.password = password
+
+    with monkeypatch.context() as m:
+        m.setattr(NDATools.upload.submission.api.UserApi, 'is_valid_nda_credentials', lambda x, y, z: True)
+        m.setattr(client_config, '_save_username', lambda: None)
+        m.setattr(client_config, '_save_apis', lambda: None)
+        mock_input = MagicMock()
+        mock_getpass = MagicMock()
+        m.setattr('builtins.input', mock_input)
+        m.setattr('getpass.getpass', mock_getpass)
+
+        client_config.reauthenticate()
+
+    mock_input.assert_not_called()
+    mock_getpass.assert_not_called()
+    assert client_config.username == username
+    assert client_config.password == password
+
+
+def test_client_configuration_save_apis_uses_shared_auth(monkeypatch):
+    with monkeypatch.context() as m:
+        validation_api = MagicMock()
+        submission_package_api = MagicMock()
+        submission_api = MagicMock()
+        collection_api = MagicMock()
+        m.setattr(NDATools.Configuration, 'ValidationV2Api', validation_api)
+        m.setattr(NDATools.Configuration, 'SubmissionPackageApi', submission_package_api)
+        m.setattr(NDATools.Configuration, 'SubmissionApi', submission_api)
+        m.setattr(NDATools.Configuration, 'CollectionApi', collection_api)
+
+        client_config = ClientConfiguration(MagicMock())
+        m.setattr(client_config, '_save_username', lambda: None)
+        client_config.update_with_auth(username, password)
+
+    assert validation_api.call_args.kwargs['auth'] is client_config.get_auth()
+    assert submission_package_api.call_args.kwargs['auth'] is client_config.get_auth()
+    assert submission_api.call_args.kwargs['auth'] is client_config.get_auth()
+    assert collection_api.call_args.kwargs['auth'] is client_config.get_auth()
+
+
+def test_client_configuration_reauthenticate_single_flight(monkeypatch):
+    client_config = ClientConfiguration(MagicMock())
+    client_config.username = username
+    client_config.password = password
+    mtx = threading.Lock()
+    call_count = {'count': 0}
+    started = threading.Event()
+    release = threading.Event()
+
+    def fake_authenticate(config):
+        with mtx:
+            call_count['count'] += 1
+        started.set()
+        release.wait(timeout=1)
+        config.username = username
+        config.password = password
+        return config
+
+    with monkeypatch.context() as m:
+        m.setattr(NDATools, 'authenticate', fake_authenticate)
+        m.setattr(client_config, '_save_username', lambda: None)
+        m.setattr(client_config, '_save_apis', lambda: None)
+
+        threads = [threading.Thread(target=client_config.reauthenticate, kwargs={'expected_generation': 0})]
+        threads[0].start()
+        started.wait(timeout=1)
+        threads.append(threading.Thread(target=client_config.reauthenticate, kwargs={'expected_generation': 0}))
+        threads[1].start()
+        time.sleep(0.05)
+        release.set()
+        for thread in threads:
+            thread.join()
+
+    assert call_count['count'] == 1
+    assert client_config.get_auth_generation() == 1
+
+
+def test_client_configuration_reauthenticate_skips_stale_generation(monkeypatch):
+    client_config = ClientConfiguration(MagicMock())
+    client_config.username = username
+    client_config.password = password
+    client_config._auth_generation = 1
+
+    with monkeypatch.context() as m:
+        authenticate = MagicMock()
+        m.setattr(NDATools, 'authenticate', authenticate)
+        client_config.reauthenticate(expected_generation=0)
+
+    authenticate.assert_not_called()
+
+
+def test_client_configuration_reauthenticate_propagates_failure_to_waiters(monkeypatch):
+    client_config = ClientConfiguration(MagicMock())
+    client_config.username = username
+    client_config.password = password
+    started = threading.Event()
+    release = threading.Event()
+    call_count = {'count': 0}
+    errors = []
+
+    def fake_authenticate(config):
+        call_count['count'] += 1
+        started.set()
+        release.wait(timeout=1)
+        raise RuntimeError('reauth failed')
+
+    def run():
+        try:
+            client_config.reauthenticate(expected_generation=0)
+        except Exception as exc:
+            errors.append(str(exc))
+
+    with monkeypatch.context() as m:
+        m.setattr(NDATools, 'authenticate', fake_authenticate)
+        threads = [threading.Thread(target=run)]
+        threads[0].start()
+        started.wait(timeout=1)
+        threads.append(threading.Thread(target=run))
+        threads[1].start()
+        time.sleep(0.05)
+        release.set()
+        for thread in threads:
+            thread.join()
+
+    assert call_count['count'] == 1
+    assert errors == ['reauth failed', 'reauth failed']

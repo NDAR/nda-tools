@@ -33,3 +33,4 @@ failed_s3_links_file_*
 coverage.xml
 dist
 nda_tools.egg-info
+.venv/

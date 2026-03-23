@@ -115,18 +115,22 @@ class BatchUpdate:
 
 
 class SubmissionApi:
-    def __init__(self, submission_api_endpoint, username, password, create_submission_timeout=300, batch_size=50):
+    def __init__(self, submission_api_endpoint, username, password, create_submission_timeout=300, batch_size=50,
+                 auth=None, reauth_func=None):
         self.api_endpoint = submission_api_endpoint
-        self.auth = requests.auth.HTTPBasicAuth(username, password)
+        self.auth = auth or requests.auth.HTTPBasicAuth(username, password)
+        self.reauth_func = reauth_func
         self.create_submission_timeout = create_submission_timeout
 
     def get_submission(self, submission_id: int):
-        tmp = get_request("/".join([self.api_endpoint, str(submission_id)]), auth=self.auth)
+        tmp = get_request("/".join([self.api_endpoint, str(submission_id)]), auth=self.auth,
+                          reauth_func=self.reauth_func)
         return Submission(**tmp)
 
     def get_submission_history(self, submission_id: int) -> List[SubmissionHistory]:
         try:
-            tmp = get_request('/'.join([self.api_endpoint, str(submission_id), 'change-history']), auth=self.auth)
+            tmp = get_request('/'.join([self.api_endpoint, str(submission_id), 'change-history']), auth=self.auth,
+                              reauth_func=self.reauth_func)
             return [SubmissionHistory(**t) for t in tmp]
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 403:
@@ -139,38 +143,40 @@ class SubmissionApi:
             exit(1)
 
     def get_submission_details(self, submission_id: int) -> SubmissionDetails:
-        tmp = get_request('/'.join([self.api_endpoint, str(submission_id), 'pending-changes']), auth=self.auth)
+        tmp = get_request('/'.join([self.api_endpoint, str(submission_id), 'pending-changes']), auth=self.auth,
+                          reauth_func=self.reauth_func)
         return SubmissionDetails(**tmp)
 
     def create_submission(self, package_id: str) -> Submission:
         post_request("/".join([self.api_endpoint, package_id]) + "?async=true", auth=self.auth,
-                     deserialize_handler=DeserializeHandler.none)
+                     deserialize_handler=DeserializeHandler.none, reauth_func=self.reauth_func)
         return self._wait_submission_complete(package_id)
 
     def get_upload_credentials(self, submission_id, file_ids) -> List[AssociatedFileUploadCreds]:
         credentials_list = post_request("/".join(
             [self.api_endpoint, str(submission_id), 'files/batchMultipartUploadCredentials']),
-            payload=json.dumps(file_ids), auth=self.auth)
+            payload=json.dumps(file_ids), auth=self.auth, reauth_func=self.reauth_func)
         return [AssociatedFileUploadCreds(**c) for c in credentials_list['credentials']]
 
     def batch_update_associated_file_status(self, submission_id, updates: List[BatchUpdate]):
         list_data = list(map(lambda x: x.to_payload(), updates))
         url = "/".join([self.api_endpoint, str(submission_id), 'files/batchUpdate'])
         data = json.dumps(list_data)
-        response = put_request(url, payload=data, auth=self.auth)
+        response = put_request(url, payload=data, auth=self.auth, reauth_func=self.reauth_func)
         # hash files by id to make searching easier
         lookup = {update.file.id: update.file for update in updates}
         return [BatchError(lookup[e.id], e['errorMessage']) for e in response['errors']]
 
     def get_upload_progress(self, submission_id):
-        response = get_request("/".join([self.api_endpoint, str(submission_id), "upload-progress"]), auth=self.auth)
+        response = get_request("/".join([self.api_endpoint, str(submission_id), "upload-progress"]), auth=self.auth,
+                               reauth_func=self.reauth_func)
         return UploadProgress(**response)
 
     def replace_submission(self, submission_id, package_id):
         version_count = len(self.get_submission_history(submission_id))
         put_request(
             f"{self.api_endpoint}/{submission_id}?submissionPackageUuid={package_id}&async=true",
-            auth=self.auth, deserialize_handler=DeserializeHandler.none)
+            auth=self.auth, deserialize_handler=DeserializeHandler.none, reauth_func=self.reauth_func)
         # poll the versions endpoint until a new one is created or until we timeout
         end_time = datetime.timedelta(seconds=self.create_submission_timeout) + datetime.datetime.now()
         while True:
@@ -189,7 +195,7 @@ class SubmissionApi:
             get_files_url = "/".join([self.api_endpoint, str(submission_id),
                                       f'file-listing?pageNumber={page_number}&pageSize={page_size}{excluded_q_param}'])
             response = get_request(get_files_url, auth=self.auth, error_handler=HttpErrorHandlingStrategy.ignore,
-                                   deserialize_handler=DeserializeHandler.none)
+                                   deserialize_handler=DeserializeHandler.none, reauth_func=self.reauth_func)
             response.raise_for_status()
             return [AssociatedFile(**f) for f in response.json()]
         except requests.exceptions.HTTPError as error:
@@ -216,7 +222,8 @@ class SubmissionApi:
             time.sleep(10)
 
     def _query_submissions_by_package_id(self, package_id):
-        tmp = get_request(f"{self.api_endpoint}?packageUuid={package_id}", auth=self.auth)
+        tmp = get_request(f"{self.api_endpoint}?packageUuid={package_id}", auth=self.auth,
+                          reauth_func=self.reauth_func)
         if tmp:
             return Submission(**tmp[0])
         return None
@@ -236,11 +243,12 @@ class SubmissionPackage(BaseModel):
 
 
 class SubmissionPackageApi:
-    def __init__(self, endpoint, username, password):
+    def __init__(self, endpoint, username, password, auth=None, reauth_func=None):
         self.api_endpoint = endpoint
         self.username = username
         self.password = password
-        self.auth = requests.auth.HTTPBasicAuth(username, password)
+        self.auth = auth or requests.auth.HTTPBasicAuth(username, password)
+        self.reauth_func = reauth_func
 
     def build_package(self, collection_id, name, description, validation_uuid,
                       replace_submission_id=None) -> SubmissionPackage:
@@ -255,14 +263,15 @@ class SubmissionPackageApi:
         }
         if replace_submission_id:
             payload['package_info']['replacement_submission'] = replace_submission_id
-        tmp = post_request(self.api_endpoint, payload=payload, auth=self.auth)
+        tmp = post_request(self.api_endpoint, payload=payload, auth=self.auth, reauth_func=self.reauth_func)
         return SubmissionPackage(**tmp)
 
     def wait_package_complete(self, package_id) -> SubmissionPackage:
 
         while True:
             time.sleep(1.1)
-            response = get_request("/".join([self.api_endpoint, package_id]), auth=self.auth)
+            response = get_request("/".join([self.api_endpoint, package_id]), auth=self.auth,
+                                   reauth_func=self.reauth_func)
             package_status = PackagingStatus(response['status'])
             if package_status != PackagingStatus.PROCESSING:
                 # done processing. Check for erors...
@@ -278,13 +287,14 @@ class SubmissionPackageApi:
 
 
 class CollectionApi:
-    def __init__(self, vt_api_endpoint, username, password):
+    def __init__(self, vt_api_endpoint, username, password, auth=None, reauth_func=None):
         self.vt_api_endpoint = vt_api_endpoint
-        self.auth = requests.auth.HTTPBasicAuth(username, password)
+        self.auth = auth or requests.auth.HTTPBasicAuth(username, password)
+        self.reauth_func = reauth_func
 
     def get_user_collections(self):
         collections = get_request("/".join([self.vt_api_endpoint, "user/collection"]), auth=self.auth,
-                                  headers={'Accept': 'application/json'})
+                                  headers={'Accept': 'application/json'}, reauth_func=self.reauth_func)
         return sorted([NdaCollection(**c) for c in collections], key=lambda x: x.id)
 
 

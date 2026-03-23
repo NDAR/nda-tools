@@ -175,10 +175,11 @@ class ValidationManifest(BaseModel):
 
 
 class ValidationV2Api:
-    def __init__(self, validation_api_endpoint, username, password):
+    def __init__(self, validation_api_endpoint, username, password, auth=None, reauth_func=None):
         self.api_v1_endpoint = f"{validation_api_endpoint}"
         self.api_v2_endpoint = f"{validation_api_endpoint}/v2/"
-        self.auth = requests.auth.HTTPBasicAuth(username, password)
+        self.auth = auth or requests.auth.HTTPBasicAuth(username, password)
+        self.reauth_func = reauth_func
         self._refresh_creds_lock = RLock()
 
     def _start_qa_request(self, validation_uuids: List[str], scope=None) -> Qa:
@@ -187,12 +188,12 @@ class ValidationV2Api:
         if scope:
             payload["scope"] = scope
 
-        tmp = post_request(url, auth=self.auth, payload=payload)
+        tmp = post_request(url, auth=self.auth, payload=payload, reauth_func=self.reauth_func)
         return Qa(**tmp)
 
     def get_qa(self, qa_uuid) -> Qa:
         url = f"{self.api_v1_endpoint}/qa/{qa_uuid}"
-        tmp = get_request(url, auth=self.auth)
+        tmp = get_request(url, auth=self.auth, reauth_func=self.reauth_func)
         return Qa(**tmp)
 
     def qa_validated_files(self, validation_uuids: List[str], scope=None, wait_for_completion=True,
@@ -209,7 +210,7 @@ class ValidationV2Api:
         }
         if scope:
             payload["scope"] = scope
-        tmp = post_request(self.api_v2_endpoint, auth=self.auth, payload=payload)
+        tmp = post_request(self.api_v2_endpoint, auth=self.auth, payload=payload, reauth_func=self.reauth_func)
         return self._get_refreshable_credentials(tmp)
 
     def _get_refreshable_credentials(self, creds: dict):
@@ -223,17 +224,17 @@ class ValidationV2Api:
 
     def refresh_upload_credentials(self, uuid):
         url = f"{self.api_v2_endpoint}{uuid}/refresh-credentials"
-        tmp = post_request(url, auth=self.auth)
+        tmp = post_request(url, auth=self.auth, reauth_func=self.reauth_func)
         return self._get_refreshable_credentials(tmp)
 
     def request_download_credentials(self, uuid: str) -> ValidationV2Credentials:
         url = f"{self.api_v2_endpoint}{uuid}/download"
-        tmp = get_request(url, auth=self.auth)
+        tmp = get_request(url, auth=self.auth, reauth_func=self.reauth_func)
         return self._get_refreshable_credentials(tmp)
 
     def get_validation(self, uuid: str) -> ValidationV2:
         url = f"{self.api_v2_endpoint}{uuid}"
-        tmp = get_request(url, auth=self.auth)
+        tmp = get_request(url, auth=self.auth, reauth_func=self.reauth_func)
         return ValidationV2(**tmp)
 
     def get_manifest_errors(self, uuid: str) -> List[ManifestError]:
@@ -241,7 +242,7 @@ class ValidationV2Api:
         results = []
         page = 0
         while True:
-            tmp = get_request(f"{url}?page={page}", auth=self.auth)
+            tmp = get_request(f"{url}?page={page}", auth=self.auth, reauth_func=self.reauth_func)
             if not tmp:
                 break
             results.extend([ManifestError(**t) for t in tmp])

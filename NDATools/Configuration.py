@@ -4,7 +4,9 @@ import logging
 import logging.config
 import multiprocessing
 import os
+import threading
 import time
+from requests.auth import AuthBase, _basic_auth_str
 
 import yaml
 
@@ -42,6 +44,16 @@ class LoggingConfiguration:
         logging.config.dictConfig(config)
 
 
+class DynamicBasicAuth(AuthBase):
+    def __init__(self, config):
+        self._config = config
+
+    def __call__(self, request):
+        request._nda_auth_generation = self._config.get_auth_generation()
+        request.headers['Authorization'] = _basic_auth_str(self._config.username, self._config.password)
+        return request
+
+
 class ClientConfiguration:
 
     def __init__(self, args):
@@ -69,6 +81,12 @@ class ClientConfiguration:
             logger.warning("-u/--username argument not provided. Using default value of '%s' which was saved in %s",
                            self.username, NDATools.NDA_TOOLS_SETTINGS_CFG_FILE)
         self.password = None
+        self._auth_generation = 0
+        self._reauth_lock = threading.Lock()
+        self._reauth_condition = threading.Condition(self._reauth_lock)
+        self._reauth_in_progress = False
+        self._reauth_error = None
+        self._auth = DynamicBasicAuth(self)
 
         if self._is_vtcmd():
             self.v2_enabled = False
@@ -161,6 +179,40 @@ class ClientConfiguration:
     def is_authenticated(self):
         return self.username and self.password
 
+    def get_auth(self):
+        return self._auth
+
+    def get_auth_generation(self):
+        return self._auth_generation
+
+    def reauthenticate(self, expected_generation=None):
+        with self._reauth_condition:
+            if expected_generation is not None and expected_generation < self._auth_generation:
+                return
+            while self._reauth_in_progress:
+                self._reauth_condition.wait()
+                if expected_generation is not None and expected_generation < self._auth_generation:
+                    return
+                if self._reauth_error is not None:
+                    raise self._reauth_error
+            if expected_generation is not None and expected_generation < self._auth_generation:
+                return
+            self._reauth_in_progress = True
+            self._reauth_error = None
+
+        try:
+            NDATools.authenticate(self)
+            with self._reauth_condition:
+                self._auth_generation += 1
+        except Exception as exc:
+            with self._reauth_condition:
+                self._reauth_error = exc
+            raise
+        finally:
+            with self._reauth_condition:
+                self._reauth_in_progress = False
+                self._reauth_condition.notify_all()
+
     def update_with_auth(self, username, password):
         self.username = username
         self.password = password
@@ -173,13 +225,20 @@ class ClientConfiguration:
             self.config.write(configfile)
 
     def _save_apis(self):
-        self.validation_api = ValidationV2Api(self.validation_api_endpoint, self.username, self.password)
+        self.validation_api = ValidationV2Api(self.validation_api_endpoint, self.username, self.password,
+                                              auth=self.get_auth(), reauth_func=self.reauthenticate)
         self.submission_package_api = SubmissionPackageApi(self.submission_package_api_endpoint,
                                                            self.username,
-                                                           self.password)
+                                                           self.password,
+                                                           auth=self.get_auth(),
+                                                           reauth_func=self.reauthenticate)
         self.submission_api = SubmissionApi(self.submission_api_endpoint, self.username,
-                                            self.password)
-        self.collection_api = CollectionApi(self.validationtool_api_endpoint, self.username, self.password)
+                                            self.password,
+                                            auth=self.get_auth(),
+                                            reauth_func=self.reauthenticate)
+        self.collection_api = CollectionApi(self.validationtool_api_endpoint, self.username, self.password,
+                                            auth=self.get_auth(),
+                                            reauth_func=self.reauthenticate)
 
         if self._is_vtcmd():
             self.manifests_uploader = ManifestFileUploader(self.validation_api,

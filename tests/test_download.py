@@ -296,6 +296,54 @@ def test_download_handle_credentials_expired(monkeypatch, download_mock2, downlo
         assert download.get_temp_creds_for_file.call_count == 1
 
 
+def test_get_package_info_passes_reauth_func(monkeypatch, tmp_path):
+    config = MagicMock()
+    config.package_api_endpoint = 'https://nda.nih.gov/api/package'
+    config.package_creation_api_endpoint = 'https://nda.nih.gov/api/packaging-ws'
+    config.datadictionary_api_endpoint = 'https://nda.nih.gov/api/datadictionary/datastructure'
+    config.username = 'testuser'
+    config.password = 'testpassword'
+    config.worker_threads = 1
+    config.reauthenticate = MagicMock()
+    args = MagicMock(directory=None, txt=None, paths=None, package=1189934, datastructure=None, file_regex=None,
+                     verify=False, workerThreads=None, s3_destination=None)
+    with monkeypatch.context() as m:
+        m.setattr(NDATools, 'NDA_TOOLS_DOWNLOADS_FOLDER', str(tmp_path))
+        download = Download(config, args)
+    reauth = config.reauthenticate
+    response = Response(text='{"package_id": 1189934}')
+
+    with monkeypatch.context() as m:
+        get_request = MagicMock(return_value=response)
+        m.setattr(NDATools.Download, 'get_request', get_request)
+        download.get_package_info()
+        assert get_request.call_args.kwargs['reauth_func'] is reauth
+
+
+def test_get_presigned_urls_passes_reauth_func(monkeypatch, tmp_path):
+    config = MagicMock()
+    config.package_api_endpoint = 'https://nda.nih.gov/api/package'
+    config.package_creation_api_endpoint = 'https://nda.nih.gov/api/packaging-ws'
+    config.datadictionary_api_endpoint = 'https://nda.nih.gov/api/datadictionary/datastructure'
+    config.username = 'testuser'
+    config.password = 'testpassword'
+    config.worker_threads = 1
+    config.reauthenticate = MagicMock()
+    args = MagicMock(directory=None, txt=None, paths=None, package=1189934, datastructure=None, file_regex=None,
+                     verify=False, workerThreads=None, s3_destination=None)
+    with monkeypatch.context() as m:
+        m.setattr(NDATools, 'NDA_TOOLS_DOWNLOADS_FOLDER', str(tmp_path))
+        download = Download(config, args)
+    reauth = config.reauthenticate
+    response = {'presignedUrls': [{'package_file_id': 1, 'downloadURL': 'https://tmp'}]}
+
+    with monkeypatch.context() as m:
+        post_request = MagicMock(return_value=response)
+        m.setattr(NDATools.Download, 'post_request', post_request)
+        download.get_presigned_urls([1])
+        assert post_request.call_args.kwargs['reauth_func'] is reauth
+
+
 def test_handle_download_exception(monkeypatch, download_mock2, download_request, tmp_path):
     download = download_mock2(args=['-dp', '1189934'])
     failed_s3_links_file = tmp_path / 'failed-files.txt'

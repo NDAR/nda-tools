@@ -211,7 +211,7 @@ def is_json(test):
 
 
 def _send_prepared_request(prepped, timeout=150, deserialize_handler=DeserializeHandler.convert_json,
-                           error_handler=HttpErrorHandlingStrategy.print_and_exit):
+                           error_handler=HttpErrorHandlingStrategy.print_and_exit, reauth_func=None):
     with requests.Session() as session:
         retries = Retry(total=10,
                         backoff_factor=0.1,
@@ -219,6 +219,13 @@ def _send_prepared_request(prepped, timeout=150, deserialize_handler=Deserialize
         logger.debug('{} {} @ {}'.format(prepped.method, prepped.url, datetime.datetime.now()))
         session.mount(prepped.url, HTTPAdapter(max_retries=retries))
         tmp = session.send(prepped, timeout=timeout)
+        if tmp.status_code == 401 and reauth_func is not None:
+            expected_generation = getattr(prepped, '_nda_auth_generation', None)
+            if expected_generation is None:
+                reauth_func()
+            else:
+                reauth_func(expected_generation=expected_generation)
+            tmp = session.send(prepped, timeout=timeout)
         logger.debug(
             '{} {} (elapsed = {})- STATUS {}'.format(prepped.method, prepped.url, tmp.elapsed, tmp.status_code))
         if not tmp.ok:
@@ -227,28 +234,28 @@ def _send_prepared_request(prepped, timeout=150, deserialize_handler=Deserialize
 
 
 def get_request(url, headers={}, auth=None, timeout=150, deserialize_handler=DeserializeHandler.convert_json,
-                error_handler=HttpErrorHandlingStrategy.print_and_exit):
+                error_handler=HttpErrorHandlingStrategy.print_and_exit, reauth_func=None):
     req = requests.Request('GET', url, auth=auth, headers=headers)
     return _send_prepared_request(req.prepare(), timeout=timeout, deserialize_handler=deserialize_handler,
-                                  error_handler=error_handler)
+                                  error_handler=error_handler, reauth_func=reauth_func)
 
 
 def post_request(url, payload=None, headers={}, auth=None, timeout=150,
                  deserialize_handler=DeserializeHandler.convert_json,
-                 error_handler=HttpErrorHandlingStrategy.print_and_exit):
+                 error_handler=HttpErrorHandlingStrategy.print_and_exit, reauth_func=None):
     data_param, headers = get_data_and_header_params(payload, headers)
     req = requests.Request('POST', url, auth=auth, headers=headers, **data_param)
     return _send_prepared_request(req.prepare(), timeout=timeout, deserialize_handler=deserialize_handler,
-                                  error_handler=error_handler)
+                                  error_handler=error_handler, reauth_func=reauth_func)
 
 
 def put_request(url, payload=None, headers={}, auth=None, timeout=150,
                 deserialize_handler=DeserializeHandler.convert_json,
-                error_handler=HttpErrorHandlingStrategy.print_and_exit):
+                error_handler=HttpErrorHandlingStrategy.print_and_exit, reauth_func=None):
     data_param, headers = get_data_and_header_params(payload, headers)
     req = requests.Request('PUT', url, auth=auth, headers=headers, **data_param)
     return _send_prepared_request(req.prepare(), timeout=timeout, deserialize_handler=deserialize_handler,
-                                  error_handler=error_handler)
+                                  error_handler=error_handler, reauth_func=reauth_func)
 
 
 def get_data_and_header_params(payload, headers):
