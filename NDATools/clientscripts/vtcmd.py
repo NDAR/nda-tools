@@ -90,7 +90,7 @@ def parse_args():
 
     parser.add_argument('--validation-timeout', default=300, type=positive_int, action='store',
                         help='Timeout in seconds until the program errors out with an error. '
-                             'In most cases the default value of ''300'' seconds should be sufficient to validate submissions however it may'
+                             'In most cases the default value of "300" seconds should be sufficient to validate submissions however it may'
                              'be necessary to increase this value to a specific duration.')
     parser.add_argument('--verbose', action='store_true',
                         help='Enables detailed logging.')
@@ -208,7 +208,7 @@ def collect_submission_parameters(config: ClientConfiguration):
         if not id in c_ids:
             logger.info('Invalid collection ID')
             logger.error(f'You do not have access to submit to the collection: {id} ')
-            logger.info(f'Please choose from one of the following collections: ')
+            logger.info('Please choose from one of the following collections: ')
             for coll in collections:
                 logger.info('{}: {}'.format(coll.id, coll.title))
 
@@ -246,7 +246,9 @@ def submit(validated_files, config):
 def set_validation_feature_flags(config):
     """Enable v2 of validation svc for some percentage of requests"""
     try:
-        api = ValidationV2Api(config.validation_api_endpoint, None, None)
+        api = ValidationV2Api(config.validation_api_endpoint,
+                              auth=config.get_auth(),
+                              reauth_func=config.reauthenticate)
         percent = api.get_v2_routing_percent()
         logger.debug('v2_routing percent: {}'.format(percent))
         # route X% of traffic to the new validation API

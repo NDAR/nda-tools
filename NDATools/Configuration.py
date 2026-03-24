@@ -12,6 +12,7 @@ import yaml
 
 import NDATools
 from NDATools import NDA_TOOLS_LOGGING_YML_FILE
+from NDATools.Utils import REQUEST_TOKEN_VERSION_ATTR
 from NDATools.upload.cli import NdaUploadCli
 from NDATools.upload.submission.api import SubmissionPackageApi, SubmissionApi, CollectionApi
 from NDATools.upload.submission.associated_file import AssociatedFileUploader
@@ -49,7 +50,7 @@ class DynamicBearerAuth(AuthBase):
         self._config = config
 
     def __call__(self, request):
-        request._nda_auth_generation = self._config.get_auth_generation()
+        setattr(request, REQUEST_TOKEN_VERSION_ATTR, self._config.get_auth_generation())
         request.headers['Authorization'] = f'Bearer {self._config.token}'
         return request
 
@@ -172,11 +173,11 @@ class ClientConfiguration:
                     self.config.set(section, option, default_config[section][option])
                     change_detected = True
         if change_detected:
-            logger.debug(f'updating settings.cfg')
+            logger.debug('updating settings.cfg')
             with open(NDATools.NDA_TOOLS_SETTINGS_CFG_FILE, 'w') as configfile:
                 self.config.write(configfile)
         else:
-            logger.debug(f'settings.cfg is up to date')
+            logger.debug('settings.cfg is up to date')
 
     def is_authenticated(self):
         return self.username and self.password
@@ -187,17 +188,26 @@ class ClientConfiguration:
     def get_auth_generation(self):
         return self._auth_generation
 
-    def reauthenticate(self, expected_generation=None):
+    def reauthenticate(self, token_version=None):
+        """Refresh the shared bearer token once for a given failed request version.
+
+        ``token_version`` is the auth generation used by the request that got a 401.
+        If another thread already refreshed the token and advanced the current
+        generation, that 401 is stale and no new login is needed. Otherwise, one
+        thread performs the login while the others wait and reuse the result.
+        """
         with self._reauth_condition:
-            if expected_generation is not None and expected_generation < self._auth_generation:
+            # A newer token is already available, so this 401 came from a stale request.
+            if token_version is not None and token_version < self._auth_generation:
                 return
             while self._reauth_in_progress:
+                # Another thread is already logging in; wait for its result.
                 self._reauth_condition.wait()
-                if expected_generation is not None and expected_generation < self._auth_generation:
+                if token_version is not None and token_version < self._auth_generation:
                     return
                 if self._reauth_error is not None:
                     raise self._reauth_error
-            if expected_generation is not None and expected_generation < self._auth_generation:
+            if token_version is not None and token_version < self._auth_generation:
                 return
             self._reauth_in_progress = True
             self._reauth_error = None
@@ -212,10 +222,11 @@ class ClientConfiguration:
             raise
         finally:
             with self._reauth_condition:
+                # Wake all waiters so they can either reuse the new token or see the failure.
                 self._reauth_in_progress = False
                 self._reauth_condition.notify_all()
 
-    def update_with_auth(self, username, password, token=None):
+    def update_with_auth(self, username, password, token):
         self.username = username
         self.password = password
         self.token = token
@@ -228,19 +239,14 @@ class ClientConfiguration:
             self.config.write(configfile)
 
     def _save_apis(self):
-        self.validation_api = ValidationV2Api(self.validation_api_endpoint, self.username, self.password,
-                                              auth=self.get_auth(), reauth_func=self.reauthenticate)
+        self.validation_api = ValidationV2Api(self.validation_api_endpoint, auth=self.get_auth(),
+                                              reauth_func=self.reauthenticate)
         self.submission_package_api = SubmissionPackageApi(self.submission_package_api_endpoint,
-                                                           self.username,
-                                                           self.password,
                                                            auth=self.get_auth(),
                                                            reauth_func=self.reauthenticate)
-        self.submission_api = SubmissionApi(self.submission_api_endpoint, self.username,
-                                            self.password,
-                                            auth=self.get_auth(),
+        self.submission_api = SubmissionApi(self.submission_api_endpoint, auth=self.get_auth(),
                                             reauth_func=self.reauthenticate)
-        self.collection_api = CollectionApi(self.validationtool_api_endpoint, self.username, self.password,
-                                            auth=self.get_auth(),
+        self.collection_api = CollectionApi(self.validationtool_api_endpoint, auth=self.get_auth(),
                                             reauth_func=self.reauthenticate)
 
         if self._is_vtcmd():

@@ -273,7 +273,7 @@ def test_client_configuration_save_apis_uses_shared_auth(monkeypatch):
 
         client_config = ClientConfiguration(MagicMock())
         m.setattr(client_config, '_save_username', lambda: None)
-        client_config.update_with_auth(username, password)
+        client_config.update_with_auth(username, password, 'token-123')
 
     assert validation_api.call_args.kwargs['auth'] is client_config.get_auth()
     assert submission_package_api.call_args.kwargs['auth'] is client_config.get_auth()
@@ -307,10 +307,10 @@ def test_client_configuration_reauthenticate_single_flight(monkeypatch):
         m.setattr(client_config, '_save_username', lambda: None)
         m.setattr(client_config, '_save_apis', lambda: None)
 
-        threads = [threading.Thread(target=client_config.reauthenticate, kwargs={'expected_generation': 0})]
+        threads = [threading.Thread(target=client_config.reauthenticate, kwargs={'token_version': 0})]
         threads[0].start()
         started.wait(timeout=1)
-        threads.append(threading.Thread(target=client_config.reauthenticate, kwargs={'expected_generation': 0}))
+        threads.append(threading.Thread(target=client_config.reauthenticate, kwargs={'token_version': 0}))
         threads[1].start()
         time.sleep(0.05)
         release.set()
@@ -330,7 +330,7 @@ def test_client_configuration_reauthenticate_skips_stale_generation(monkeypatch)
         client_config._auth_generation = 1
         authenticate = MagicMock()
         m.setattr(NDATools, 'authenticate', authenticate)
-        client_config.reauthenticate(expected_generation=0)
+        client_config.reauthenticate(token_version=0)
 
     authenticate.assert_not_called()
 
@@ -354,7 +354,7 @@ def test_client_configuration_reauthenticate_propagates_failure_to_waiters(monke
 
         def run():
             try:
-                client_config.reauthenticate(expected_generation=0)
+                client_config.reauthenticate(token_version=0)
             except Exception as exc:
                 errors.append(str(exc))
 

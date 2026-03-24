@@ -14,8 +14,8 @@ from NDATools.upload.validation.api import ValidationV2Credentials, ValidationV2
 @pytest.fixture
 def validation_api():
     validation_api = ValidationV2Api(validation_api_endpoint='https://nda.nih.gov/api/validation',
-                                     username='test_user',
-                                     password='testpass')
+                                     auth=MagicMock(),
+                                     reauth_func=MagicMock())
     validation_api.get_validation = MagicMock()
     return validation_api
 
@@ -67,8 +67,6 @@ class TestValidationV2Api:
     def test_get_validation_passes_reauth_func(self, monkeypatch):
         reauth = MagicMock()
         validation_api = ValidationV2Api(validation_api_endpoint='https://nda.nih.gov/api/validation',
-                                         username='test_user',
-                                         password='testpass',
                                          auth=MagicMock(),
                                          reauth_func=reauth)
         response = {
@@ -89,8 +87,6 @@ class TestValidationV2Api:
     def test_request_upload_credentials_passes_reauth_func(self, monkeypatch):
         reauth = MagicMock()
         validation_api = ValidationV2Api(validation_api_endpoint='https://nda.nih.gov/api/validation',
-                                         username='test_user',
-                                         password='testpass',
                                          auth=MagicMock(),
                                          reauth_func=reauth)
         response = {

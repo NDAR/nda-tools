@@ -96,8 +96,8 @@ def test_check_replacement_authorized_already_replaced(monkeypatch, mock_config,
 
 def test_check_replacement_authorized_authorized(monkeypatch, mock_config, submission_history):
     mock_submission_api = MagicMock(spec=SubmissionApi)
-    monkeypatch.setattr('NDATools.upload.submission.resubmission.SubmissionApi',
-                        MagicMock(return_value=mock_submission_api))
+    submission_api_cls = MagicMock(return_value=mock_submission_api)
+    monkeypatch.setattr('NDATools.upload.submission.resubmission.SubmissionApi', submission_api_cls)
     mock_submission_api.get_submission_history.return_value = [submission_history[1]]
 
     mock_exit = MagicMock()
@@ -105,6 +105,9 @@ def test_check_replacement_authorized_authorized(monkeypatch, mock_config, submi
 
     check_replacement_authorized(mock_config, submission_id)
 
+    submission_api_cls.assert_called_once_with(mock_config.submission_api_endpoint,
+                                               auth=mock_config.get_auth(),
+                                               reauth_func=mock_config.reauthenticate)
     mock_submission_api.get_submission_history.assert_called_once()
     mock_exit.assert_not_called()
 

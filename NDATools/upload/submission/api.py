@@ -115,10 +115,9 @@ class BatchUpdate:
 
 
 class SubmissionApi:
-    def __init__(self, submission_api_endpoint, username, password, create_submission_timeout=300, batch_size=50,
-                 auth=None, reauth_func=None):
+    def __init__(self, submission_api_endpoint, auth, reauth_func=None, create_submission_timeout=300, batch_size=50):
         self.api_endpoint = submission_api_endpoint
-        self.auth = auth or requests.auth.HTTPBasicAuth(username, password)
+        self.auth = auth
         self.reauth_func = reauth_func
         self.create_submission_timeout = create_submission_timeout
 
@@ -243,11 +242,9 @@ class SubmissionPackage(BaseModel):
 
 
 class SubmissionPackageApi:
-    def __init__(self, endpoint, username, password, auth=None, reauth_func=None):
+    def __init__(self, endpoint, auth, reauth_func=None):
         self.api_endpoint = endpoint
-        self.username = username
-        self.password = password
-        self.auth = auth or requests.auth.HTTPBasicAuth(username, password)
+        self.auth = auth
         self.reauth_func = reauth_func
 
     def build_package(self, collection_id, name, description, validation_uuid,
@@ -287,9 +284,9 @@ class SubmissionPackageApi:
 
 
 class CollectionApi:
-    def __init__(self, vt_api_endpoint, username, password, auth=None, reauth_func=None):
+    def __init__(self, vt_api_endpoint, auth, reauth_func=None):
         self.vt_api_endpoint = vt_api_endpoint
-        self.auth = auth or requests.auth.HTTPBasicAuth(username, password)
+        self.auth = auth
         self.reauth_func = reauth_func
 
     def get_user_collections(self):

@@ -70,6 +70,27 @@ def test_check_args(monkeypatch, unauthorized_resubmission_response):
         assert NDATools.upload.submission.resubmission.exit_error.call_count == 1
 
 
+def test_set_validation_feature_flags_uses_shared_auth(monkeypatch):
+    config = MagicMock()
+    config.validation_api_endpoint = 'https://nda.nih.gov/api/validation'
+    config.get_auth.return_value = MagicMock()
+    config.reauthenticate = MagicMock()
+
+    validation_api = MagicMock()
+    validation_api.get_v2_routing_percent.return_value = 1
+    validation_api.get_qa_routing_percent.return_value = 0
+
+    with monkeypatch.context() as m:
+        validation_api_cls = MagicMock(return_value=validation_api)
+        m.setattr(NDATools.clientscripts.vtcmd, 'ValidationV2Api', validation_api_cls)
+        m.setattr(NDATools.clientscripts.vtcmd.random, 'randint', MagicMock(return_value=1))
+        NDATools.clientscripts.vtcmd.set_validation_feature_flags(config)
+
+    validation_api_cls.assert_called_once_with(config.validation_api_endpoint,
+                                               auth=config.get_auth(),
+                                               reauth_func=config.reauthenticate)
+
+
 @pytest.fixture
 def build_validation_v2_resource():
     def _build_validation_v2_resource(has_manifests: bool):

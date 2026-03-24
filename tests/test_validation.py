@@ -7,6 +7,11 @@ import pytest
 from NDATools.upload.validation.v1 import Validation
 
 
+@pytest.fixture(autouse=True)
+def disable_validation_file_logging(monkeypatch):
+    monkeypatch.setattr('NDATools.init_logging', lambda *args, **kwargs: None)
+
+
 @pytest.fixture
 def validation(monkeypatch, validation_config_factory, load_from_file, tmp_path, shared_datadir):
     file_path = (shared_datadir / 'validation/file.csv')
@@ -40,3 +45,17 @@ def test_validate(validation, monkeypatch, load_from_file):
         assert result['status'] == 'Complete'
         assert result['expiration_date'] == '07/14/2021'
         assert result['errors'] == {}
+
+
+def test_validation_uses_shared_auth(monkeypatch, validation_config_factory, load_from_file, shared_datadir):
+    file_path = (shared_datadir / 'validation/file.csv')
+    with monkeypatch.context() as m:
+        m.setattr('NDATools.init_logging', lambda *args, **kwargs: None)
+        args, config = validation_config_factory([str(file_path)])
+        shared_auth = MagicMock()
+        config.get_auth = MagicMock(return_value=shared_auth)
+
+        validation = Validation(args.files, config=config, hide_progress=config.hide_progress, thread_num=1,
+                                allow_exit=True)
+
+    assert validation.auth is shared_auth

@@ -175,10 +175,10 @@ class ValidationManifest(BaseModel):
 
 
 class ValidationV2Api:
-    def __init__(self, validation_api_endpoint, username, password, auth=None, reauth_func=None):
+    def __init__(self, validation_api_endpoint, auth, reauth_func=None):
         self.api_v1_endpoint = f"{validation_api_endpoint}"
         self.api_v2_endpoint = f"{validation_api_endpoint}/v2/"
-        self.auth = auth or requests.auth.HTTPBasicAuth(username, password)
+        self.auth = auth
         self.reauth_func = reauth_func
         self._refresh_creds_lock = RLock()
 

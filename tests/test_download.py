@@ -305,6 +305,8 @@ def test_get_package_info_passes_reauth_func(monkeypatch, tmp_path):
     config.password = 'testpassword'
     config.worker_threads = 1
     config.reauthenticate = MagicMock()
+    shared_auth = MagicMock()
+    config.get_auth.return_value = shared_auth
     args = MagicMock(directory=None, txt=None, paths=None, package=1189934, datastructure=None, file_regex=None,
                      verify=False, workerThreads=None, s3_destination=None)
     with monkeypatch.context() as m:
@@ -318,6 +320,7 @@ def test_get_package_info_passes_reauth_func(monkeypatch, tmp_path):
         m.setattr(NDATools.Download, 'get_request', get_request)
         download.get_package_info()
         assert get_request.call_args.kwargs['reauth_func'] is reauth
+        assert get_request.call_args.kwargs['auth'] is shared_auth
 
 
 def test_get_presigned_urls_passes_reauth_func(monkeypatch, tmp_path):
@@ -329,6 +332,8 @@ def test_get_presigned_urls_passes_reauth_func(monkeypatch, tmp_path):
     config.password = 'testpassword'
     config.worker_threads = 1
     config.reauthenticate = MagicMock()
+    shared_auth = MagicMock()
+    config.get_auth.return_value = shared_auth
     args = MagicMock(directory=None, txt=None, paths=None, package=1189934, datastructure=None, file_regex=None,
                      verify=False, workerThreads=None, s3_destination=None)
     with monkeypatch.context() as m:
@@ -342,6 +347,7 @@ def test_get_presigned_urls_passes_reauth_func(monkeypatch, tmp_path):
         m.setattr(NDATools.Download, 'post_request', post_request)
         download.get_presigned_urls([1])
         assert post_request.call_args.kwargs['reauth_func'] is reauth
+        assert post_request.call_args.kwargs['auth'] is shared_auth
 
 
 def test_handle_download_exception(monkeypatch, download_mock2, download_request, tmp_path):

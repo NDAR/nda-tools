@@ -12,8 +12,8 @@ from NDATools.upload.submission.api import SubmissionApi, CollectionApi, Submiss
 
 @pytest.fixture
 def submission_api():
-    return SubmissionApi('https://nda.nih.gov/api/submission', 'testusername',
-                         'testpassword')
+    return SubmissionApi('https://nda.nih.gov/api/submission', auth=MagicMock(),
+                         reauth_func=MagicMock())
 
 
 @pytest.fixture
@@ -73,8 +73,7 @@ def test_submission_api_get_submission(submission_api, monkeypatch, submission_j
 
 def test_submission_api_get_submission_passes_reauth_func(monkeypatch, submission_json):
     reauth = MagicMock()
-    api = SubmissionApi('https://nda.nih.gov/api/submission', 'testusername', 'testpassword', auth=MagicMock(),
-                        reauth_func=reauth)
+    api = SubmissionApi('https://nda.nih.gov/api/submission', auth=MagicMock(), reauth_func=reauth)
     with monkeypatch.context() as m:
         get_request = MagicMock(return_value=submission_json)
         m.setattr(NDATools.upload.submission.api, "get_request", get_request)
@@ -129,7 +128,7 @@ def test_submission_details(submission_api, monkeypatch, submission_details_json
 
 @pytest.fixture
 def collection_api():
-    return CollectionApi('https://nda.nih.gov/api/validationtool/v2', 'testusername', 'testpassword')
+    return CollectionApi('https://nda.nih.gov/api/validationtool/v2', auth=MagicMock(), reauth_func=MagicMock())
 
 
 @pytest.fixture
@@ -155,7 +154,8 @@ def test_collection_api_get_collections(collection_api, collections_json, monkey
 
 @pytest.fixture
 def submission_package_api():
-    return SubmissionPackageApi('https://nda.nih.gov/api/submission-package', 'testusername', 'testpassword')
+    return SubmissionPackageApi('https://nda.nih.gov/api/submission-package', auth=MagicMock(),
+                                reauth_func=MagicMock())
 
 
 def test_sub_package_api_build_package(submission_package_api, package_json, monkeypatch):
@@ -172,8 +172,7 @@ def test_sub_package_api_build_package(submission_package_api, package_json, mon
 
 def test_sub_package_api_build_package_passes_reauth_func(monkeypatch, package_json):
     reauth = MagicMock()
-    api = SubmissionPackageApi('https://nda.nih.gov/api/submission-package', 'testusername', 'testpassword',
-                               auth=MagicMock(), reauth_func=reauth)
+    api = SubmissionPackageApi('https://nda.nih.gov/api/submission-package', auth=MagicMock(), reauth_func=reauth)
     with monkeypatch.context() as m:
         post_request = MagicMock(return_value=package_json)
         m.setattr(NDATools.upload.submission.api, "post_request", post_request)

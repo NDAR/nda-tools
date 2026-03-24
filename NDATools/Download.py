@@ -1,6 +1,10 @@
+import datetime
 import copy
 import csv
 import gzip
+import json
+import logging
+import os
 import os.path
 import pathlib
 import platform
@@ -14,14 +18,28 @@ from queue import Queue
 from shutil import copyfile
 from threading import Thread
 
+import boto3
 import pandas as pd
 from boto3.s3.transfer import TransferConfig
 from requests import HTTPError
+from requests.adapters import HTTPAdapter
+import requests
 from tqdm import tqdm
 
 import NDATools
 from NDATools.AltEndpointSSLAdapter import AltEndpointSSLAdapter
-from NDATools.Utils import *
+from NDATools import exit_error
+from NDATools.Utils import (
+    DeserializeHandler,
+    HttpErrorHandlingStrategy,
+    Protocol,
+    convert_to_abs_path,
+    deconstruct_s3_url,
+    get_request,
+    human_size,
+    post_request,
+    sanitize_windows_download_filename,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +121,7 @@ class Download(Protocol):
         self.datadictionary_url = self.config.datadictionary_api_endpoint
         self.username = download_config.username
         self.password = download_config.password
-        self.auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
+        self.auth = self.config.get_auth()
         self.reauth_func = getattr(download_config, 'reauthenticate', None)
 
         # Instance Variables from 'args'
@@ -427,7 +445,6 @@ class Download(Protocol):
         logger.info(' Exiting Program...')
 
     def download_local(self, download_request, err_if_exists=False):
-        # completed_download = os.path.normpath(os.path.join(self.download_directory, download_request.package_file_relative_path))
         downloaded = False
         resume_header = None
 
@@ -532,7 +549,6 @@ class Download(Protocol):
             logger.info('Transferred {} for {}'.format(human_size(bytes), download_request.nda_s3_url))
 
         KB = 1024
-        MB = KB * KB
         GB = KB ** 3
         LARGE_OBJECT_THRESHOLD = 5 * GB
         args = {

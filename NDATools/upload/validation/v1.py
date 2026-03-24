@@ -64,10 +64,7 @@ class Validation:
         self.field_names = ['FILE', 'ID', 'STATUS', 'EXPIRATION_DATE', 'ERRORS', 'COLUMN', 'MESSAGE', 'RECORD']
         self.validation_progress = None
         self.exit = allow_exit
-        if self.config.password:
-            self.auth = requests.auth.HTTPBasicAuth(self.config.username, self.config.password)
-        else:
-            self.auth = None
+        self.auth = self.config.get_auth()
 
     """
     Validates a list of csv files and saves a new csv file with the results in the Home directory.
