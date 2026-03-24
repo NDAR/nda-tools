@@ -69,7 +69,7 @@ class ClientConfiguration:
         self.package_api_endpoint = self.config.get("Endpoints", "package")
         self.datadictionary_api_endpoint = self.config.get("Endpoints", "datadictionary")
         self.collection_api_endpoint = self.config.get("Endpoints", "collection")
-        ras_api_endpoint = self.config.get("Endpoints", "ras", fallback='https://nda.nih.gov/api/ras').rstrip('/')
+        ras_api_endpoint = self.config.get("Endpoints", "ras")
         self.ras_login_api_endpoint = f"{ras_api_endpoint}/user/login"
         self.username = self.config.get("User", "username").lower()
         # TODO remove args from config

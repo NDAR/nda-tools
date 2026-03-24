@@ -140,7 +140,7 @@ class Download(Protocol):
 
         # non-configurable default instance variables
         self.download_queue = Queue()
-        # self.download_queue_metadata = {}  # map of package-file-id to alias
+        
         self.package_file_download_errors = set()
         # self.package_file_download_errors needs a lock if multiple threads will be adding to it simultaneously
         self.package_file_download_errors_lock = threading.Lock()
