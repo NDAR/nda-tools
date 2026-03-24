@@ -298,18 +298,18 @@ class CollectionApi:
         return sorted([NdaCollection(**c) for c in collections], key=lambda x: x.id)
 
 
-class UserApi:
-    def __init__(self, user_api_endpoint):
-        self.user_api_endpoint = user_api_endpoint
+class RasAuthApi:
+    def __init__(self, ras_login_api_endpoint):
+        self.ras_login_api_endpoint = ras_login_api_endpoint
 
-    def is_valid_nda_credentials(self, username, password):
+    def login(self, username, password):
         auth = requests.auth.HTTPBasicAuth(username, password)
         try:
-            # will raise HTTP error 401 if invalid creds
-            get_request(self.user_api_endpoint, headers={'content-type': 'application/json'},
-                        auth=auth,
-                        error_handler=HttpErrorHandlingStrategy.reraise_status)
-            return True
+            response = post_request(self.ras_login_api_endpoint,
+                                    auth=auth,
+                                    deserialize_handler=DeserializeHandler.none,
+                                    error_handler=HttpErrorHandlingStrategy.reraise_status)
+            return response.text
         except HTTPError as e:
             if e.response.status_code == 423:
                 msg = '''
@@ -318,11 +318,9 @@ Your account is locked, which is preventing your authorized access to nda-tools.
 2. Navigate to your NDA profile (https://nda.nih.gov/user/dashboard/profile)')
 3. Click on the 'Update Password' button, found near the upper right corner of the page')
 4. Set a new password. Once your password is successfully reset, your account will be unlocked.'''
-                # exit if unauthorized, users can try again later after they fix their account
                 exit_error(message=msg)
             elif e.response.status_code == 401:
-                # incorrect username/password
-                return False
+                return None
             else:
                 msg = f'\nSystem Error while checking credentials for user {username}'
                 msg += '\nPlease contact NDAHelp@mail.nih.gov for help in resolving this error'

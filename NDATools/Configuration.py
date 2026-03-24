@@ -6,7 +6,7 @@ import multiprocessing
 import os
 import threading
 import time
-from requests.auth import AuthBase, _basic_auth_str
+from requests.auth import AuthBase
 
 import yaml
 
@@ -44,13 +44,13 @@ class LoggingConfiguration:
         logging.config.dictConfig(config)
 
 
-class DynamicBasicAuth(AuthBase):
+class DynamicBearerAuth(AuthBase):
     def __init__(self, config):
         self._config = config
 
     def __call__(self, request):
         request._nda_auth_generation = self._config.get_auth_generation()
-        request.headers['Authorization'] = _basic_auth_str(self._config.username, self._config.password)
+        request.headers['Authorization'] = f'Bearer {self._config.token}'
         return request
 
 
@@ -69,7 +69,8 @@ class ClientConfiguration:
         self.package_api_endpoint = self.config.get("Endpoints", "package")
         self.datadictionary_api_endpoint = self.config.get("Endpoints", "datadictionary")
         self.collection_api_endpoint = self.config.get("Endpoints", "collection")
-        self.user_api_endpoint = self.config.get("Endpoints", "user")
+        ras_api_endpoint = self.config.get("Endpoints", "ras", fallback='https://nda.nih.gov/api/ras').rstrip('/')
+        self.ras_login_api_endpoint = f"{ras_api_endpoint}/user/login"
         self.username = self.config.get("User", "username").lower()
         # TODO remove args from config
         self._args = args
@@ -81,12 +82,13 @@ class ClientConfiguration:
             logger.warning("-u/--username argument not provided. Using default value of '%s' which was saved in %s",
                            self.username, NDATools.NDA_TOOLS_SETTINGS_CFG_FILE)
         self.password = None
+        self.token = None
         self._auth_generation = 0
         self._reauth_lock = threading.Lock()
         self._reauth_condition = threading.Condition(self._reauth_lock)
         self._reauth_in_progress = False
         self._reauth_error = None
-        self._auth = DynamicBasicAuth(self)
+        self._auth = DynamicBearerAuth(self)
 
         if self._is_vtcmd():
             self.v2_enabled = False
@@ -213,9 +215,10 @@ class ClientConfiguration:
                 self._reauth_in_progress = False
                 self._reauth_condition.notify_all()
 
-    def update_with_auth(self, username, password):
+    def update_with_auth(self, username, password, token=None):
         self.username = username
         self.password = password
+        self.token = token
         self._save_username()
         self._save_apis()
 

@@ -164,7 +164,7 @@ def get_username():
 
 def _get_user_credentials(config) -> Tuple[str, str]:
     # Adding NDATools dependencies to the start of __init__ can cause errors during installation, so keep import here.
-    from NDATools.upload.submission.api import UserApi
+    from NDATools.upload.submission.api import RasAuthApi
     # username is fetched from settings.cfg, and it is not present at the first time use of nda-tools
     # display NDA account instructions
     global _get_keyring
@@ -185,15 +185,17 @@ def _get_user_credentials(config) -> Tuple[str, str]:
     while not password:
         password = _get_password(username)
 
-    # validate credentials
-    api = UserApi(config.user_api_endpoint)
-    while not api.is_valid_nda_credentials(username, password):
+    # validate credentials and obtain token
+    api = RasAuthApi(config.ras_login_api_endpoint)
+    token = api.login(username, password)
+    while not token:
         logger.info('Username/password combination is incorrect')
         _get_keyring = False
         username = get_username()
         password = _get_password(username)
+        token = api.login(username, password)
     _try_save_password_keyring(username, password)
-    return username, password
+    return username, password, token
 
 
 def init_logging(args, logs_folder):
@@ -220,8 +222,8 @@ def init_and_create_configuration(args, logs_folder, auth_req=True):
 
 
 def authenticate(config):
-    username, password = _get_user_credentials(config)
-    config.update_with_auth(username, password)
+    username, password, token = _get_user_credentials(config)
+    config.update_with_auth(username, password, token)
     return config
 
 

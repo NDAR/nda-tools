@@ -24,6 +24,12 @@ def load_from_file(datadir):
     return _load_from_file
 
 
+@pytest.fixture(autouse=True)
+def disable_cli_file_logging(monkeypatch):
+    monkeypatch.setattr(NDATools, 'init_logging', lambda *args, **kwargs: None)
+    monkeypatch.setattr(NDATools.Configuration.ClientConfiguration, '_save_username', lambda *args, **kwargs: None)
+
+
 @pytest.fixture
 def unauthorized_resubmission_response():
     return [SubmissionHistory(**{
@@ -41,7 +47,7 @@ def test_check_args(monkeypatch, unauthorized_resubmission_response):
                    'testuser'])
         m.setattr(NDATools.clientscripts.vtcmd, 'exit_error', MagicMock(side_effect=[SystemExit]))
         m.setattr(NDATools, '_get_password', MagicMock(return_value='testpassword'))
-        m.setattr(NDATools.upload.submission.api.UserApi, 'is_valid_nda_credentials', MagicMock(return_value=True))
+        m.setattr(NDATools.upload.submission.api.RasAuthApi, 'login', MagicMock(return_value='token-123'))
         try:
             NDATools.clientscripts.vtcmd.main()
         except SystemExit:
@@ -54,7 +60,7 @@ def test_check_args(monkeypatch, unauthorized_resubmission_response):
                   ['vtcmd', 'ndarsubject01.csv', '-b', '-rs', '12345', '-u', 'testuser'])
         m.setattr(NDATools.upload.submission.resubmission, 'exit_error', MagicMock(side_effect=[SystemExit]))
         m.setattr(NDATools, '_get_password', MagicMock(return_value='testpassword'))
-        m.setattr(NDATools.upload.submission.api.UserApi, 'is_valid_nda_credentials', MagicMock(return_value=True))
+        m.setattr(NDATools.upload.submission.api.RasAuthApi, 'login', MagicMock(return_value='token-123'))
         m.setattr(NDATools.upload.submission.api.SubmissionApi, 'get_submission_history',
                   MagicMock(return_value=unauthorized_resubmission_response))
         try:
@@ -216,7 +222,7 @@ def test_submit_no_files(monkeypatch, upload_creds, ndar_subject01, user_collect
         m.setattr(NDATools, '_get_password', MagicMock(return_value='testpassword'))
         # mock _save_username so we dont try to write information to disk while running tests.
         m.setattr(NDATools.Configuration.ClientConfiguration, '_save_username', MagicMock(return_value=None))
-        m.setattr(NDATools.upload.submission.api.UserApi, 'is_valid_nda_credentials', MagicMock(return_value=True))
+        m.setattr(NDATools.upload.submission.api.RasAuthApi, 'login', MagicMock(return_value='token-123'))
         m.setattr(NDATools.upload.validation.results_writer.ResultsWriterFactory, 'get_writer',
                   MagicMock(return_value=results_writer))
         # set the routing percent for v2 to 100
@@ -258,7 +264,7 @@ def test_resume(monkeypatch, upload_creds, ndar_subject01, user_collections, com
         m.setattr(NDATools, '_get_password', MagicMock(return_value='testpassword'))
         # mock _save_username so we dont try to write information to disk while running tests.
         m.setattr(NDATools.Configuration.ClientConfiguration, '_save_username', MagicMock(return_value=None))
-        m.setattr(NDATools.upload.submission.api.UserApi, 'is_valid_nda_credentials', MagicMock(return_value=True))
+        m.setattr(NDATools.upload.submission.api.RasAuthApi, 'login', MagicMock(return_value='token-123'))
 
         # set the routing percent for v2 to 100
         m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'get_v2_routing_percent', MagicMock(return_value=1))
@@ -328,7 +334,7 @@ def test_replace_submission(monkeypatch, upload_creds, ndar_subject01, image03, 
         m.setattr(NDATools, '_get_password', MagicMock(return_value='testpassword'))
         # mock _save_username so we dont try to write information to disk while running tests.
         m.setattr(NDATools.Configuration.ClientConfiguration, '_save_username', MagicMock(return_value=None))
-        m.setattr(NDATools.upload.submission.api.UserApi, 'is_valid_nda_credentials', MagicMock(return_value=True))
+        m.setattr(NDATools.upload.submission.api.RasAuthApi, 'login', MagicMock(return_value='token-123'))
         m.setattr(NDATools.upload.validation.results_writer.ResultsWriterFactory, 'get_writer',
                   MagicMock(return_value=results_writer))
 
@@ -393,7 +399,7 @@ def test_submit_with_manifests(monkeypatch, upload_creds, fmriresults01, fmrires
         m.setattr(NDATools, '_get_password', MagicMock(return_value='testpassword'))
         # mock _save_username so we dont try to write information to disk while running tests.
         m.setattr(NDATools.Configuration.ClientConfiguration, '_save_username', MagicMock(return_value=None))
-        m.setattr(NDATools.upload.submission.api.UserApi, 'is_valid_nda_credentials', MagicMock(return_value=True))
+        m.setattr(NDATools.upload.submission.api.RasAuthApi, 'login', MagicMock(return_value='token-123'))
         m.setattr(NDATools.upload.validation.results_writer.ResultsWriterFactory, 'get_writer',
                   MagicMock(return_value=results_writer))
 
