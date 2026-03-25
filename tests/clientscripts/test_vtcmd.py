@@ -281,7 +281,7 @@ def test_resume(monkeypatch, upload_creds, ndar_subject01, user_collections, com
     uploading_submission = submission('test', 'test', 1860, SubmissionStatus.UPLOADING)
     completed_submission = submission('test', 'test', 1860, SubmissionStatus.SUBMITTED)
     with monkeypatch.context() as m:
-        m.setattr(sys, 'argv', shlex.split('vtcmd -r 1 -l some-dir/'))
+        m.setattr(sys, 'argv', shlex.split('vtcmd -r 1 -l some-dir/ -u testusername'))
         m.setattr(NDATools, '_get_password', MagicMock(return_value='testpassword'))
         # mock _save_username so we dont try to write information to disk while running tests.
         m.setattr(NDATools.Configuration.ClientConfiguration, '_save_username', MagicMock(return_value=None))
@@ -351,7 +351,7 @@ def test_replace_submission(monkeypatch, upload_creds, ndar_subject01, image03, 
 
     with monkeypatch.context() as m:
         # user is only going to be replacing the data in image03. The user will not be replacing the data in ndar_subject01
-        m.setattr(sys, 'argv', shlex.split('vtcmd image03.csv -rs 1 -l some-dir/'))
+        m.setattr(sys, 'argv', shlex.split('vtcmd image03.csv -rs 1 -l some-dir/ -u testusername'))
         m.setattr(NDATools, '_get_password', MagicMock(return_value='testpassword'))
         # mock _save_username so we dont try to write information to disk while running tests.
         m.setattr(NDATools.Configuration.ClientConfiguration, '_save_username', MagicMock(return_value=None))
@@ -416,7 +416,7 @@ def test_submit_with_manifests(monkeypatch, upload_creds, fmriresults01, fmrires
     with monkeypatch.context() as m:
         m.setattr(sys, 'argv',
                   shlex.split(
-                      'vtcmd fmriresults01.csv -l some-dir/ -m manifests_dir/ -b -t title -d description -c 1860'))
+                      'vtcmd fmriresults01.csv -l some-dir/ -m manifests_dir/ -b -t title -d description -c 1860 -u testusername'))
         m.setattr(NDATools, '_get_password', MagicMock(return_value='testpassword'))
         # mock _save_username so we dont try to write information to disk while running tests.
         m.setattr(NDATools.Configuration.ClientConfiguration, '_save_username', MagicMock(return_value=None))
