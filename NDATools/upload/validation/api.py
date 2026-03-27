@@ -287,14 +287,3 @@ class ValidationV2Api:
                     logger.error(f"Validation timed out for uuid {uuid}")
                     exit_error()
         return validation
-
-    def get_v2_routing_percent(self):
-        api_config = get_request(f'{self.api_v1_endpoint}/config')
-        return api_config['v2Routing']['percent']
-
-    def get_qa_routing_percent(self):
-        api_config = get_request(f'{self.api_v1_endpoint}/config')
-        if 'qaRouting' in api_config:
-            return api_config['qaRouting']['percent']
-        else:
-            return 1.0

@@ -14,7 +14,6 @@ from NDATools.upload.submission.api import SubmissionPackage, Submission, Submis
 from NDATools.upload.submission.resubmission import build_replacement_package_info
 from NDATools.upload.validation.api import ValidationV2, Qa
 from NDATools.upload.validation.manifests import ManifestFile
-from NDATools.upload.validation.v1 import Validation
 
 logger = logging.getLogger(__name__)
 
@@ -43,36 +42,20 @@ class ValidationStatus(str, enum.Enum):
 
 
 class ValidatedFile:
-    def __init__(self, file: PathLike, *, v1_resource=None, v2_resource: ValidationV2 = None, v2_creds=None,
-                 manifest_errors=None):
+    def __init__(self, file: PathLike, *, v2_resource: ValidationV2, v2_creds=None, manifest_errors=None):
         if not manifest_errors:
             manifest_errors = []
 
         self.file = pathlib.Path(file)
-        assert v1_resource or v2_resource, "v1_resource or v2_resource must be specified"
-        if v2_resource:
-            self.status = ValidationStatus(v2_resource.status)
-            self.uuid = v2_resource.uuid
-            self.short_name = v2_resource.short_name
-            self.row_count = v2_resource.rows
-            self._errors = None
-            self._warnings = None
-            self._associated_files = None
-            self._manifest_errors = manifest_errors
-            self._v2_creds = v2_creds
-        elif v1_resource:
-            self.status = ValidationStatus(v1_resource['status'])
-            self.uuid = v1_resource['id']
-            self.short_name = v1_resource['short_name']
-            self.row_count = v1_resource['rows']
-            self._errors = [ValidationError(i.get('recordNumber'), i.get('columnName'), i.get('message'), err_type) for
-                            err_type, errors
-                            in v1_resource['errors'].items() for i in errors]
-            self._warnings = [ValidationError(i.get('recordNumber'), i.get('columnName'), i.get('message'), err_type)
-                              for err_type, errors
-                              in v1_resource['warnings'].items() for i in errors]
-            self._associated_files = v1_resource['associated_file_paths']
-            self._manifest_errors = []
+        self.status = ValidationStatus(v2_resource.status)
+        self.uuid = v2_resource.uuid
+        self.short_name = v2_resource.short_name
+        self.row_count = v2_resource.rows
+        self._errors = None
+        self._warnings = None
+        self._associated_files = None
+        self._manifest_errors = manifest_errors
+        self._v2_creds = v2_creds
 
     def __hash__(self):
         return hash(self.file) + hash(self.uuid)
@@ -292,14 +275,6 @@ class NdaUploadCli:
             submission = self.submission_api.get_submission(submission.submission_id)
         return NdaSubmission(submission.submission_id, submission.collection.id, submission.dataset_title,
                              submission.dataset_description, validated_files, submission.status)
-
-    def validate_v1(self, file_list, threads) -> List[ValidatedFile]:
-        """Validates files using the old validation API. Deprecated and will be removed in a future release"""
-        validation = Validation(file_list, config=self.config, hide_progress=self.config.hide_progress,
-                                thread_num=threads,
-                                allow_exit=True)
-        validation.validate()
-        return [ValidatedFile(v[1], v1_resource=v[0]) for v in validation.responses]
 
     def validate(self, file_names: Union[List[PathLike], PathLike], manifests_dir: List[PathLike] = None) -> List[
         ValidatedFile]:

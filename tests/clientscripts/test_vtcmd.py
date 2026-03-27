@@ -69,28 +69,6 @@ def test_check_args(monkeypatch, unauthorized_resubmission_response):
             pass
         assert NDATools.upload.submission.resubmission.exit_error.call_count == 1
 
-
-def test_set_validation_feature_flags_uses_shared_auth(monkeypatch):
-    config = MagicMock()
-    config.validation_api_endpoint = 'https://nda.nih.gov/api/validation'
-    config.get_auth.return_value = MagicMock()
-    config.reauthenticate = MagicMock()
-
-    validation_api = MagicMock()
-    validation_api.get_v2_routing_percent.return_value = 1
-    validation_api.get_qa_routing_percent.return_value = 0
-
-    with monkeypatch.context() as m:
-        validation_api_cls = MagicMock(return_value=validation_api)
-        m.setattr(NDATools.clientscripts.vtcmd, 'ValidationV2Api', validation_api_cls)
-        m.setattr(NDATools.clientscripts.vtcmd.random, 'randint', MagicMock(return_value=1))
-        NDATools.clientscripts.vtcmd.set_validation_feature_flags(config)
-
-    validation_api_cls.assert_called_once_with(config.validation_api_endpoint,
-                                               auth=config.get_auth(),
-                                               reauth_func=config.reauthenticate)
-
-
 @pytest.fixture
 def build_validation_v2_resource():
     def _build_validation_v2_resource(has_manifests: bool):
@@ -246,14 +224,12 @@ def test_submit_no_files(monkeypatch, upload_creds, ndar_subject01, user_collect
         m.setattr(NDATools.upload.submission.api.RasAuthApi, 'login', MagicMock(return_value='token-123'))
         m.setattr(NDATools.upload.validation.results_writer.ResultsWriterFactory, 'get_writer',
                   MagicMock(return_value=results_writer))
-        # set the routing percent for v2 to 100
-        m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'get_v2_routing_percent', MagicMock(return_value=1))
-        # disable qa
-        m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'get_qa_routing_percent', MagicMock(return_value=0))
         m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'request_upload_credentials',
                   MagicMock(return_value=ndar_subject01_creds))
         m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'wait_validation_complete',
                   MagicMock(return_value=ndar_subject01))
+        m.setattr(NDATools.upload.cli.NdaUploadCli, 'qa_validated_files',
+                  MagicMock(return_value=MagicMock(has_errors=MagicMock(return_value=False))))
         # no manifests, so no need to mock manifests-uploader
 
         # collection api for building package step
@@ -286,11 +262,6 @@ def test_resume(monkeypatch, upload_creds, ndar_subject01, user_collections, com
         # mock _save_username so we dont try to write information to disk while running tests.
         m.setattr(NDATools.Configuration.ClientConfiguration, '_save_username', MagicMock(return_value=None))
         m.setattr(NDATools.upload.submission.api.RasAuthApi, 'login', MagicMock(return_value='token-123'))
-
-        # set the routing percent for v2 to 100
-        m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'get_v2_routing_percent', MagicMock(return_value=1))
-        # disable qa
-        m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'get_qa_routing_percent', MagicMock(return_value=0))
 
         # first return a completed submission and confirm that the
         m.setattr(NDATools.upload.submission.api.SubmissionApi, 'get_submission',
@@ -358,15 +329,12 @@ def test_replace_submission(monkeypatch, upload_creds, ndar_subject01, image03, 
         m.setattr(NDATools.upload.submission.api.RasAuthApi, 'login', MagicMock(return_value='token-123'))
         m.setattr(NDATools.upload.validation.results_writer.ResultsWriterFactory, 'get_writer',
                   MagicMock(return_value=results_writer))
-
-        # mock validation api calls
-        m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'get_v2_routing_percent', MagicMock(return_value=1))
-        m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'get_qa_routing_percent', MagicMock(return_value=0))
-
         m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'request_upload_credentials',
                   MagicMock(side_effect=[image03_creds]))
         m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'wait_validation_complete',
                   MagicMock(side_effect=[image03]))
+        m.setattr(NDATools.upload.cli.NdaUploadCli, 'qa_validated_files',
+                  MagicMock(return_value=MagicMock(has_errors=MagicMock(return_value=False))))
 
         # mock submission api calls
         m.setattr(NDATools.upload.submission.api.SubmissionApi, 'get_submission',
@@ -423,14 +391,12 @@ def test_submit_with_manifests(monkeypatch, upload_creds, fmriresults01, fmrires
         m.setattr(NDATools.upload.submission.api.RasAuthApi, 'login', MagicMock(return_value='token-123'))
         m.setattr(NDATools.upload.validation.results_writer.ResultsWriterFactory, 'get_writer',
                   MagicMock(return_value=results_writer))
-
-        # mock validation api calls
-        m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'get_v2_routing_percent', MagicMock(return_value=1))
-        m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'get_qa_routing_percent', MagicMock(return_value=0))
         m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'request_upload_credentials',
                   MagicMock(side_effect=[fmriresults01_creds]))
         m.setattr(NDATools.upload.validation.api.ValidationV2Api, 'wait_validation_complete',
                   MagicMock(side_effect=[fmriresults01_pending, fmriresults01]))
+        m.setattr(NDATools.upload.cli.NdaUploadCli, 'qa_validated_files',
+                  MagicMock(return_value=MagicMock(has_errors=MagicMock(return_value=False))))
 
         # mock submission api calls
         m.setattr(NDATools.upload.submission.api.SubmissionApi, 'create_submission',
