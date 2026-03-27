@@ -7,6 +7,7 @@ import os
 import threading
 import time
 from requests.auth import AuthBase
+import requests
 
 import yaml
 
@@ -185,6 +186,9 @@ class ClientConfiguration:
     def get_auth(self):
         return self._auth
 
+    def get_basic_auth(self):
+        return requests.auth.HTTPBasicAuth(self.username, self.password)
+
     def get_auth_generation(self):
         return self._auth_generation
 
@@ -242,11 +246,11 @@ class ClientConfiguration:
         self.validation_api = ValidationV2Api(self.validation_api_endpoint, auth=self.get_auth(),
                                               reauth_func=self.reauthenticate)
         self.submission_package_api = SubmissionPackageApi(self.submission_package_api_endpoint,
-                                                           auth=self.get_auth(),
+                                                           auth=self.get_basic_auth(),
                                                            reauth_func=self.reauthenticate)
-        self.submission_api = SubmissionApi(self.submission_api_endpoint, auth=self.get_auth(),
+        self.submission_api = SubmissionApi(self.submission_api_endpoint, auth=self.get_basic_auth(),
                                             reauth_func=self.reauthenticate)
-        self.collection_api = CollectionApi(self.validationtool_api_endpoint, auth=self.get_auth(),
+        self.collection_api = CollectionApi(self.validationtool_api_endpoint, auth=self.get_basic_auth(),
                                             reauth_func=self.reauthenticate)
 
         if self._is_vtcmd():

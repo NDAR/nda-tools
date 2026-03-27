@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import sys
+import time
 import urllib.parse
 from pathlib import Path
 from typing import Callable, List, Tuple, Type
@@ -20,6 +21,11 @@ from NDATools import exit_error
 logger = logging.getLogger(__name__)
 
 REQUEST_TOKEN_VERSION_ATTR = '_nda_token_version'
+TRANSIENT_REQUEST_ERRORS = (
+    requests.exceptions.ChunkedEncodingError,
+    requests.exceptions.ConnectionError,
+    requests.exceptions.Timeout,
+)
 
 
 class Protocol(object):
@@ -213,7 +219,8 @@ def is_json(test):
 
 
 def _send_prepared_request(req, timeout=150, deserialize_handler=DeserializeHandler.convert_json,
-                           error_handler=HttpErrorHandlingStrategy.print_and_exit, reauth_func=None):
+                           error_handler=HttpErrorHandlingStrategy.print_and_exit, reauth_func=None,
+                           retry_transient_errors=False, transient_error_attempts=3):
     with requests.Session() as session:
         retries = Retry(total=10,
                         backoff_factor=0.1,
@@ -221,7 +228,21 @@ def _send_prepared_request(req, timeout=150, deserialize_handler=DeserializeHand
         prepped = req.prepare()
         logger.debug('{} {} @ {}'.format(prepped.method, prepped.url, datetime.datetime.now()))
         session.mount(prepped.url, HTTPAdapter(max_retries=retries))
-        tmp = session.send(prepped, timeout=timeout)
+
+        attempts = transient_error_attempts if retry_transient_errors else 1
+        tmp = None
+        for attempt in range(1, attempts + 1):
+            try:
+                tmp = session.send(prepped, timeout=timeout)
+                break
+            except TRANSIENT_REQUEST_ERRORS as error:
+                if attempt == attempts:
+                    raise
+                logger.warning(
+                    'Transient error on %s %s (attempt %s/%s): %s. Retrying.',
+                    prepped.method, prepped.url, attempt, attempts, error)
+                time.sleep(min(0.5 * (2 ** (attempt - 1)), 5))
+
         if tmp.status_code == 401 and reauth_func is not None:
             token_version = getattr(prepped, REQUEST_TOKEN_VERSION_ATTR, None)
             if token_version is None:
@@ -241,7 +262,8 @@ def get_request(url, headers={}, auth=None, timeout=150, deserialize_handler=Des
                 error_handler=HttpErrorHandlingStrategy.print_and_exit, reauth_func=None):
     req = requests.Request('GET', url, auth=auth, headers=headers)
     return _send_prepared_request(req, timeout=timeout, deserialize_handler=deserialize_handler,
-                                  error_handler=error_handler, reauth_func=reauth_func)
+                                  error_handler=error_handler, reauth_func=reauth_func,
+                                  retry_transient_errors=True)
 
 
 def post_request(url, payload=None, headers={}, auth=None, timeout=150,

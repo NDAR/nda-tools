@@ -205,6 +205,11 @@ class SubmissionApi:
                 logger.error(error.response.text)
                 logger.error('\nPlease email NDAHelp@mail.nih.gov for help in resolving this error')
                 exit_error()
+        except requests.exceptions.RequestException as error:
+            logger.error(f'Error retrieving submission file listing: {error}')
+            logger.error('This was a network error while listing associated files. Please try again.')
+            logger.error('\nIf the error persists, please email NDAHelp@mail.nih.gov for help in resolving this error')
+            exit_error()
 
     def _wait_submission_complete(self, package_id):
         # poll the versions endpoint until a new one is created or until we timeout
