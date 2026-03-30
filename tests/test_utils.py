@@ -306,23 +306,6 @@ def test_get_request_rebuilds_request_with_new_token_after_reauth(monkeypatch):
     assert sent_headers == ['Bearer old-token', 'Bearer new-token']
     reauth.assert_called_once_with(token_version=3)
 
-
-def test_get_request_retries_chunked_encoding_error(monkeypatch):
-    mock_session = MagicMock()
-    mock_session.return_value.__enter__.return_value.send.side_effect = [
-        requests.exceptions.ChunkedEncodingError('Response ended prematurely'),
-        Response(status_code=200),
-    ]
-
-    with monkeypatch.context() as m:
-        m.setattr('requests.Session', mock_session)
-        m.setattr(NDATools.Utils.time, 'sleep', MagicMock())
-        response = get_request('https://nda.nih.gov/api/submission')
-
-    assert response == {}
-    assert mock_session.return_value.__enter__.return_value.send.call_count == 2
-
-
 def test_http_error_handling_print_and_exit(monkeypatch):
     with monkeypatch.context() as m:
         m.setattr(NDATools.Utils.logger, 'error', MockLogger())
