@@ -7,11 +7,12 @@ from unittest.mock import patch, mock_open, MagicMock
 from urllib.parse import quote
 
 import pytest
+import requests
 
 import NDATools
-from NDATools.Utils import parse_local_files, sanitize_file_path, check_read_permissions, \
+from NDATools.Utils import REQUEST_TOKEN_VERSION_ATTR, parse_local_files, sanitize_file_path, check_read_permissions, \
     sanitize_windows_download_filename, deconstruct_s3_url, collect_directory_list, get_int_input, \
-    evaluate_yes_no_input, put_request, post_request, HttpErrorHandlingStrategy
+    evaluate_yes_no_input, put_request, post_request, HttpErrorHandlingStrategy, get_request
 from tests.conftest import MockLogger
 
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s:%(levelname)s:%(message)s")
@@ -190,6 +191,120 @@ def test_post_request(monkeypatch):
         response = post_request('https://nda.nih.gov/api/submission', """{}""")
         assert response == {}
 
+
+def test_get_request_reauthenticates_and_retries_once_on_401(monkeypatch):
+    mock_session = MagicMock()
+    mock_session.return_value.__enter__.return_value.send.side_effect = [
+        Response(status_code=401),
+        Response(status_code=200)
+    ]
+    reauth = MagicMock()
+
+    with monkeypatch.context() as m:
+        m.setattr('requests.Session', mock_session)
+        response = get_request('https://nda.nih.gov/api/submission',
+                               auth=MagicMock(),
+                               reauth_func=reauth)
+
+    assert response == {}
+    assert reauth.call_count == 1
+    assert mock_session.return_value.__enter__.return_value.send.call_count == 2
+
+
+def test_get_request_fails_after_second_401(monkeypatch):
+    mock_session = MagicMock()
+    mock_session.return_value.__enter__.return_value.send.side_effect = [
+        Response(status_code=401),
+        Response(status_code=401)
+    ]
+    reauth = MagicMock()
+
+    with monkeypatch.context() as m:
+        m.setattr('requests.Session', mock_session)
+        m.setattr(NDATools.Utils, 'exit_error', MagicMock(side_effect=SystemExit))
+        with pytest.raises(SystemExit):
+            get_request('https://nda.nih.gov/api/submission',
+                        auth=MagicMock(),
+                        reauth_func=reauth)
+
+    assert reauth.call_count == 1
+    assert mock_session.return_value.__enter__.return_value.send.call_count == 2
+
+
+def test_get_request_does_not_reauthenticate_on_non_401(monkeypatch):
+    mock_session = MagicMock()
+    mock_session.return_value.__enter__.return_value.send.return_value = Response(status_code=503)
+    reauth = MagicMock()
+
+    with monkeypatch.context() as m:
+        m.setattr('requests.Session', mock_session)
+        m.setattr(NDATools.Utils, 'exit_error', MagicMock(side_effect=SystemExit))
+        with pytest.raises(SystemExit):
+            get_request('https://nda.nih.gov/api/submission',
+                        auth=MagicMock(),
+                        reauth_func=reauth)
+
+    assert reauth.call_count == 0
+    assert mock_session.return_value.__enter__.return_value.send.call_count == 1
+
+
+def test_get_request_passes_auth_generation_to_reauth(monkeypatch):
+    class VersionedAuth:
+        def __call__(self, request):
+            setattr(request, REQUEST_TOKEN_VERSION_ATTR, 7)
+            request.headers['Authorization'] = 'Basic abc'
+            return request
+
+    mock_session = MagicMock()
+    mock_session.return_value.__enter__.return_value.send.side_effect = [
+        Response(status_code=401),
+        Response(status_code=200)
+    ]
+    reauth = MagicMock()
+
+    with monkeypatch.context() as m:
+        m.setattr('requests.Session', mock_session)
+        response = get_request('https://nda.nih.gov/api/submission',
+                               auth=VersionedAuth(),
+                               reauth_func=reauth)
+
+    assert response == {}
+    reauth.assert_called_once_with(token_version=7)
+
+
+def test_get_request_rebuilds_request_with_new_token_after_reauth(monkeypatch):
+    class RotatingAuth:
+        def __init__(self):
+            self.token = 'old-token'
+
+        def __call__(self, request):
+            setattr(request, REQUEST_TOKEN_VERSION_ATTR, 3)
+            request.headers['Authorization'] = f'Bearer {self.token}'
+            return request
+
+    auth = RotatingAuth()
+    sent_headers = []
+
+    def send(prepped, timeout=None):
+        sent_headers.append(prepped.headers['Authorization'])
+        if len(sent_headers) == 1:
+            auth.token = 'new-token'
+            return Response(status_code=401)
+        return Response(status_code=200)
+
+    mock_session = MagicMock()
+    mock_session.return_value.__enter__.return_value.send.side_effect = send
+    reauth = MagicMock()
+
+    with monkeypatch.context() as m:
+        m.setattr('requests.Session', mock_session)
+        response = get_request('https://nda.nih.gov/api/submission',
+                               auth=auth,
+                               reauth_func=reauth)
+
+    assert response == {}
+    assert sent_headers == ['Bearer old-token', 'Bearer new-token']
+    reauth.assert_called_once_with(token_version=3)
 
 def test_http_error_handling_print_and_exit(monkeypatch):
     with monkeypatch.context() as m:

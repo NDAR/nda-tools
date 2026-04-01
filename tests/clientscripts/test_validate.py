@@ -105,7 +105,6 @@ def test_validate(test_warnings, test_errors, test_sys_errors,
     config.validation_results_writer = validation_result_writer
     config.upload_cli = MagicMock()
     config.is_authenticated = MagicMock(return_value=True)
-    config.v2_enabled = True
     config.qa_enabled = False
 
     errors = {}
@@ -159,7 +158,6 @@ def test_qa(test_errors, monkeypatch, config, validation_result_writer, validati
     config.validation_results_writer = validation_result_writer
     config.upload_cli = MagicMock()
     config.is_authenticated = MagicMock(return_value=True)
-    config.v2_enabled = True
     config.qa_enabled = True
     errors = {"inconsistentSex": [
         {"columnName": "sex", "message": "GUID NDARDF005KBU has multiple values for sex. Values for sex found: M, F.",

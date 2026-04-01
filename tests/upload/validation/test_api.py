@@ -14,8 +14,8 @@ from NDATools.upload.validation.api import ValidationV2Credentials, ValidationV2
 @pytest.fixture
 def validation_api():
     validation_api = ValidationV2Api(validation_api_endpoint='https://nda.nih.gov/api/validation',
-                                     username='test_user',
-                                     password='testpass')
+                                     auth=MagicMock(),
+                                     reauth_func=MagicMock())
     validation_api.get_validation = MagicMock()
     return validation_api
 
@@ -64,6 +64,46 @@ def qa():
 
 
 class TestValidationV2Api:
+    def test_get_validation_passes_reauth_func(self, monkeypatch):
+        reauth = MagicMock()
+        validation_api = ValidationV2Api(validation_api_endpoint='https://nda.nih.gov/api/validation',
+                                         auth=MagicMock(),
+                                         reauth_func=reauth)
+        response = {
+            'validation_uuid': '123e4567-e89b-12d3-a456-426614174000',
+            'status': 'Complete',
+            'short_name': None,
+            'scope': None,
+            'rows': None,
+            'validation_files': {}
+        }
+
+        with monkeypatch.context() as m:
+            get_request = MagicMock(return_value=response)
+            m.setattr(NDATools.upload.validation.api, 'get_request', get_request)
+            validation_api.get_validation(response['validation_uuid'])
+            assert get_request.call_args.kwargs['reauth_func'] is reauth
+
+    def test_request_upload_credentials_passes_reauth_func(self, monkeypatch):
+        reauth = MagicMock()
+        validation_api = ValidationV2Api(validation_api_endpoint='https://nda.nih.gov/api/validation',
+                                         auth=MagicMock(),
+                                         reauth_func=reauth)
+        response = {
+            'access_key_id': 'fake_access_key',
+            'secret_access_key': 'fake_secret_key',
+            'session_token': 'fake_session_token',
+            'validation_uuid': 'fake_validation_uuid',
+            'read_write_permission': {},
+            'read_permission': {}
+        }
+
+        with monkeypatch.context() as m:
+            m.setattr(NDATools.upload.validation.api, 'boto3', MagicMock())
+            post_request = MagicMock(return_value=response)
+            m.setattr(NDATools.upload.validation.api, 'post_request', post_request)
+            validation_api.request_upload_credentials('fmriresults01.csv')
+            assert post_request.call_args.kwargs['reauth_func'] is reauth
 
     @pytest.mark.parametrize('statuses', [
         (['Uploading', 'Complete']),

@@ -48,7 +48,6 @@ class AFUploadContext(UploadContext):
         self.files_not_found = []
         self.search_folders = search_folders
         self.progress_bar = None
-        # initialize this to false, and toggle to true after we prompt user to enter folder
         self.display_missing_files_message = False
         if not db_folder:
             db_folder = NDA_TOOLS_SUBMISSIONS_FOLDER
@@ -70,41 +69,33 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
         self.api = api
 
     def _construct_tqdm(self, total: Optional[float], description: str):
-        """Override progress bar to display total number of files and save to upload ctx"""
         progress_bar = tqdm(disable=self.hide_progress, total=total, initial=0, leave=False, desc=description,
                             unit='B', unit_scale=True, unit_divisor=1024)
         self.upload_context.progress_bar = progress_bar
         return progress_bar
 
     def _pre_upload_hook(self):
-        '''Get all the files in the submission from the API and save it to a temporary sql lite db'''
         self._check_db_integrity()
 
     def _get_file_batches(self):
-
-        # create temp table for current batch of files
         SqlUtils.run_ddl(self.upload_context.db_connection, "DROP TABLE if exists current_batch")
-        SqlUtils.run_ddl(self.upload_context.db_connection,
-                         "CREATE TEMPORARY TABLE current_batch as select * from associated_files where status <> 'Complete' order by id")
+        SqlUtils.run_ddl(
+            self.upload_context.db_connection,
+            "CREATE TEMPORARY TABLE current_batch as select * from associated_files where status <> 'Complete' order by id")
 
         page = 0
         while True:
-            # query from temp table one page at a time
             page += 1
             files = SqlUtils.paged_query(self.upload_context.db_connection, "current_batch", page, self.batch_size,
                                          AssociatedFile)
 
             if not files:
                 break
-            # hash files by id to make searching easier
             lookup = {file.id: file for file in files}
             creds: List[AssociatedFileUploadCreds] = self.api.get_upload_credentials(
                 self.upload_context.submission.submission_id,
                 list(lookup.keys()))
             yield [AFUploadable(lookup[c.id], c) for c in creds]
-
-    def _update_bytes_uploaded(self, bytes_uploaded):
-        self.upload_context.progress_bar.update(bytes_uploaded)
 
     def _update_bytes_uploaded(self, bytes_uploaded):
         self.upload_context.progress_bar.update(bytes_uploaded)
@@ -118,11 +109,8 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
             s3 = get_s3_client_with_config(access_key, secret_key, session_token)
             if self.upload_context.resuming_upload:
                 try:
-                    # REV-1389 check to see if the file has already been uploaded to s3
                     s3.head_object(Bucket=bucket, Key=key)
                 except botocore.exceptions.ClientError as ce:
-                    # only upload the file if it hasn't already been uploaded to s3
-                    # (according to the boto3 documentation, head_object will produce 404 or 403 depending on the permissions)
                     if str(ce.response['Error']['Code']) in ['404', '403']:
                         s3.upload_file(file_name, bucket, key, Config=self.upload_context.transfer_config,
                                        Callback=self._update_bytes_uploaded)
@@ -137,9 +125,7 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
             raise UploadError(up, e)
 
     def _post_batch_hook(self, batch_results: BatchResults):
-        """ REST endpoint to update status of files to COMPLETE"""
         if len(batch_results.success) > 0:
-            # it makes sense to show the missing files message if the program successfully processed at least 1 file
             self.upload_context.display_missing_files_message = True
             self._batch_update_associated_file_status(batch_results.success)
         self.upload_context.files_not_found.extend(batch_results.files_not_found)
@@ -155,7 +141,6 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
         while self.upload_context.files_not_found:
             searched_folders = self.upload_context.search_folders
             new_dir = self._prompt_for_file_directory(searched_folders)
-            # update upload_context variables
             self.upload_context.files_not_found.clear()
             self.upload_context.search_folders.clear()
             self.upload_context.search_folders.append(new_dir)
@@ -163,7 +148,6 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
                 self._upload_batch(file_batch, self.upload_context.search_folders)
 
     def _prompt_for_file_directory(self, searched_folders: List[pathlib.Path]) -> pathlib.Path:
-        # ask the user if they want to continue
         not_found: List[Uploadable] = self.upload_context.files_not_found
         msg = files_not_found_msg(not_found, searched_folders)
         if self.exit_on_error:
@@ -179,10 +163,15 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
         self.upload_context.db_connection.close()
         os.remove(self.upload_context.db_path)
 
-    def _make_and_connect_submission_db(self):
-        logger.debug(
-            f'Creating temporary database at {self.upload_context.db_path}')
+    def _reset_submission_db(self):
+        self.upload_context.db_connection.close()
+        if self.upload_context.db_path.exists():
+            os.remove(self.upload_context.db_path)
         self.upload_context.db_connection = sqlite3.connect(self.upload_context.db_path)
+
+    def _make_and_connect_submission_db(self):
+        logger.debug(f'Creating temporary database at {self.upload_context.db_path}')
+        self._reset_submission_db()
         SqlUtils.create_table_from_model(self.upload_context.db_connection, AssociatedFile, "associated_files")
         logger.info(
             'Retrieving a listing of the files in the submission. This may take a couple of minutes if the number of files in your submission exceeds 100,000')
@@ -199,20 +188,25 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
 
             if page_number == 0:
                 is_large_submission = len(files) == db_creation_batch_size
-            # display progress for large submissions
             if is_large_submission:
                 logger.info(f'Retrieved {len(files)} files from page {page_number}')
-            # dont bother making another api call if the number of retrieved results is less than the batch size
             if len(files) < db_creation_batch_size:
                 break
 
             page_number += 1
-        logger.debug(f'Finished retrieving all files from submission')
+        logger.debug('Finished retrieving all files from submission')
 
     def _check_db_integrity(self):
         exists = SqlUtils.does_table_exists(self.upload_context.db_connection, "associated_files")
         if not exists:
             self._make_and_connect_submission_db()
+        else:
+            expected_count = self.api.get_upload_progress(self.upload_context.submission.submission_id).associated_file_count
+            actual_count = SqlUtils.query(self.upload_context.db_connection, "associated_files", "count(*)")[0][0]
+            if actual_count != expected_count:
+                logger.warning('Submission DB is incomplete for submission %s (found %s rows, expected %s). Rebuilding.',
+                               self.upload_context.submission.submission_id, actual_count, expected_count)
+                self._make_and_connect_submission_db()
         self._calculate_upload_progress()
 
     def _batch_update_associated_file_status(self, updates: List[AFUploadable]):
@@ -221,26 +215,23 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
 
     def _mark_files_complete_in_db(self, uploaded: List[Uploadable]):
         ids = [up.af_file.id for up in uploaded]
-        # split ids into a list of lists each containing at most 1000 numbers
         id_chunks = [ids[i:i + 1000] for i in range(0, len(ids), 1000)]
         for id_chunk in id_chunks:
-            ids_clause = ','.join([str(id) for id in id_chunk])
+            ids_clause = ','.join([str(file_id) for file_id in id_chunk])
             SqlUtils.update(self.upload_context.db_connection, "associated_files", "status='Complete'",
                             f"id in ({ids_clause})")
 
     def _mark_files_complete_in_api(self, uploaded: List[AFUploadable]):
-        """ REST endpoint to update status of files to COMPLETE"""
         submission_id = self.upload_context.submission.submission_id
         updates = [BatchUpdate(file.af_file, AssociatedFileStatus.COMPLETE, file.calculate_size()) for file in uploaded]
         errors = None
         if len(updates) > 0:
             errors = self.api.batch_update_associated_file_status(submission_id, updates)
         if errors:
-            # filter out errors where the error message indicates that the file already has a status of COMPLETE
             real_errors = [e for e in errors if not e.message.startswith('Cannot change "status" for submission file')]
             if real_errors:
                 for error in real_errors:
-                    logger.error(f'Error updating status of file {error.search_name.file_user_path}: {error.message}')
+                    logger.error(f'Error updating status of file {error.file.file_user_path}: {error.message}')
                 logger.error(f'There were errors uploading files. \r\n'
                              f'Please try resuming the submission by running vtcmd -r {submission_id}\r\n'
                              f'If the error persists, contact NDAHelp@mail.nih.gov for help.')

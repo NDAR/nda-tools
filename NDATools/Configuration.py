@@ -4,12 +4,15 @@ import logging
 import logging.config
 import multiprocessing
 import os
+import threading
 import time
+from requests.auth import AuthBase
 
 import yaml
 
 import NDATools
 from NDATools import NDA_TOOLS_LOGGING_YML_FILE
+from NDATools.Utils import REQUEST_TOKEN_VERSION_ATTR
 from NDATools.upload.cli import NdaUploadCli
 from NDATools.upload.submission.api import SubmissionPackageApi, SubmissionApi, CollectionApi
 from NDATools.upload.submission.associated_file import AssociatedFileUploader
@@ -42,6 +45,16 @@ class LoggingConfiguration:
         logging.config.dictConfig(config)
 
 
+class DynamicBearerAuth(AuthBase):
+    def __init__(self, config):
+        self._config = config
+
+    def __call__(self, request):
+        setattr(request, REQUEST_TOKEN_VERSION_ATTR, self._config.get_auth_generation())
+        request.headers['Authorization'] = f'Bearer {self._config.token}'
+        return request
+
+
 class ClientConfiguration:
 
     def __init__(self, args):
@@ -57,7 +70,8 @@ class ClientConfiguration:
         self.package_api_endpoint = self.config.get("Endpoints", "package")
         self.datadictionary_api_endpoint = self.config.get("Endpoints", "datadictionary")
         self.collection_api_endpoint = self.config.get("Endpoints", "collection")
-        self.user_api_endpoint = self.config.get("Endpoints", "user")
+        ras_api_endpoint = self.config.get("Endpoints", "ras")
+        self.ras_login_api_endpoint = f"{ras_api_endpoint}/user/login"
         self.username = self.config.get("User", "username").lower()
         # TODO remove args from config
         self._args = args
@@ -69,10 +83,16 @@ class ClientConfiguration:
             logger.warning("-u/--username argument not provided. Using default value of '%s' which was saved in %s",
                            self.username, NDATools.NDA_TOOLS_SETTINGS_CFG_FILE)
         self.password = None
+        self.token = None
+        self._auth_generation = 0
+        self._reauth_lock = threading.Lock()
+        self._reauth_condition = threading.Condition(self._reauth_lock)
+        self._reauth_in_progress = False
+        self._reauth_error = None
+        self._auth = DynamicBearerAuth(self)
 
         if self._is_vtcmd():
-            self.v2_enabled = False
-            self.qa_enabled = False
+            self.qa_enabled = True
             self.validation_results_writer = ResultsWriterFactory.get_writer(file_format='json' if args.JSON else 'csv')
             self.validation_api = None
             self.submission_api = None
@@ -152,18 +172,63 @@ class ClientConfiguration:
                     self.config.set(section, option, default_config[section][option])
                     change_detected = True
         if change_detected:
-            logger.debug(f'updating settings.cfg')
+            logger.debug('updating settings.cfg')
             with open(NDATools.NDA_TOOLS_SETTINGS_CFG_FILE, 'w') as configfile:
                 self.config.write(configfile)
         else:
-            logger.debug(f'settings.cfg is up to date')
+            logger.debug('settings.cfg is up to date')
 
     def is_authenticated(self):
         return self.username and self.password
 
-    def update_with_auth(self, username, password):
+    def get_auth(self):
+        return self._auth
+
+    def get_auth_generation(self):
+        return self._auth_generation
+
+    def reauthenticate(self, token_version=None):
+        """Refresh the shared bearer token once for a given failed request version.
+
+        ``token_version`` is the auth generation used by the request that got a 401.
+        If another thread already refreshed the token and advanced the current
+        generation, that 401 is stale and no new login is needed. Otherwise, one
+        thread performs the login while the others wait and reuse the result.
+        """
+        with self._reauth_condition:
+            # A newer token is already available, so this 401 came from a stale request.
+            if token_version is not None and token_version < self._auth_generation:
+                return
+            while self._reauth_in_progress:
+                # Another thread is already logging in; wait for its result.
+                self._reauth_condition.wait()
+                if token_version is not None and token_version < self._auth_generation:
+                    return
+                if self._reauth_error is not None:
+                    raise self._reauth_error
+            if token_version is not None and token_version < self._auth_generation:
+                return
+            self._reauth_in_progress = True
+            self._reauth_error = None
+
+        try:
+            NDATools.authenticate(self)
+            with self._reauth_condition:
+                self._auth_generation += 1
+        except Exception as exc:
+            with self._reauth_condition:
+                self._reauth_error = exc
+            raise
+        finally:
+            with self._reauth_condition:
+                # Wake all waiters so they can either reuse the new token or see the failure.
+                self._reauth_in_progress = False
+                self._reauth_condition.notify_all()
+
+    def update_with_auth(self, username, password, token):
         self.username = username
         self.password = password
+        self.token = token
         self._save_username()
         self._save_apis()
 
@@ -173,13 +238,15 @@ class ClientConfiguration:
             self.config.write(configfile)
 
     def _save_apis(self):
-        self.validation_api = ValidationV2Api(self.validation_api_endpoint, self.username, self.password)
+        self.validation_api = ValidationV2Api(self.validation_api_endpoint, auth=self.get_auth(),
+                                              reauth_func=self.reauthenticate)
         self.submission_package_api = SubmissionPackageApi(self.submission_package_api_endpoint,
-                                                           self.username,
-                                                           self.password)
-        self.submission_api = SubmissionApi(self.submission_api_endpoint, self.username,
-                                            self.password)
-        self.collection_api = CollectionApi(self.validationtool_api_endpoint, self.username, self.password)
+                                                           auth=self.get_auth(),
+                                                           reauth_func=self.reauthenticate)
+        self.submission_api = SubmissionApi(self.submission_api_endpoint, auth=self.get_auth(),
+                                            reauth_func=self.reauthenticate)
+        self.collection_api = CollectionApi(self.validationtool_api_endpoint, auth=self.get_auth(),
+                                            reauth_func=self.reauthenticate)
 
         if self._is_vtcmd():
             self.manifests_uploader = ManifestFileUploader(self.validation_api,

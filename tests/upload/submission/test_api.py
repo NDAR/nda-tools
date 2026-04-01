@@ -6,13 +6,14 @@ import pytest
 import requests
 
 import NDATools
-from NDATools.upload.submission.api import SubmissionApi, CollectionApi, SubmissionPackageApi, PackagingStatus, UserApi
+from NDATools.upload.submission.api import SubmissionApi, CollectionApi, SubmissionPackageApi, PackagingStatus, \
+    RasAuthApi
 
 
 @pytest.fixture
 def submission_api():
-    return SubmissionApi('https://nda.nih.gov/api/submission', 'testusername',
-                         'testpassword')
+    return SubmissionApi('https://nda.nih.gov/api/submission', auth=MagicMock(),
+                         reauth_func=MagicMock())
 
 
 @pytest.fixture
@@ -70,6 +71,16 @@ def test_submission_api_get_submission(submission_api, monkeypatch, submission_j
         assert s.submission_id == int(submission_json['submission_id'])
 
 
+def test_submission_api_get_submission_passes_reauth_func(monkeypatch, submission_json):
+    reauth = MagicMock()
+    api = SubmissionApi('https://nda.nih.gov/api/submission', auth=MagicMock(), reauth_func=reauth)
+    with monkeypatch.context() as m:
+        get_request = MagicMock(return_value=submission_json)
+        m.setattr(NDATools.upload.submission.api, "get_request", get_request)
+        api.get_submission(int(submission_json['submission_id']))
+        assert get_request.call_args.kwargs['reauth_func'] is reauth
+
+
 def test_submission_api_get_submission_version(submission_api, monkeypatch, change_history_json):
     with monkeypatch.context() as m:
         m.setattr(NDATools.upload.submission.api, "get_request",
@@ -117,7 +128,7 @@ def test_submission_details(submission_api, monkeypatch, submission_details_json
 
 @pytest.fixture
 def collection_api():
-    return CollectionApi('https://nda.nih.gov/api/validationtool/v2', 'testusername', 'testpassword')
+    return CollectionApi('https://nda.nih.gov/api/validationtool/v2', auth=MagicMock(), reauth_func=MagicMock())
 
 
 @pytest.fixture
@@ -143,7 +154,8 @@ def test_collection_api_get_collections(collection_api, collections_json, monkey
 
 @pytest.fixture
 def submission_package_api():
-    return SubmissionPackageApi('https://nda.nih.gov/api/submission-package', 'testusername', 'testpassword')
+    return SubmissionPackageApi('https://nda.nih.gov/api/submission-package', auth=MagicMock(),
+                                reauth_func=MagicMock())
 
 
 def test_sub_package_api_build_package(submission_package_api, package_json, monkeypatch):
@@ -156,6 +168,16 @@ def test_sub_package_api_build_package(submission_package_api, package_json, mon
         assert package.status == package_json['package_info']['status']
         assert package.created_date == package_json['created_date']
         assert package.expiration_date == package_json['expiration_date']
+
+
+def test_sub_package_api_build_package_passes_reauth_func(monkeypatch, package_json):
+    reauth = MagicMock()
+    api = SubmissionPackageApi('https://nda.nih.gov/api/submission-package', auth=MagicMock(), reauth_func=reauth)
+    with monkeypatch.context() as m:
+        post_request = MagicMock(return_value=package_json)
+        m.setattr(NDATools.upload.submission.api, "post_request", post_request)
+        api.build_package(1860, 'sdfgasdf', 'asdfasdfasfd', ["uuid"])
+        assert post_request.call_args.kwargs['reauth_func'] is reauth
 
 
 def test_sub_package_api_wait_package_complete(submission_package_api, package_json, monkeypatch):
@@ -203,12 +225,17 @@ def user_json():
     }
 
 
-def test_user_api(monkeypatch, user_json):
-    api = UserApi('https://nda.nih.gov/api/user')
+def test_ras_auth_api_login(monkeypatch):
+    api = RasAuthApi('https://nda.nih.gov/api/ras/user/login')
+    response = namedtuple("Response", ["text"])
+
     with monkeypatch.context() as m:
-        m.setattr(NDATools.upload.submission.api, "get_request", MagicMock(return_value=user_json))
-        is_valid = api.is_valid_nda_credentials('testusername', 'testpassword')
-        assert is_valid == True
+        post_request = MagicMock(return_value=response(text='token-123'))
+        m.setattr(NDATools.upload.submission.api, "post_request", post_request)
+        token = api.login('testusername', 'testpassword')
+        assert token == 'token-123'
+        assert post_request.call_args.args[0] == 'https://nda.nih.gov/api/ras/user/login'
+        assert post_request.call_args.kwargs['deserialize_handler'] is NDATools.upload.submission.api.DeserializeHandler.none
 
     Response = namedtuple("Response", ["status_code", "text"])
 
@@ -216,29 +243,29 @@ def test_user_api(monkeypatch, user_json):
     unauthenticated_error.response = Response(status_code=401, text=None)
 
     with monkeypatch.context() as m:
-        m.setattr(NDATools.upload.submission.api, "get_request", MagicMock(side_effect=[unauthenticated_error]))
-        is_valid = api.is_valid_nda_credentials('testusername', 'testpassword')
-        assert is_valid == False
+        m.setattr(NDATools.upload.submission.api, "post_request", MagicMock(side_effect=[unauthenticated_error]))
+        token = api.login('testusername', 'testpassword')
+        assert token is None
 
     def fake_exit(*args, **kwargs):
         raise SystemExit()
 
-    m.setattr(NDATools.upload.submission.api, 'exit_error', MagicMock(wraps=fake_exit))
+    NDATools.upload.submission.api.exit_error = MagicMock(wraps=fake_exit)
 
     locked_account_error = requests.exceptions.HTTPError()
     locked_account_error.response = Response(status_code=423, text=None)
     with monkeypatch.context() as m:
-        m.setattr(NDATools.upload.submission.api, "get_request", MagicMock(side_effect=[locked_account_error]))
+        m.setattr(NDATools.upload.submission.api, "post_request", MagicMock(side_effect=[locked_account_error]))
         with pytest.raises(SystemExit):
-            api.is_valid_nda_credentials('testusername', 'testpassword')
+            api.login('testusername', 'testpassword')
     message = NDATools.upload.submission.api.exit_error.call_args.kwargs['message']
     assert 'Your account is locked' in message
 
     server_error = requests.exceptions.HTTPError()
     server_error.response = Response(status_code=500, text=None)
     with monkeypatch.context() as m:
-        m.setattr(NDATools.upload.submission.api, "get_request", MagicMock(side_effect=[server_error]))
+        m.setattr(NDATools.upload.submission.api, "post_request", MagicMock(side_effect=[server_error]))
         with pytest.raises(SystemExit):
-            api.is_valid_nda_credentials('testusername', 'testpassword')
+            api.login('testusername', 'testpassword')
     message = NDATools.upload.submission.api.exit_error.call_args.kwargs['message']
     assert 'System Error' in message

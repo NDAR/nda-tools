@@ -10,7 +10,9 @@ logger = logging.getLogger(__name__)
 
 
 def check_replacement_authorized(config, submission_id):
-    api = SubmissionApi(config.submission_api_endpoint, config.username, config.password)
+    api = SubmissionApi(config.submission_api_endpoint,
+                        auth=config.get_auth(),
+                        reauth_func=config.reauthenticate)
     submission_history = api.get_submission_history(submission_id)
 
     # check to see if the submission was already replaced?
