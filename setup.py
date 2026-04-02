@@ -28,7 +28,8 @@ setup(
     entry_points={
         'console_scripts': [
             'vtcmd = NDATools.clientscripts.vtcmd:main',
-            'downloadcmd = NDATools.clientscripts.downloadcmd:main'
+            'downloadcmd = NDATools.clientscripts.downloadcmd:main',
+            'nda = NDATools.clientscripts.nda:main'
         ]
     }
 )

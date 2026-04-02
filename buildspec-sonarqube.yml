@@ -1,0 +1,34 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.10
+    commands:
+      - PIPELINE_NAME=$(echo ${CODEBUILD_INITIATOR} | cut -d'/' -f2)
+      - echo "Pipeline Name- ${PIPELINE_NAME}"
+      - BRANCH_NAME=$(aws codepipeline get-pipeline --name ${PIPELINE_NAME} --query "pipeline.stages[?name=='Source'].actions[0].configuration.BranchName" --output text)
+      - echo "Branch Name- ${BRANCH_NAME}"
+      - apt-get update > /dev/null 2>&1
+      - apt-get install -y jq wget tar > /dev/null 2>&1
+
+  pre_build:
+    on-failure: ABORT
+    commands:
+      - pip install keyrings.alt pysonar-scanner
+      - pip install -e '.[test]'
+
+  build:
+    on-failure: ABORT
+    commands:
+      - coverage run -m pytest && coverage xml --rcfile=.coveragerc
+      - echo starting sonarqube static code analysis scan......
+      - pysonar-scanner '-Dsonar.coverage.exclusions=tests/**' -Dsonar.python.version=3.10 -Dsonar.python.coverage.reportPaths=coverage.xml -Dsonar.login=${SONAR_LOGIN} -Dsonar.host.url=${SONAR_URL} -Dsonar.projectKey=${SONAR_PROJECT_KEY} -Dsonar.sources=. -Dsonar.branch.name=$BRANCH_NAME -Dsonar.log.level=WARN
+      - sleep 5
+      - curl --location --user "${SONAR_LOGIN}:" "${SONAR_URL}/api/qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}&branch=$BRANCH_NAME" > result.json
+      - echo Retrieved SonarQube results
+      - cat result.json
+
+  post_build:
+    commands:
+      - echo sonarqube static code analysis complete

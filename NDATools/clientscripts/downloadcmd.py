@@ -156,7 +156,7 @@ For more details, check the information on the README page.
                         help='Enables debug logging.')
 
     parser.add_argument('--log-dir', type=str, action='store', help='Customize the file directory of logs. '
-                                                                    'If this value is not provided or the provided directory does not exist, logs will be saved to NDA/nda-tools/downloadcmd/logs inside your root folder.')
+                                                                    'If this value is not provided or the provided directory does not exist, logs will be saved to NDA/nda-tools/downloadcmd/logs inside your home folder.')
 
     args = parser.parse_args()
 

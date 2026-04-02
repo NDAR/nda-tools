@@ -6,11 +6,12 @@ import re
 import sys
 import urllib.parse
 from pathlib import Path
-from typing import Callable, List, Tuple
+from typing import Callable, List, Tuple, Type
 from urllib.parse import urlparse, unquote
 
 import boto3
 import requests
+from pydantic import BaseModel
 from requests.adapters import HTTPAdapter, Retry
 from tqdm.contrib.concurrent import thread_map
 
@@ -18,7 +19,7 @@ from NDATools import exit_error
 
 logger = logging.getLogger(__name__)
 
-
+REQUEST_TOKEN_VERSION_ATTR = '_nda_token_version'
 class Protocol(object):
     CSV = "csv"
     XML = "xml"
@@ -209,15 +210,25 @@ def is_json(test):
         return False
 
 
-def _send_prepared_request(prepped, timeout=150, deserialize_handler=DeserializeHandler.convert_json,
-                           error_handler=HttpErrorHandlingStrategy.print_and_exit):
+def _send_prepared_request(req, timeout=150, deserialize_handler=DeserializeHandler.convert_json,
+                           error_handler=HttpErrorHandlingStrategy.print_and_exit, reauth_func=None):
     with requests.Session() as session:
         retries = Retry(total=10,
                         backoff_factor=0.1,
                         status_forcelist=[502, 503, 504])
+        prepped = req.prepare()
         logger.debug('{} {} @ {}'.format(prepped.method, prepped.url, datetime.datetime.now()))
         session.mount(prepped.url, HTTPAdapter(max_retries=retries))
         tmp = session.send(prepped, timeout=timeout)
+
+        if tmp.status_code == 401 and reauth_func is not None:
+            token_version = getattr(prepped, REQUEST_TOKEN_VERSION_ATTR, None)
+            if token_version is None:
+                reauth_func()
+            else:
+                reauth_func(token_version=token_version)
+            prepped = req.prepare()
+            tmp = session.send(prepped, timeout=timeout)
         logger.debug(
             '{} {} (elapsed = {})- STATUS {}'.format(prepped.method, prepped.url, tmp.elapsed, tmp.status_code))
         if not tmp.ok:
@@ -226,28 +237,28 @@ def _send_prepared_request(prepped, timeout=150, deserialize_handler=Deserialize
 
 
 def get_request(url, headers={}, auth=None, timeout=150, deserialize_handler=DeserializeHandler.convert_json,
-                error_handler=HttpErrorHandlingStrategy.print_and_exit):
+                error_handler=HttpErrorHandlingStrategy.print_and_exit, reauth_func=None):
     req = requests.Request('GET', url, auth=auth, headers=headers)
-    return _send_prepared_request(req.prepare(), timeout=timeout, deserialize_handler=deserialize_handler,
-                                  error_handler=error_handler)
+    return _send_prepared_request(req, timeout=timeout, deserialize_handler=deserialize_handler,
+                                  error_handler=error_handler, reauth_func=reauth_func)
 
 
 def post_request(url, payload=None, headers={}, auth=None, timeout=150,
                  deserialize_handler=DeserializeHandler.convert_json,
-                 error_handler=HttpErrorHandlingStrategy.print_and_exit):
+                 error_handler=HttpErrorHandlingStrategy.print_and_exit, reauth_func=None):
     data_param, headers = get_data_and_header_params(payload, headers)
     req = requests.Request('POST', url, auth=auth, headers=headers, **data_param)
-    return _send_prepared_request(req.prepare(), timeout=timeout, deserialize_handler=deserialize_handler,
-                                  error_handler=error_handler)
+    return _send_prepared_request(req, timeout=timeout, deserialize_handler=deserialize_handler,
+                                  error_handler=error_handler, reauth_func=reauth_func)
 
 
 def put_request(url, payload=None, headers={}, auth=None, timeout=150,
                 deserialize_handler=DeserializeHandler.convert_json,
-                error_handler=HttpErrorHandlingStrategy.print_and_exit):
+                error_handler=HttpErrorHandlingStrategy.print_and_exit, reauth_func=None):
     data_param, headers = get_data_and_header_params(payload, headers)
     req = requests.Request('PUT', url, auth=auth, headers=headers, **data_param)
-    return _send_prepared_request(req.prepare(), timeout=timeout, deserialize_handler=deserialize_handler,
-                                  error_handler=error_handler)
+    return _send_prepared_request(req, timeout=timeout, deserialize_handler=deserialize_handler,
+                                  error_handler=error_handler, reauth_func=reauth_func)
 
 
 def get_data_and_header_params(payload, headers):
@@ -283,7 +294,7 @@ def collect_directory_list():
             return list(map(lambda x: x.resolve(), directories))
         else:
             not_existent = list(filter(lambda x: not os.path.isdir(x), directories))
-            logger.error(f"The following directories cannot be found:\n")
+            logger.error("The following directories cannot be found:\n")
             for directory in not_existent:
                 logger.error(f"\t{directory.resolve()}")
 
@@ -317,3 +328,113 @@ def get_directory_input(prompt):
 
 def tqdm_thread_map(func: Callable, args: List[Tuple], max_workers: int, disable_tqdm: bool = False):
     return thread_map(func, args, max_workers=max_workers, total=len(args), disable=disable_tqdm)
+
+
+class SqlUtils:
+    # ------------------------------------------------------------
+    # CREATE SQLITE DATABASE AND TABLE FROM PYDANTIC MODEL
+    # ------------------------------------------------------------
+    @staticmethod
+    def create_table_from_model(conn, model: Type[BaseModel], table_name: str):
+        """Creates a table from a Pydantic model."""
+        cursor = conn.cursor()
+
+        # Map Python/Pydantic types to SQLite types
+        type_map = {
+            int: "INTEGER",
+            float: "REAL",
+            str: "TEXT",
+            bool: "INTEGER",  # SQLite has no BOOL; use INTEGER(0/1)
+        }
+
+        columns = []
+        for field_name, field in model.model_fields.items():
+            python_type = field.annotation
+            sql_type = type_map.get(python_type, "TEXT")  # fallback to TEXT
+            col_def = f"{field_name} {sql_type}"
+            if field_name == "id":
+                col_def += " PRIMARY KEY"
+            columns.append(col_def)
+
+        column_sql = ", ".join(columns)
+        sql = f"CREATE TABLE IF NOT EXISTS {table_name} ({column_sql});"
+
+        cursor.execute(sql)
+        conn.commit()
+
+    # ------------------------------------------------------------
+    # BULK INSERT FROM A LIST OF PYDANTIC MODELS
+    # ------------------------------------------------------------
+    @staticmethod
+    def bulk_insert(conn, table_name: str, objects: List[BaseModel]):
+        cursor = conn.cursor()
+        if not objects:
+            return
+
+        fields = objects[0].model_dump().keys()
+        placeholders = ", ".join(["?"] * len(fields))
+        sql = f"INSERT INTO {table_name} ({', '.join(fields)}) VALUES ({placeholders});"
+
+        values = [tuple(obj.model_dump().values()) for obj in objects]
+
+        cursor.executemany(sql, values)
+        conn.commit()
+
+    # ------------------------------------------------------------
+    # PAGED QUERY
+    # ------------------------------------------------------------
+    @staticmethod
+    def paged_query(conn, table_name: str, page: int, page_size: int, model: Type[BaseModel],
+                    order_by_clause: str = "ID", where_clause: str = "true"):
+        assert page > 0, "Page number must be greater than 0"
+        cursor = conn.cursor()
+
+        offset = (page - 1) * page_size
+        sql = f"""
+            SELECT * 
+            FROM {table_name}
+            WHERE {where_clause}
+            ORDER BY {order_by_clause}
+            LIMIT ? OFFSET ?;
+        """
+        cursor.execute(sql, (page_size, offset))
+
+        rows = cursor.fetchall()
+        # Convert rows to Pydantic objects
+        return [model(**dict(zip([col[0] for col in cursor.description], row)))
+                for row in rows]
+
+    @staticmethod
+    def does_table_exists(db_connection, param):
+        cursor = db_connection.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (param,))
+        return cursor.fetchone() is not None
+
+    @staticmethod
+    def query(db_connection, table_name, select_clause="*", where_clause=None, order_by_clause=None, limit=None,
+              offset=None):
+        cursor = db_connection.cursor()
+        sql = f"SELECT {select_clause} FROM {table_name}"
+        if where_clause:
+            sql += f" WHERE {where_clause} "
+        if order_by_clause:
+            sql += f" ORDER BY {order_by_clause}"
+        if limit:
+            sql += f" LIMIT {str(limit)}"
+        if offset:
+            sql += f" OFFSET {str(offset)}"
+        cursor.execute(sql, ())
+        return cursor.fetchall()
+
+    @staticmethod
+    def update(db_connection, table, set_clause, where_clause):
+        cursor = db_connection.cursor()
+        sql = f"UPDATE {table} SET {set_clause} WHERE {where_clause};"
+        cursor.execute(sql, ())
+        cursor.connection.commit()
+
+    @staticmethod
+    def run_ddl(db_connection, ddl):
+        cursor = db_connection.cursor()
+        cursor.execute(ddl)
+        cursor.connection.commit()

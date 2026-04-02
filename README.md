@@ -8,7 +8,7 @@ and [Data Submission](https://nda.nih.gov/api/submission/docs/swagger-ui/index.h
 
 To use nda-tools, you must first have an NDA account with the necessary permissions for data submission or access.
 
-#### Getting Started
+## Getting Started
 
 1) [Create an NDA account](https://nda.nih.gov/nda/creating-an-nda-account), if you haven't already.
 2) [Set up and install `nda-tools`.](#how-to-set-up-nda-tools)
@@ -32,7 +32,6 @@ python --version
 ```
 
 - If this returns Python 3.x.x, you're good to go.
-
   ![Python Version Number Returned](https://s3.amazonaws.com/nda.nih.gov/cms/prod/python-installed.PNG)
 - Python offers 2 kinds of distributions: version 2.x.x and version 3.x.x. If you have multiple versions of Python
   installed, `python --version` might return Python 2.x.x. You can run `python3 --version` to verify Python 3 exists on
@@ -44,7 +43,6 @@ python --version
   installation prompts. **Tip:** Select "Add python.exe to PATH" if the option is available during installation.
 
   <img src="https://s3.amazonaws.com/nda.nih.gov/cms/prod/python-install-step1.png" alt="Add python.exe to PATH" style="width:60%; height:auto;">
-
 
 - If you don't own your machine, please contact your IT department to request administrative rights, root, or sudo
   privileges to install python.
@@ -68,14 +66,13 @@ pip --version
 - If installed, it should return the version information.
   ![Python and Pip Installed](https://s3.amazonaws.com/nda.nih.gov/cms/prod/python-pip-installed.png)
 
-
 - If not, follow the [pip installation guide](https://pip.pypa.io/en/stable/installation/).
 - If pip is not recognized, run `python get-pip.py –user` to troubleshoot the error and check the version of pip
   installed on your machine.
 
 ### [Step 3: Install nda-tools](#step-3-install-nda-tools)
 
-#### Ensure you have Python and pip installed. Run this command to install nda-tools:
+#### Ensure you have Python and pip installed. Run this command to install nda-tools
 
 ```bash
 pip install nda-tools
@@ -87,7 +84,7 @@ pip install nda-tools
 
   ![nda-tools Installed](https://s3.amazonaws.com/nda.nih.gov/cms/prod/nda-tools-installed.png)
 
-#### Verify Installation by running:
+#### Verify Installation by running
 
 ```bash
 vtcmd -h
@@ -216,7 +213,7 @@ You can also list a bucket, optional prefix, and your AWS credentials if the ass
 **Please Note:** When listing the directory for associated files, include the folder up to **but not including** the
 file name listed in the csv file.
 
-##### Example:
+#### Example
 
 If the associated file name is in Users/[youruser]/Documents/MultipleDataTypes/data/1G_file.fastq and is listed in your
 csv file as:
@@ -282,49 +279,128 @@ submission was successful.
 A local version of the package will be saved automatically to **~\nda-tools\vtcmd\submission_package\\** folder
 and can be found on the collection submission tab on the NDA site.
 
+### Generating Manifest Files
+
+Manifests are special files in NDA that allow one subject record to be associated with multiple associated files.
+Manifests are generally used as alternatives to File type elements when the number of files being submitted per subject
+exceeds
+the number of File type elements present in the data structure. Not all data structures include manifest elements, but
+they
+are present on the most popular NDA imaging structures (i.e., fmriresults01 and image03).
+
+Manifests are JSON files that must adhere to a [specific schema](https://github.com/NDAR/manifest-data/tree/master) and
+are uploaded at the same time that nda data structures are validated.
+
+When data-sets are organized by subject, the manifests can be generated automatically using the `generate-manifests`
+command.
+
+To use this functionality, run:
+
+```bash
+python -m NDATools.clientscripts.nda generate-manifests -i <subject-directory> -o <output-directory>
+```
+
+#### Arguments
+
+- `-i, --subject-directory`: The directory containing the subdirectories you want to generate manifests for. Defaults to
+  the current directory.
+- `-o, --output-directory`: The directory where the generated JSON manifest files will be saved. Defaults to the current
+  directory.
+- `-ir, --include-regex`: A regular expression to filter which files are included in the manifest.
+- `-er, --exclude-regex`: A regular expression to exclude specific files from the manifest. If a file matches both
+  include and exclude regexes, it will be excluded.
+
+**Note** - Symbolic links are skipped when generating manifests.
+
+#### Examples
+
+1. If data for all subjects are grouped by directories in a folder called 'subject-data' run the following command to
+   generate the manifests for each subject:
+
+  ```bash
+  python -m NDATools.clientscripts.nda generate-manifests -i ./subject-data -o ./subject-data
+  ```
+
+  after this command runs, there will be .json file for each directory in the subject-data folder. A submission can then
+  be created using the manifests by running:
+
+  ```bash
+  vtcmd genomics_sample03.csv -m ./subject-data -l ./subject-data 
+  ```
+
+  (replace genomics_sample03.csv with the name of the csv file(s) you want to submit)
+  
+1. Exclude all files with extension = '.txt', '.tsv' and '.mat' from the manifests:
+
+  ```bash
+  python -m NDATools.clientscripts.nda generate-manifests -i ./subject-data -o ./subject-data -er "\.(txt|tsv|mat)$"
+  ```
+
+1. Exclude only .mat files from the manifests:
+
+  ```bash
+  python -m NDATools.clientscripts.nda generate-manifests -i ./subject-data -o ./subject-data -er "\.mat$"
+  ```
+
+1. Include all files from directories beginning with 'NDAR', but exclude all .txt files from the manifests:
+
+  ```bash
+  python -m NDATools.clientscripts.nda generate-manifests -i ./subject-data -o ./subject-data -er "\.txt$" -ir "^NDAR"
+
+  ```
+
+1. Wildcard matching is also supported (but it must be entered with quotes to be interpreted correctly by most
+   shells):
+
+  ```bash
+  python -m NDATools.clientscripts.nda generate-manifests -i ./subject-data -o ./subject-data -ir "session/.*"
+  ```
+
+  **Notes**
+
+  1. The examples above use double quotes to enclose the regular expression, which should work in Windows shells (
+    Powershell and cmd) and Linux/Mac shells (Bash). The type of quotes (single, double, or none) used may be important.
+    You should consult your shell documentation if the value of the regular expressions, which are printed out at the
+    beginning of program execution, do not match what you expect.
+  2. On windows machines, the file separator is '\\' and not '/', which needs to be escaped with another '\\' in the
+    regular expression. In the last example, the regular expression on a windows machine should be `-ir "session\\.*"`
+    instead of `-ir "session/.*"`.
+
 ### Fixing QA Errors
 
 A QA check is performed on all data after it has been submitted to NDA for inconsistencies in data-points including sex,
-subjeckey, interview age and interview date. If any problems are found with the data, an email will be sent to the users
+subjeckey, interview age, and interview date. If any problems are found with the data, an email will be sent to the
+users
 who created the submission along with a report of the errors that were found by NDA.
 
 To fix the data in NDA for your submission, you need to replace all of the csv files which contained errors in your
-original submission.
-To do this you must:
+original submission. To do this you must:
 
-<ol>
-<li>Retrieve the csv files with that were used to create the original submission and which contain data that needs to be corrected.
-This includes all csv files where data needs to be added, removed or updated.</li>
-<li>Correct the files by adding, removing or updating information as needed.</li>
-<li>Run the vtcmd with the -rs command line argument. Specify the value of the submission which you need to correct data for. Then list all of the csv files that you made corrections to. If there was a csv
-file from the original submission that did not contain any changes, it is not necessary to supply the file as an argument at this time.  
- </li>
-</ol>
+1. Retrieve the csv files with that were used to create the original submission and which contain data that needs to be corrected.
+  This includes all csv files where data needs to be added, removed, or updated.
+2. Correct the files by adding, removing, or updating information as needed.
+3. Run the vtcmd with the -rs command line argument. Specify the value of the submission which you need to correct data for. Then list all of the csv files that you made corrections to. If there was a csv file from the original submission that did not contain any changes, it is not necessary to supply the file as an argument at this time.  
 
-For example, if the original submission with id 123456 consisted of file1.csv, file2.csv and file3.csv, and corrections
-needed to be made to
-file1.csv and file2.csv, the command to fix qa errors will look like:  
-<code>
-vtcmd -b -rs 123456 corrected-file1.csv corrected-file2.csv
-</code>
+  For example, if the original submission with id 123456 consisted of file1.csv, file2.csv, and file3.csv, and corrections
+  needed to be made to
+  file1.csv and file2.csv, the command to fix qa errors will look like:  
+
+  ```bash
+  vtcmd -b -rs 123456 corrected-file1.csv corrected-file2.csv
+  ```
 
 Notice that file3.csv is excluded from the command because no changes needed to be made to that particular file.
 
 **Please note this command should be run once for a submission and should include all of the files that contain
 corrections to data**. i.e do not run the vtcmd once for corrected-file1.csv and another time for corrected-file2.csv.
 If you accidentally omit files containing necessary changes when running the command, please contact the
-HelpDesk at NDAHelp@mail.nih.gov.
+HelpDesk at <NDAHelp@mail.nih.gov>.
 
 Also note that the csv files should contain all of the data that was submitted originally. i.e. **if a csv originally
-had 800 rows and only 3 rows
-needed to be changed, all 800 rows should be present in the csv when running the vtcmd**, not just the 3 rows that
-contain changes. Any data that is left out of the csv will be reflected in data-expected numbers for the collection.
+had 800 rows and only 3 rows needed to be changed, all 800 rows should be present in the csv when running the vtcmd**, not just the 3 rows that contain changes. Any data that is left out of the csv will be reflected in data-expected numbers for the collection.
 
 The script will not upload any associated files that were uploaded during the original submission. It will only be
-necessary
-to upload associated files if they appear in corrected csv files but not in any of the csv files from the original
-submission. This saves
-time during genomic and imaging submissions where associated files can take days to upload.
+necessary to upload associated files if they appear in corrected csv files but not in any of the csv files from the original submission. This saves time during genomic and imaging submissions where associated files can take days to upload.
 
 ## Downloading Data
 
@@ -334,7 +410,7 @@ All files are downloaded automatically to the **~\nda-tools\downloadcmd\packages
 but you can change this by indicating a new directory in the command line to save files.
 **Please note:** the maximum transfer limit of data is **20TB per month.**
 
-- Users can contact the NDA Help Desk at [NDAHelp@mail.nih.gov ](mailto:NDAHelp@mail.nih.gov) and ask for their download
+- Users can contact the NDA Help Desk at [NDAHelp@mail.nih.gov](mailto:NDAHelp@mail.nih.gov) and ask for their download
   threshold to [temporarily] be extended.
 
 #### All Package Data
@@ -343,7 +419,7 @@ All packaged data can be downloaded by passing the package ID:
 
 `downloadcmd -dp <packageID>`
 
-Note: it will NOT download associated files _unless you created your NDA package with associated files_.
+Note: it will NOT download associated files *unless you created your NDA package with associated files*.
 Steps to download associated files are below.
 
 #### Downloading .txt Files
@@ -380,7 +456,7 @@ operations for `arn:aws:sts::618523879050:federated-user/<username>`, where `<us
 For non-public buckets, this will require an update to the bucket policy. The following statement should be added to
 allow the necessary permissions after replacing `<your-s3-bucket>` with the bucket name:
 
-```
+```json
 {
     "Sid": "AllowNDAUpload",
     "Effect": "Allow",
@@ -401,13 +477,16 @@ The following statement should be added to your key's policy:
 
 ```json
 {
-    "Sid": "EnableUseForFederatedNDA",
-    "Effect": "Allow",
-    "Principal": {
-        "AWS":  "arn:aws:iam::618523879050:user/DownloadManager"
-    },
-    "Action": ["kms:GenerateDataKey","kms:Decrypt"],
-    "Resource": "*"
+  "Sid": "EnableUseForFederatedNDA",
+  "Effect": "Allow",
+  "Principal": {
+    "AWS": "arn:aws:iam::618523879050:user/DownloadManager"
+  },
+  "Action": [
+    "kms:GenerateDataKey",
+    "kms:Decrypt"
+  ],
+  "Resource": "*"
 }
 ```
 

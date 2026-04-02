@@ -39,6 +39,7 @@ def download_config_factory(monkeypatch):
             test_args.insert(0, 'downloadcmd')
             m.setattr(sys, 'argv', test_args)
             m.setattr(keyring, 'get_password', mock_get_password)
+            m.setattr(NDATools, 'init_logging', lambda *args, **kwargs: None)
             args = download_parse_args()
             config = NDATools.init_and_create_configuration(args, NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER, auth_req=False)
             config.is_valid_nda_credentials = lambda _: True
@@ -50,7 +51,8 @@ def download_config_factory(monkeypatch):
 @pytest.fixture
 def validation_config_factory():
     def _make_val_config(test_args):
-        with mock.patch.object(sys, 'argv', test_args):
+        with mock.patch.object(sys, 'argv', test_args), \
+                mock.patch.object(NDATools, 'init_logging', lambda *args, **kwargs: None):
             test_args.insert(0, 'vtcmd')
             args = validation_parse_args()
             config = NDATools.init_and_create_configuration(args, NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER, auth_req=False)

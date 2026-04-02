@@ -30,5 +30,7 @@ failed_s3_links_file_*
 
 # python converage data
 .coverage
+coverage.xml
 dist
 nda_tools.egg-info
+.venv/

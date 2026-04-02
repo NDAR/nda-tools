@@ -9,7 +9,7 @@ import pathlib
 import shutil
 import sys
 
-__version__ = '0.6.0'
+__version__ = '0.7.0'
 
 import threading
 from importlib.resources import files
@@ -70,6 +70,7 @@ def check_version():
 NDA_ORGINIZATION_ROOT_FOLDER = os.path.join(os.path.expanduser('~'), 'NDA')
 NDA_TOOLS_ROOT_FOLDER = os.path.join(NDA_ORGINIZATION_ROOT_FOLDER, 'nda-tools')
 NDA_TOOLS_VTCMD_FOLDER = os.path.join(NDA_TOOLS_ROOT_FOLDER, 'vtcmd')
+NDA_TOOLS_NDA_FOLDER = os.path.join(NDA_TOOLS_ROOT_FOLDER, 'nda')
 NDA_TOOLS_DOWNLOADCMD_FOLDER = os.path.join(
     NDA_TOOLS_ROOT_FOLDER, 'downloadcmd')
 NDA_TOOLS_DOWNLOADS_FOLDER = os.path.join(
@@ -81,12 +82,14 @@ NDA_TOOLS_VAL_FOLDER = os.path.join(
     NDA_TOOLS_VTCMD_FOLDER, 'validation_results')
 NDA_TOOLS_SUB_PACKAGE_FOLDER = os.path.join(
     NDA_TOOLS_VTCMD_FOLDER, 'submission_package')
-
+NDA_TOOLS_SUBMISSIONS_FOLDER = os.path.join(
+    NDA_TOOLS_VTCMD_FOLDER, 'submissions')
 NDA_TOOLS_PACKAGE_FILE_METADATA_TEMPLATE = 'package_file_metadata_%s.txt'
 NDA_TOOLS_DEFAULT_LOG_FORMAT = '%(asctime)s:%(levelname)s:%(message)s'
 NDA_TOOLS_SETTINGS_FOLDER = os.path.join(os.path.expanduser('~'), '.NDATools')
 NDA_TOOLS_LOGGING_YML_FILE = os.path.join(NDA_TOOLS_SETTINGS_FOLDER, 'logging.yml')
 NDA_TOOLS_SETTINGS_CFG_FILE = os.path.join(NDA_TOOLS_SETTINGS_FOLDER, 'settings.cfg')
+NDA_TOOLS_NDA_LOGS_FOLDER = os.path.join(NDA_TOOLS_NDA_FOLDER, 'logs')
 
 
 def create_nda_folders():
@@ -105,6 +108,9 @@ def create_nda_folders():
     _create_if_not_exists(NDA_TOOLS_VAL_FOLDER)
     _create_if_not_exists(NDA_TOOLS_SUB_PACKAGE_FOLDER)
     _create_if_not_exists(NDA_TOOLS_SETTINGS_FOLDER)
+    _create_if_not_exists(NDA_TOOLS_SUBMISSIONS_FOLDER)
+    _create_if_not_exists(NDA_TOOLS_NDA_FOLDER)
+    _create_if_not_exists(NDA_TOOLS_NDA_LOGS_FOLDER)
 
     if not pathlib.Path(NDA_TOOLS_LOGGING_YML_FILE).is_file():
         t = files('NDATools').joinpath('clientscripts/config/logging.yml')
@@ -119,7 +125,7 @@ def create_nda_folders():
     os.environ['PYTHONWARNINGS'] = 'ignore'
 
 
-def prerun_checks_and_setup():
+def init_checks_and_program_folders():
     check_version()
     create_nda_folders()
 
@@ -158,7 +164,7 @@ def get_username():
 
 def _get_user_credentials(config) -> Tuple[str, str]:
     # Adding NDATools dependencies to the start of __init__ can cause errors during installation, so keep import here.
-    from NDATools.upload.submission.api import UserApi
+    from NDATools.upload.submission.api import RasAuthApi
     # username is fetched from settings.cfg, and it is not present at the first time use of nda-tools
     # display NDA account instructions
     global _get_keyring
@@ -179,30 +185,45 @@ def _get_user_credentials(config) -> Tuple[str, str]:
     while not password:
         password = _get_password(username)
 
-    # validate credentials
-    api = UserApi(config.user_api_endpoint)
-    while not api.is_valid_nda_credentials(username, password):
+    # validate credentials and obtain token
+    api = RasAuthApi(config.ras_login_api_endpoint)
+    token = api.login(username, password)
+    while not token:
         logger.info('Username/password combination is incorrect')
         _get_keyring = False
         username = get_username()
         password = _get_password(username)
+        token = api.login(username, password)
     _try_save_password_keyring(username, password)
-    return username, password
+    return username, password, token
 
 
-def init_and_create_configuration(args, logs_folder, auth_req=True):
-    from NDATools.Configuration import ClientConfiguration, LoggingConfiguration
-    prerun_checks_and_setup()
+def init_logging(args, logs_folder):
+    from NDATools.Configuration import LoggingConfiguration
     LoggingConfiguration.load_config(logs_folder, args.verbose, args.log_dir)
+
+
+def init(args, logs_folder):
+    init_checks_and_program_folders()
+    init_logging(args, logs_folder)
+
+
+def create_configuration(args, auth_req=True):
+    from NDATools.Configuration import ClientConfiguration
     config = ClientConfiguration(args)
     if auth_req:
         authenticate(config)
     return config
 
 
+def init_and_create_configuration(args, logs_folder, auth_req=True):
+    init(args, logs_folder)
+    return create_configuration(args, auth_req)
+
+
 def authenticate(config):
-    username, password = _get_user_credentials(config)
-    config.update_with_auth(username, password)
+    username, password, token = _get_user_credentials(config)
+    config.update_with_auth(username, password, token)
     return config
 
 

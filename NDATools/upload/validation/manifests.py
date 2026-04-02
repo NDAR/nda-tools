@@ -1,7 +1,11 @@
+import hashlib
+import json
 import logging
 import os
+import re
 import traceback
 from os import PathLike
+from pathlib import Path
 from typing import List, Union
 
 from tqdm import tqdm
@@ -126,3 +130,105 @@ class ManifestFileUploader:
             manifest_dirs = [manifest_dirs]
 
         self.uploader.start_upload(manifest_dirs, MFUploadContext(creds))
+
+
+class ManifestRecord:
+    def __init__(self, path, name, md5sum=None, size=None):
+        self.path = path
+        self.name = name
+        self.md5sum = md5sum
+        self.size = size
+
+    def to_dict(self):
+        d = {
+            "path": self.path,
+            "name": self.name
+        }
+        if self.md5sum is not None:
+            d["md5sum"] = self.md5sum
+        if self.size is not None:
+            d["size"] = self.size
+        return d
+
+
+def generate_manifests(subject_directory, output_directory, include_regex='.*', exclude_regex=None,
+                       include_checksum=False, include_size=False):
+    subject_path = Path(subject_directory).resolve()
+    output_path = Path(output_directory).resolve()
+
+    include_re = re.compile(include_regex) if include_regex else None
+    exclude_re = re.compile(exclude_regex) if exclude_regex else None
+
+    msg = f'generating manifests'
+    if include_re:
+        msg += f" using the include_regex {include_regex}"
+        if exclude_re:
+            msg += " and"
+    if exclude_re:
+        msg += f" using the exclude_regex {exclude_regex}"
+    msg += f" in {subject_directory} and saving them to {output_directory}"
+    if include_regex and exclude_regex:
+        msg += " If a file matches both include_regex and exclude_regex, it will be excluded"
+    logger.info(msg)
+
+    # Scan the subject-directory and create a manifest for each directory found.
+    empty_dirs = []
+    for entry in os.scandir(subject_path):
+        if entry.is_dir(follow_symlinks=False):
+            dir_path = Path(entry.path)
+            # name of the folder in the subject-directory should be the name of the manifest-file that is created
+            manifest_name = entry.name
+            records = []
+
+            for root, dirs, files in os.walk(dir_path):
+
+                for file in files:
+                    file_path = Path(root) / file
+                    if file_path.is_symlink():
+                        continue
+
+                    # Relative path calculation
+                    # if subject_directory is /a/b and we are looking at /a/b/c/d.txt,
+                    # the path should be c/d.txt.
+                    rel_path = file_path.relative_to(subject_path)
+
+                    # Regex filtering
+                    if exclude_re and exclude_re.search(str(rel_path)):
+                        logger.debug(f"Excluding file {str(rel_path)} due to regex exclusion")
+                        continue
+                    if include_re and not include_re.search(str(rel_path)):
+                        logger.debug(f"Excluding file {str(rel_path)} due to regex inclusion")
+                        continue
+
+                    md5sum = None
+                    if include_checksum:
+                        hash_md5 = hashlib.md5()
+                        with open(file_path, "rb") as f:
+                            for chunk in iter(lambda: f.read(4096), b""):
+                                hash_md5.update(chunk)
+                        md5sum = hash_md5.hexdigest()
+
+                    size = None
+                    if include_size:
+                        size = file_path.stat().st_size
+
+                    record = ManifestRecord(str(rel_path), file, md5sum, size)
+                    records.append(record.to_dict())
+            if not records:
+                empty_dirs.append(dir_path)
+            else:
+                manifest_file = output_path / f"{manifest_name}.json"
+                with open(manifest_file, 'w') as f:
+                    json.dump({"files": records}, f, indent=2)
+                logged_name = f"{str(Path(output_directory) / manifest_name)}.json"
+                logger.info(
+                    f"Generated {logged_name} for directory {dir_path} containing {len(records)} files")
+
+    if empty_dirs:
+        dir_str = '\n'.join([str(d) for d in empty_dirs])
+        logger.warning(
+            f"No manifests were created for the following directories: \n{dir_str}")
+        if exclude_re or include_re:
+            logger.warning(
+                "If manifests were supposed to be created for these directories, please check your regex patterns."
+                "\nHint: you can rerun the command with the '--verbose' option to see which files were included/excluded because of the regular-expression pattern")

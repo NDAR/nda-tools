@@ -1,7 +1,5 @@
 import argparse
 import logging
-import random
-import traceback
 
 from tqdm import tqdm
 
@@ -13,9 +11,15 @@ from NDATools.Utils import get_non_blank_input, get_int_input
 from NDATools.upload.cli import QaResults
 from NDATools.upload.submission.api import CollectionApi
 from NDATools.upload.submission.resubmission import check_replacement_authorized
-from NDATools.upload.validation.api import ValidationV2Api
 
 logger = logging.getLogger(__name__)
+
+
+def positive_int(value):
+    ivalue = int(value)
+    if ivalue <= 0:
+        raise argparse.ArgumentTypeError(f"{value} is not a positive integer")
+    return ivalue
 
 
 def parse_args():
@@ -45,7 +49,7 @@ def parse_args():
     parser.add_argument('-b', '--buildPackage', action='store_true',
                         help='Flag whether to construct the submission package')
 
-    parser.add_argument('-c', '--collectionID', metavar='<arg>', type=int, action='store',
+    parser.add_argument('-c', '--collectionID', metavar='<arg>', type=positive_int, action='store',
                         help='The integer part of an NDA collection ID, i.e., for collection C1234, enter 1234')
 
     parser.add_argument('-d', '--description', metavar='<arg>', type=str, action='store',
@@ -70,10 +74,10 @@ def parse_args():
     parser.add_argument('-j', '--JSON', action='store_true',
                         help='Flag whether to additionally download validation results in JSON format.')
 
-    parser.add_argument('-wt', '--workerThreads', metavar='<arg>', type=int, action='store',
+    parser.add_argument('-wt', '--workerThreads', metavar='<arg>', type=positive_int, action='store',
                         help='Number of worker threads')
 
-    parser.add_argument('-bc', '--batch', metavar='<arg>', type=int, action='store',
+    parser.add_argument('-bc', '--batch', metavar='<arg>', type=positive_int, action='store',
                         help='Batch size', default=50)
 
     parser.add_argument('--hideProgress', action='store_true', help='Hides upload/processing progress')
@@ -81,15 +85,15 @@ def parse_args():
     parser.add_argument('-f', '--force', action='store_true',
                         help='Ignores all warnings and continues without prompting for input from the user.')
 
-    parser.add_argument('--validation-timeout', default=300, type=int, action='store',
+    parser.add_argument('--validation-timeout', default=300, type=positive_int, action='store',
                         help='Timeout in seconds until the program errors out with an error. '
-                             'In most cases the default value of ''300'' seconds should be sufficient to validate submissions however it may'
+                             'In most cases the default value of "300" seconds should be sufficient to validate submissions however it may'
                              'be necessary to increase this value to a specific duration.')
     parser.add_argument('--verbose', action='store_true',
                         help='Enables detailed logging.')
 
     parser.add_argument('--log-dir', type=str, action='store', help='Customize the file directory of logs. '
-                                                                    'If this value is not provided or the provided directory does not exist, logs will be saved to NDA/nda-tools/vtcmd/logs inside your root folder.')
+                                                                    'If this value is not provided or the provided directory does not exist, logs will be saved to NDA/nda-tools/vtcmd/logs inside your home folder.')
 
     args = parser.parse_args()
 
@@ -108,16 +112,11 @@ def check_args(args, config):
 
 def validate(args, config):
     logger.info(f'\n[=== Validating {len(args.files)} files ===]')
-    # Perform the validation using v1 or v2 endpoints.
     logger.info(f'Running structural checks on {len(args.files)} files...')
-    if config.v2_enabled:
-        logger.debug('Using the new validation API.')
-        if not config.is_authenticated():
-            authenticate(config)
-        validated_files = config.upload_cli.validate(args.files, args.manifestPath)
-    else:
-        logger.debug('Using the old validation API.')
-        validated_files = config.upload_cli.validate_v1(args.files, config.worker_threads)
+    logger.debug('Using the validation API.')
+    if not config.is_authenticated():
+        authenticate(config)
+    validated_files = config.upload_cli.validate(args.files, args.manifestPath)
 
     system_errors = list(filter(lambda x: x.system_error(), validated_files))
     if system_errors:
@@ -201,7 +200,7 @@ def collect_submission_parameters(config: ClientConfiguration):
         if not id in c_ids:
             logger.info('Invalid collection ID')
             logger.error(f'You do not have access to submit to the collection: {id} ')
-            logger.info(f'Please choose from one of the following collections: ')
+            logger.info('Please choose from one of the following collections: ')
             for coll in collections:
                 logger.info('{}: {}'.format(coll.id, coll.title))
 
@@ -236,34 +235,12 @@ def submit(validated_files, config):
     print_submission_complete_message(submission, replacement=False)
 
 
-def set_validation_feature_flags(config):
-    """Enable v2 of validation svc for some percentage of requests"""
-    try:
-        api = ValidationV2Api(config.validation_api_endpoint, None, None)
-        percent = api.get_v2_routing_percent()
-        logger.debug('v2_routing percent: {}'.format(percent))
-        # route X% of traffic to the new validation API
-        config.v2_enabled = random.randint(1, 100) <= (percent * 100)
-
-        percent = api.get_qa_routing_percent()
-        logger.debug('qa enabled percent: {}'.format(percent))
-        config.qa_enabled = random.randint(1, 100) <= (percent * 100)
-    except:
-        traceback.print_exc()
-        logger.warning('Could not get validation api config. Using default values.')
-        config.v2_enabled = True
-        config.qa_enabled = True
-
-
 def main():
     # confirm latest version of nda-tools is installed
     args = parse_args()
     auth_req = True if args.buildPackage or args.resume or args.replace_submission or args.username else False
     config = NDATools.init_and_create_configuration(args, NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER, auth_req=auth_req)
     check_args(args, config)
-
-    # route some percentage of requests to the new validation endpoints
-    set_validation_feature_flags(config)
 
     if args.resume:
         # submission_id is stored in positional arg 'files'
