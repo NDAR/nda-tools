@@ -92,28 +92,6 @@ class UploadProgress(BaseModel):
     uploaded_file_count: int
 
 
-class BatchError:
-    def __init__(self, file: AssociatedFile, message: str):
-        self.file = file
-        self.message = message
-
-
-class BatchUpdate:
-    def __init__(self, file: AssociatedFile, status: AssociatedFileStatus, size: None):
-        self.status = status
-        self.file = file
-        self.size = size
-
-    def to_payload(self):
-        payload = {
-            "id": self.file.id,
-            "status": self.status,
-        }
-        if self.size:
-            payload["size"] = self.size
-        return payload
-
-
 class SubmissionApi:
     def __init__(self, submission_api_endpoint, auth, reauth_func=None, create_submission_timeout=300, batch_size=50):
         self.api_endpoint = submission_api_endpoint
@@ -156,15 +134,6 @@ class SubmissionApi:
             [self.api_endpoint, str(submission_id), 'files/batchMultipartUploadCredentials']),
             payload=json.dumps(file_ids), auth=self.auth, reauth_func=self.reauth_func)
         return [AssociatedFileUploadCreds(**c) for c in credentials_list['credentials']]
-
-    def batch_update_associated_file_status(self, submission_id, updates: List[BatchUpdate]):
-        list_data = list(map(lambda x: x.to_payload(), updates))
-        url = "/".join([self.api_endpoint, str(submission_id), 'files/batchUpdate'])
-        data = json.dumps(list_data)
-        response = put_request(url, payload=data, auth=self.auth, reauth_func=self.reauth_func)
-        # hash files by id to make searching easier
-        lookup = {update.file.id: update.file for update in updates}
-        return [BatchError(lookup[e.id], e['errorMessage']) for e in response['errors']]
 
     def get_upload_progress(self, submission_id):
         response = get_request("/".join([self.api_endpoint, str(submission_id), "upload-progress"]), auth=self.auth,

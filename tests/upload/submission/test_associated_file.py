@@ -6,7 +6,7 @@ import sqlite3
 from botocore.exceptions import ClientError
 
 from NDATools.upload.submission.api import SubmissionStatus, Submission, NdaCollection, SubmissionApi, \
-    AssociatedFile, AssociatedFileStatus, AssociatedFileUploadCreds, BatchError, UploadProgress
+    AssociatedFile, AssociatedFileStatus, AssociatedFileUploadCreds, UploadProgress
 from NDATools.upload.submission.associated_file import AssociatedFileUploader
 from NDATools.Utils import SqlUtils
 
@@ -116,7 +116,7 @@ def test_start_upload_happy_path(mock_get_cli, mock_s3_client, get_submission, d
 
     verify_submission_api(mock_submission_api=submission_api_mock,
                           get_files_by_page_call_ct=1,
-                          get_upload_credentials_call_ct=2, batch_update_associated_file_status_call_ct=2)
+                          get_upload_credentials_call_ct=2)
     assert mock_s3_client.upload_file.call_count == 2
 
 
@@ -140,7 +140,7 @@ def test_start_upload_files_not_found_reenter(mock_get_cli, mock_input, mock_s3_
 
     verify_submission_api(mock_submission_api=submission_api_mock,
                           get_files_by_page_call_ct=1,
-                          get_upload_credentials_call_ct=3, batch_update_associated_file_status_call_ct=2)
+                          get_upload_credentials_call_ct=3)
     assert mock_s3_client.upload_file.call_count == 2
     assert mock_input.call_count == 1
 
@@ -165,7 +165,7 @@ def test_start_upload_files_not_found_exit(mock_get_cli, mock_input, mock_exit, 
 
     verify_submission_api(mock_submission_api=submission_api_mock,
                           get_files_by_page_call_ct=1,
-                          get_upload_credentials_call_ct=2, batch_update_associated_file_status_call_ct=1)
+                          get_upload_credentials_call_ct=2)
     assert mock_s3_client.upload_file.call_count == 1
     assert mock_input.call_count == 0
     assert mock_exit.call_count == 1
@@ -192,7 +192,7 @@ def test_start_upload_s3_upload_error(mock_get_cli, mock_exit, mock_s3_client, g
 
     verify_submission_api(mock_submission_api=submission_api_mock,
                           get_files_by_page_call_ct=1,
-                          get_upload_credentials_call_ct=1, batch_update_associated_file_status_call_ct=0)
+                          get_upload_credentials_call_ct=1)
     assert mock_s3_client.upload_file.call_count == 1
     assert mock_exit.call_count == 1
 
@@ -217,7 +217,7 @@ def test_start_upload_resume_upload(mock_get_cli, mock_s3_client, get_submission
 
     verify_submission_api(mock_submission_api=submission_api_mock,
                           get_files_by_page_call_ct=1,
-                          get_upload_credentials_call_ct=2, batch_update_associated_file_status_call_ct=2)
+                          get_upload_credentials_call_ct=2)
     assert mock_s3_client.upload_file.call_count == 1
     assert mock_s3_client.head_object.call_count == 2
 
@@ -255,7 +255,7 @@ def test_start_upload_resume_xxl_upload_with_already_completed_files(mock_get_cl
 
     verify_submission_api(mock_submission_api=submission_api_mock,
                           get_files_by_page_call_ct=2,
-                          get_upload_credentials_call_ct=2, batch_update_associated_file_status_call_ct=2)
+                          get_upload_credentials_call_ct=2)
     assert mock_s3_client.upload_file.call_count == 2
     assert mock_s3_client.head_object.call_count == 2
 
@@ -269,16 +269,13 @@ def test_start_upload_resume_ignores_already_complete_status_errors(mock_get_cli
     mock_get_cli.return_value = mock_s3_client
     submission_api_mock.get_files_by_page.side_effect = [[associated_file1], []]
     submission_api_mock.get_upload_credentials.side_effect = [[upload_creds1]]
-    submission_api_mock.batch_update_associated_file_status.side_effect = [[
-        BatchError(associated_file1, 'Cannot change "status" for submission file 111 because it is already Complete')
-    ]]
 
     associated_file_uploader = AssociatedFileUploader(submission_api_mock, 1, False, False, 1)
     associated_file_uploader.start_upload(get_submission, search_folders, True, datadir)
 
     verify_submission_api(mock_submission_api=submission_api_mock,
                           get_files_by_page_call_ct=1,
-                          get_upload_credentials_call_ct=1, batch_update_associated_file_status_call_ct=1)
+                          get_upload_credentials_call_ct=1)
     assert mock_s3_client.upload_file.call_count == 0
 
 
@@ -309,7 +306,7 @@ def test_start_upload_rebuilds_incomplete_submission_db(mock_get_cli, mock_s3_cl
                           associated_file_count=2, uploaded_file_count=2)
     verify_submission_api(mock_submission_api=submission_api_mock,
                           get_files_by_page_call_ct=1,
-                          get_upload_credentials_call_ct=2, batch_update_associated_file_status_call_ct=2)
+                          get_upload_credentials_call_ct=2)
     assert mock_s3_client.upload_file.call_count == 2
 
 
@@ -325,8 +322,6 @@ def verify_upload_context(upload_context, submission_id, resuming_upload, search
     assert len(upload_context.files_not_found) == num_of_files_not_found
 
 
-def verify_submission_api(mock_submission_api, get_files_by_page_call_ct, get_upload_credentials_call_ct,
-                          batch_update_associated_file_status_call_ct):
+def verify_submission_api(mock_submission_api, get_files_by_page_call_ct, get_upload_credentials_call_ct):
     assert mock_submission_api.get_files_by_page.call_count == get_files_by_page_call_ct
     assert mock_submission_api.get_upload_credentials.call_count == get_upload_credentials_call_ct
-    assert mock_submission_api.batch_update_associated_file_status.call_count == batch_update_associated_file_status_call_ct
