@@ -69,7 +69,6 @@ def submission_api_mock(associated_file1, associated_file2, upload_creds1, uploa
     mock_submission_api = MagicMock(spec=SubmissionApi)
     mock_submission_api.get_files_by_page.side_effect = [[associated_file1, associated_file2], []]
     mock_submission_api.get_upload_credentials.side_effect = [[upload_creds1], [upload_creds2]]
-    mock_submission_api.batch_update_associated_file_status.side_effect = [None, None]
     mock_submission_api.get_upload_progress.return_value = UploadProgress(associated_file_count=2, uploaded_file_count=0)
     return mock_submission_api
 

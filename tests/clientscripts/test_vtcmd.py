@@ -240,6 +240,8 @@ def test_submit_no_files(monkeypatch, upload_creds, ndar_subject01, user_collect
         # mock the submission api calls
         m.setattr(NDATools.upload.submission.api.SubmissionApi, 'create_submission',
                   MagicMock(return_value=submission('test', 'test', 1860, SubmissionStatus.SUBMITTED)))
+        m.setattr(NDATools.upload.submission.api.SubmissionApi, 'get_submission',
+                  MagicMock(return_value=submission('test', 'test', 1860, SubmissionStatus.SUBMITTED_PROTOTYPE)))
         # set mock logger so we can run tests on logged stmts
         m.setattr(NDATools.clientscripts.vtcmd, 'logger', MockLogger())
         NDATools.clientscripts.vtcmd.main()
