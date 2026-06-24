@@ -240,6 +240,8 @@ def test_submit_no_files(monkeypatch, upload_creds, ndar_subject01, user_collect
         # mock the submission api calls
         m.setattr(NDATools.upload.submission.api.SubmissionApi, 'create_submission',
                   MagicMock(return_value=submission('test', 'test', 1860, SubmissionStatus.SUBMITTED)))
+        m.setattr(NDATools.upload.submission.api.SubmissionApi, 'get_submission',
+                  MagicMock(return_value=submission('test', 'test', 1860, SubmissionStatus.SUBMITTED_PROTOTYPE)))
         # set mock logger so we can run tests on logged stmts
         m.setattr(NDATools.clientscripts.vtcmd, 'logger', MockLogger())
         NDATools.clientscripts.vtcmd.main()
@@ -266,6 +268,8 @@ def test_resume(monkeypatch, upload_creds, ndar_subject01, user_collections, com
         # first return a completed submission and confirm that the
         m.setattr(NDATools.upload.submission.api.SubmissionApi, 'get_submission',
                   MagicMock(return_value=completed_submission))
+        m.setattr(NDATools.upload.submission.api.SubmissionApi, 'wait_submission_complete',
+                  MagicMock(return_value=completed_submission))
 
         # set mock logger so we can run tests on logged stmts
         m.setattr(NDATools.clientscripts.vtcmd, 'logger', MockLogger())
@@ -277,10 +281,13 @@ def test_resume(monkeypatch, upload_creds, ndar_subject01, user_collections, com
         NDATools.clientscripts.vtcmd.logger.reset_mock()
         m.setattr(NDATools.upload.submission.api.SubmissionApi, 'get_submission',
                   MagicMock(side_effect=[uploading_submission, completed_submission]))
+        m.setattr(NDATools.upload.submission.api.SubmissionApi, 'wait_submission_complete',
+                  MagicMock(return_value=completed_submission))
         m.setattr(NDATools.upload.submission.associated_file.AssociatedFileUploader, 'start_upload',
                   MagicMock(return_value=None))
         NDATools.clientscripts.vtcmd.main()
-        assert NDATools.upload.submission.api.SubmissionApi.get_submission.call_count == 2
+        assert NDATools.upload.submission.api.SubmissionApi.get_submission.call_count == 1
+        assert NDATools.upload.submission.api.SubmissionApi.wait_submission_complete.call_count == 1
         assert NDATools.upload.submission.associated_file.AssociatedFileUploader.start_upload.call_count == 1
 
 
@@ -345,6 +352,8 @@ def test_replace_submission(monkeypatch, upload_creds, ndar_subject01, image03, 
                   MagicMock(return_value=submission_history))
         m.setattr(NDATools.upload.submission.api.SubmissionApi, 'replace_submission',
                   MagicMock(return_value=uploading_submission))
+        m.setattr(NDATools.upload.submission.api.SubmissionApi, 'wait_submission_complete',
+                  MagicMock(side_effect=[completed_submission, completed_submission]))
 
         # mock submission-package call
         m.setattr(NDATools.upload.submission.api.SubmissionPackageApi, 'build_package',
@@ -401,7 +410,7 @@ def test_submit_with_manifests(monkeypatch, upload_creds, fmriresults01, fmrires
         # mock submission api calls
         m.setattr(NDATools.upload.submission.api.SubmissionApi, 'create_submission',
                   MagicMock(side_effect=[uploading_submission]))
-        m.setattr(NDATools.upload.submission.api.SubmissionApi, 'get_submission',
+        m.setattr(NDATools.upload.submission.api.SubmissionApi, 'wait_submission_complete',
                   MagicMock(side_effect=[completed_submission]))
 
         # mock submission-package call

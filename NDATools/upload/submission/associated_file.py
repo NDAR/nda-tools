@@ -14,7 +14,7 @@ from NDATools.Utils import get_s3_client_with_config, deconstruct_s3_url, get_di
 from NDATools.upload.batch_file_uploader import BatchFileUploader, UploadContext, Uploadable, UploadError, \
     files_not_found_msg, BatchResults
 from NDATools.upload.submission.api import Submission, AssociatedFile, AssociatedFileUploadCreds, SubmissionApi, \
-    BatchUpdate, AssociatedFileStatus, UploadProgress
+    UploadProgress
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +127,7 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
     def _post_batch_hook(self, batch_results: BatchResults):
         if len(batch_results.success) > 0:
             self.upload_context.display_missing_files_message = True
-            self._batch_update_associated_file_status(batch_results.success)
+            self._mark_files_complete_in_db(batch_results.success)
         self.upload_context.files_not_found.extend(batch_results.files_not_found)
         self.upload_context.upload_progress.uploaded_file_count += len(batch_results.success)
 
@@ -209,33 +209,13 @@ class _AssociatedBatchFileUploader(BatchFileUploader):
                 self._make_and_connect_submission_db()
         self._calculate_upload_progress()
 
-    def _batch_update_associated_file_status(self, updates: List[AFUploadable]):
-        self._mark_files_complete_in_api(updates)
-        self._mark_files_complete_in_db(updates)
-
-    def _mark_files_complete_in_db(self, uploaded: List[Uploadable]):
+    def _mark_files_complete_in_db(self, uploaded: List[AFUploadable]):
         ids = [up.af_file.id for up in uploaded]
         id_chunks = [ids[i:i + 1000] for i in range(0, len(ids), 1000)]
         for id_chunk in id_chunks:
             ids_clause = ','.join([str(file_id) for file_id in id_chunk])
             SqlUtils.update(self.upload_context.db_connection, "associated_files", "status='Complete'",
                             f"id in ({ids_clause})")
-
-    def _mark_files_complete_in_api(self, uploaded: List[AFUploadable]):
-        submission_id = self.upload_context.submission.submission_id
-        updates = [BatchUpdate(file.af_file, AssociatedFileStatus.COMPLETE, file.calculate_size()) for file in uploaded]
-        errors = None
-        if len(updates) > 0:
-            errors = self.api.batch_update_associated_file_status(submission_id, updates)
-        if errors:
-            real_errors = [e for e in errors if not e.message.startswith('Cannot change "status" for submission file')]
-            if real_errors:
-                for error in real_errors:
-                    logger.error(f'Error updating status of file {error.file.file_user_path}: {error.message}')
-                logger.error(f'There were errors uploading files. \r\n'
-                             f'Please try resuming the submission by running vtcmd -r {submission_id}\r\n'
-                             f'If the error persists, contact NDAHelp@mail.nih.gov for help.')
-                exit_error()
 
     def _calculate_upload_progress(self):
         total_file_count = SqlUtils.query(self.upload_context.db_connection, "associated_files", "count(*)")[0][0]

@@ -92,28 +92,6 @@ class UploadProgress(BaseModel):
     uploaded_file_count: int
 
 
-class BatchError:
-    def __init__(self, file: AssociatedFile, message: str):
-        self.file = file
-        self.message = message
-
-
-class BatchUpdate:
-    def __init__(self, file: AssociatedFile, status: AssociatedFileStatus, size: None):
-        self.status = status
-        self.file = file
-        self.size = size
-
-    def to_payload(self):
-        payload = {
-            "id": self.file.id,
-            "status": self.status,
-        }
-        if self.size:
-            payload["size"] = self.size
-        return payload
-
-
 class SubmissionApi:
     def __init__(self, submission_api_endpoint, auth, reauth_func=None, create_submission_timeout=300, batch_size=50):
         self.api_endpoint = submission_api_endpoint
@@ -149,22 +127,13 @@ class SubmissionApi:
     def create_submission(self, package_id: str) -> Submission:
         post_request("/".join([self.api_endpoint, package_id]) + "?async=true", auth=self.auth,
                      deserialize_handler=DeserializeHandler.none, reauth_func=self.reauth_func)
-        return self._wait_submission_complete(package_id)
+        return self.wait_submission_complete(package_id=package_id)
 
     def get_upload_credentials(self, submission_id, file_ids) -> List[AssociatedFileUploadCreds]:
         credentials_list = post_request("/".join(
             [self.api_endpoint, str(submission_id), 'files/batchMultipartUploadCredentials']),
             payload=json.dumps(file_ids), auth=self.auth, reauth_func=self.reauth_func)
         return [AssociatedFileUploadCreds(**c) for c in credentials_list['credentials']]
-
-    def batch_update_associated_file_status(self, submission_id, updates: List[BatchUpdate]):
-        list_data = list(map(lambda x: x.to_payload(), updates))
-        url = "/".join([self.api_endpoint, str(submission_id), 'files/batchUpdate'])
-        data = json.dumps(list_data)
-        response = put_request(url, payload=data, auth=self.auth, reauth_func=self.reauth_func)
-        # hash files by id to make searching easier
-        lookup = {update.file.id: update.file for update in updates}
-        return [BatchError(lookup[e.id], e['errorMessage']) for e in response['errors']]
 
     def get_upload_progress(self, submission_id):
         response = get_request("/".join([self.api_endpoint, str(submission_id), "upload-progress"]), auth=self.auth,
@@ -211,18 +180,25 @@ class SubmissionApi:
             logger.error('\nIf the error persists, please email NDAHelp@mail.nih.gov for help in resolving this error')
             exit_error()
 
-    def _wait_submission_complete(self, package_id):
-        # poll the versions endpoint until a new one is created or until we timeout
+    def wait_submission_complete(self, *, package_id=None, submission_id=None):
+        # poll the versions endpoint until a new one is created or until we time out
         end_time = datetime.timedelta(seconds=self.create_submission_timeout) + datetime.datetime.now()
+
         while True:
             if datetime.datetime.now() > end_time:
                 logger.error("Timed out waiting for submission to get created.")
                 logger.error('\nPlease email NDAHelp@mail.nih.gov for help in resolving this error')
                 exit_error()
-            submission = self._query_submissions_by_package_id(package_id)
-            if submission:
-                logger.debug(f"Submission: {submission.submission_id}")
-                return submission
+            if package_id:
+                submission = self._query_submissions_by_package_id(package_id)
+                if submission:
+                    logger.debug(f"Submission: {submission.submission_id}")
+                    return submission
+            if submission_id:
+                submission = self.get_submission(submission_id)
+                if submission and submission.status == SubmissionStatus.SUBMITTED_PROTOTYPE:
+                    return submission
+
             time.sleep(10)
 
     def _query_submissions_by_package_id(self, package_id):

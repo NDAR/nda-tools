@@ -221,7 +221,7 @@ def test_download_local(monkeypatch, download_mock2, download_request):
         m.setattr(os, 'rename', MagicMock())
         download.download_local(download_request)
         assert download_request.actual_file_size == 2
-        assert os.rename.called_with(download_request.partial_download_abs_path,
+        os.rename.assert_called_with(download_request.partial_download_abs_path,
                                      download_request.completed_download_abs_path)
         assert download_request.nda_s3_url == 's3://nda-central/collection-1860/submission-12345/testing.txt'
 
@@ -235,7 +235,7 @@ def test_download_local(monkeypatch, download_mock2, download_request):
         m.setattr(os.path, 'getsize', MagicMock(return_value=1))
         download.download_local(download_request)
         assert download_request.actual_file_size == 2
-        assert mock_session.headers.update.called_once_with({'Range': 'bytes=1-'})
+        mock_session.return_value.__enter__.return_value.headers.update.assert_called_once_with({'Range': 'bytes=1-'})
 
     # test that a download is skipped when the file is already downloaded
     with monkeypatch.context() as m:
@@ -273,12 +273,17 @@ def test_download_to_s3(monkeypatch, download_mock2, download_request):
         m.setattr(s3_session, 'resource', MagicMock(return_value=s3_resource))
         m.setattr(s3_client, 'head_object', MagicMock(return_value=head_object_response))
         download.download_to_s3(download_request)
-        assert s3_resource.meta.client.copy.called_once_with({
+
+        copy_call = s3_resource.meta.client.copy.call_args
+
+        assert copy_call.args[:3] == ({
             'Bucket': 'nda-central',
             'Key': 'collection-1860/submission-12345/testing.txt',
         }, 'personal-bucket', 'prefix/image03/testing.txt')
-        assert 'Config' in s3_resource.meta.client.copy.call_args_list[0].kwargs
-        assert 'Callback' in s3_resource.meta.client.copy.call_args_list[0].kwargs
+
+        assert copy_call.kwargs['ExtraArgs'] == {'ACL': 'bucket-owner-full-control'}
+        assert 'Config' in copy_call.kwargs
+        assert 'Callback' in copy_call.kwargs
 
 
 # line 552
@@ -358,7 +363,7 @@ def test_handle_download_exception(monkeypatch, download_mock2, download_request
         m.setattr(download, 'write_to_failed_download_link_file', MagicMock())
         m.setattr(NDATools.Download.logger, 'error', MockLogger())
         download.handle_download_exception(download_request, Exception('test'), failed_s3_links_file)
-        assert download.write_to_failed_download_link_file.called_once_with(failed_s3_links_file)
+        download.write_to_failed_download_link_file.assert_called_once_with(failed_s3_links_file, s3_link=download_request.presigned_url, source_uri=download_request.nda_s3_url)
 
     # test extra logging for 404 error
     not_found_error = HTTPError(response=Response(status_code=404))
@@ -366,7 +371,7 @@ def test_handle_download_exception(monkeypatch, download_mock2, download_request
         m.setattr(download, 'write_to_failed_download_link_file', MagicMock())
         m.setattr(NDATools.Download.logger, 'error', MockLogger())
         download.handle_download_exception(download_request, not_found_error, failed_s3_links_file)
-        assert download.write_to_failed_download_link_file.called_once_with(failed_s3_links_file)
+        download.write_to_failed_download_link_file.assert_called_once_with(failed_s3_links_file, s3_link=download_request.presigned_url, source_uri=download_request.nda_s3_url)
         assert NDATools.Download.logger.error.any_call_contains('This path is incorrect')
 
     # test extra logging for 403 error
@@ -375,7 +380,7 @@ def test_handle_download_exception(monkeypatch, download_mock2, download_request
         m.setattr(download, 'write_to_failed_download_link_file', MagicMock())
         m.setattr(NDATools.Download.logger, 'error', MockLogger())
         download.handle_download_exception(download_request, forbidden_error, failed_s3_links_file)
-        assert download.write_to_failed_download_link_file.called_once_with(failed_s3_links_file)
+        download.write_to_failed_download_link_file.assert_called_once_with(failed_s3_links_file, s3_link=download_request.presigned_url, source_uri=download_request.nda_s3_url)
         assert NDATools.Download.logger.error.any_call_contains('This is a private bucket')
 
     # test extra logging for s3-to-s3 transfer errors
@@ -384,7 +389,7 @@ def test_handle_download_exception(monkeypatch, download_mock2, download_request
         m.setattr(NDATools.Download.logger, 'error', MockLogger())
         download.handle_download_exception(download_request, Exception('operation: Access Denied'),
                                            failed_s3_links_file)
-        assert download.write_to_failed_download_link_file.called_once_with(failed_s3_links_file)
+        download.write_to_failed_download_link_file.assert_called_once_with(failed_s3_links_file, s3_link=download_request.presigned_url, source_uri=download_request.nda_s3_url)
         assert NDATools.Download.logger.error.any_call_contains(
             'This error is likely caused by a misconfiguration on the target s3 bucket')
 
