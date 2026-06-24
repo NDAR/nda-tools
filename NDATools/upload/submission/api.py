@@ -127,7 +127,7 @@ class SubmissionApi:
     def create_submission(self, package_id: str) -> Submission:
         post_request("/".join([self.api_endpoint, package_id]) + "?async=true", auth=self.auth,
                      deserialize_handler=DeserializeHandler.none, reauth_func=self.reauth_func)
-        return self._wait_submission_complete(package_id)
+        return self.wait_submission_complete(package_id=package_id)
 
     def get_upload_credentials(self, submission_id, file_ids) -> List[AssociatedFileUploadCreds]:
         credentials_list = post_request("/".join(
@@ -180,18 +180,25 @@ class SubmissionApi:
             logger.error('\nIf the error persists, please email NDAHelp@mail.nih.gov for help in resolving this error')
             exit_error()
 
-    def _wait_submission_complete(self, package_id):
-        # poll the versions endpoint until a new one is created or until we timeout
+    def wait_submission_complete(self, *, package_id=None, submission_id=None):
+        # poll the versions endpoint until a new one is created or until we time out
         end_time = datetime.timedelta(seconds=self.create_submission_timeout) + datetime.datetime.now()
+
         while True:
             if datetime.datetime.now() > end_time:
                 logger.error("Timed out waiting for submission to get created.")
                 logger.error('\nPlease email NDAHelp@mail.nih.gov for help in resolving this error')
                 exit_error()
-            submission = self._query_submissions_by_package_id(package_id)
-            if submission:
-                logger.debug(f"Submission: {submission.submission_id}")
-                return submission
+            if package_id:
+                submission = self._query_submissions_by_package_id(package_id)
+                if submission:
+                    logger.debug(f"Submission: {submission.submission_id}")
+                    return submission
+            if submission_id:
+                submission = self.get_submission(submission_id)
+                if submission and submission.status == SubmissionStatus.SUBMITTED_PROTOTYPE:
+                    return submission
+
             time.sleep(10)
 
     def _query_submissions_by_package_id(self, package_id):
