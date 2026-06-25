@@ -9,7 +9,7 @@ import pathlib
 import shutil
 import sys
 
-__version__ = '0.8.dev2'
+__version__ = '0.8.dev3'
 
 import threading
 from importlib.resources import files
@@ -71,19 +71,13 @@ NDA_ORGANIZATION_ROOT_FOLDER = os.path.join(os.path.expanduser('~'), 'NDA')
 NDA_TOOLS_ROOT_FOLDER = os.path.join(NDA_ORGANIZATION_ROOT_FOLDER, 'nda-tools')
 NDA_TOOLS_VTCMD_FOLDER = os.path.join(NDA_TOOLS_ROOT_FOLDER, 'vtcmd')
 NDA_TOOLS_NDA_FOLDER = os.path.join(NDA_TOOLS_ROOT_FOLDER, 'nda')
-NDA_TOOLS_DOWNLOADCMD_FOLDER = os.path.join(
-    NDA_TOOLS_ROOT_FOLDER, 'downloadcmd')
-NDA_TOOLS_DOWNLOADS_FOLDER = os.path.join(
-    NDA_TOOLS_DOWNLOADCMD_FOLDER, 'packages')
-NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER = os.path.join(
-    NDA_TOOLS_DOWNLOADCMD_FOLDER, 'logs')
+NDA_TOOLS_DOWNLOADCMD_FOLDER = os.path.join(NDA_TOOLS_ROOT_FOLDER, 'downloadcmd')
+NDA_TOOLS_DOWNLOADS_FOLDER = os.path.join(NDA_TOOLS_DOWNLOADCMD_FOLDER, 'packages')
+NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER = os.path.join(NDA_TOOLS_DOWNLOADCMD_FOLDER, 'logs')
 NDA_TOOLS_VTCMD_LOGS_FOLDER = os.path.join(NDA_TOOLS_VTCMD_FOLDER, 'logs')
-NDA_TOOLS_VAL_FOLDER = os.path.join(
-    NDA_TOOLS_VTCMD_FOLDER, 'validation_results')
-NDA_TOOLS_SUB_PACKAGE_FOLDER = os.path.join(
-    NDA_TOOLS_VTCMD_FOLDER, 'submission_package')
-NDA_TOOLS_SUBMISSIONS_FOLDER = os.path.join(
-    NDA_TOOLS_VTCMD_FOLDER, 'submissions')
+NDA_TOOLS_VAL_FOLDER = os.path.join(NDA_TOOLS_VTCMD_FOLDER, 'validation_results')
+NDA_TOOLS_SUB_PACKAGE_FOLDER = os.path.join(NDA_TOOLS_VTCMD_FOLDER, 'submission_package')
+NDA_TOOLS_SUBMISSIONS_FOLDER = os.path.join(NDA_TOOLS_VTCMD_FOLDER, 'submissions')
 NDA_TOOLS_PACKAGE_FILE_METADATA_TEMPLATE = 'package_file_metadata_%s.txt'
 NDA_TOOLS_DEFAULT_LOG_FORMAT = '%(asctime)s:%(levelname)s:%(message)s'
 NDA_TOOLS_SETTINGS_FOLDER = os.path.join(os.path.expanduser('~'), '.NDATools')
@@ -91,8 +85,36 @@ NDA_TOOLS_LOGGING_YML_FILE = os.path.join(NDA_TOOLS_SETTINGS_FOLDER, 'logging.ym
 NDA_TOOLS_SETTINGS_CFG_FILE = os.path.join(NDA_TOOLS_SETTINGS_FOLDER, 'settings.cfg')
 NDA_TOOLS_NDA_LOGS_FOLDER = os.path.join(NDA_TOOLS_NDA_FOLDER, 'logs')
 
+def _set_nda_tools_paths_for_custom_root_dir(root_dir=None):
+    global NDA_ORGANIZATION_ROOT_FOLDER
+    global NDA_TOOLS_ROOT_FOLDER
+    global NDA_TOOLS_VTCMD_FOLDER
+    global NDA_TOOLS_NDA_FOLDER
+    global NDA_TOOLS_DOWNLOADCMD_FOLDER
+    global NDA_TOOLS_DOWNLOADS_FOLDER
+    global NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER
+    global NDA_TOOLS_VTCMD_LOGS_FOLDER
+    global NDA_TOOLS_VAL_FOLDER
+    global NDA_TOOLS_SUB_PACKAGE_FOLDER
+    global NDA_TOOLS_SUBMISSIONS_FOLDER
+    global NDA_TOOLS_NDA_LOGS_FOLDER
 
-def create_nda_folders():
+    if root_dir and os.path.exists(root_dir):
+        NDA_ORGANIZATION_ROOT_FOLDER = root_dir
+        NDA_TOOLS_ROOT_FOLDER = os.path.join(NDA_ORGANIZATION_ROOT_FOLDER, 'nda-tools')
+        NDA_TOOLS_VTCMD_FOLDER = os.path.join(NDA_TOOLS_ROOT_FOLDER, 'vtcmd')
+        NDA_TOOLS_NDA_FOLDER = os.path.join(NDA_TOOLS_ROOT_FOLDER, 'nda')
+        NDA_TOOLS_DOWNLOADCMD_FOLDER = os.path.join(NDA_TOOLS_ROOT_FOLDER, 'downloadcmd')
+        NDA_TOOLS_DOWNLOADS_FOLDER = os.path.join(NDA_TOOLS_DOWNLOADCMD_FOLDER, 'packages')
+        NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER = os.path.join(NDA_TOOLS_DOWNLOADCMD_FOLDER, 'logs')
+        NDA_TOOLS_VTCMD_LOGS_FOLDER = os.path.join(NDA_TOOLS_VTCMD_FOLDER, 'logs')
+        NDA_TOOLS_VAL_FOLDER = os.path.join(NDA_TOOLS_VTCMD_FOLDER, 'validation_results')
+        NDA_TOOLS_SUB_PACKAGE_FOLDER = os.path.join(NDA_TOOLS_VTCMD_FOLDER, 'submission_package')
+        NDA_TOOLS_SUBMISSIONS_FOLDER = os.path.join(NDA_TOOLS_VTCMD_FOLDER, 'submissions')
+        NDA_TOOLS_NDA_LOGS_FOLDER = os.path.join(NDA_TOOLS_NDA_FOLDER, 'logs')
+
+def create_nda_folders(root_dir=None):
+    _set_nda_tools_paths_for_custom_root_dir(root_dir)
     # init folder structure for program runtime files
     def _create_if_not_exists(path):
         if not os.path.exists(path):
@@ -125,9 +147,9 @@ def create_nda_folders():
     os.environ['PYTHONWARNINGS'] = 'ignore'
 
 
-def init_checks_and_program_folders():
+def init_checks_and_program_folders(root_dir=None):
     check_version()
-    create_nda_folders()
+    create_nda_folders(root_dir)
 
 
 def _get_password(username) -> str:
@@ -204,7 +226,7 @@ def init_logging(args, logs_folder):
 
 
 def init(args, logs_folder):
-    init_checks_and_program_folders()
+    init_checks_and_program_folders(args.root_dir)
     init_logging(args, logs_folder)
 
 
