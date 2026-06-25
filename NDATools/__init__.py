@@ -67,8 +67,8 @@ def check_version():
         sys.exit(1)
 
 
-NDA_ORGINIZATION_ROOT_FOLDER = os.path.join(os.path.expanduser('~'), 'NDA')
-NDA_TOOLS_ROOT_FOLDER = os.path.join(NDA_ORGINIZATION_ROOT_FOLDER, 'nda-tools')
+NDA_ORGANIZATION_ROOT_FOLDER = os.path.join(os.path.expanduser('~'), 'NDA')
+NDA_TOOLS_ROOT_FOLDER = os.path.join(NDA_ORGANIZATION_ROOT_FOLDER, 'nda-tools')
 NDA_TOOLS_VTCMD_FOLDER = os.path.join(NDA_TOOLS_ROOT_FOLDER, 'vtcmd')
 NDA_TOOLS_NDA_FOLDER = os.path.join(NDA_TOOLS_ROOT_FOLDER, 'nda')
 NDA_TOOLS_DOWNLOADCMD_FOLDER = os.path.join(
@@ -98,7 +98,7 @@ def create_nda_folders():
         if not os.path.exists(path):
             os.mkdir(path)
 
-    _create_if_not_exists(NDA_ORGINIZATION_ROOT_FOLDER)
+    _create_if_not_exists(NDA_ORGANIZATION_ROOT_FOLDER)
     _create_if_not_exists(NDA_TOOLS_ROOT_FOLDER)
     _create_if_not_exists(NDA_TOOLS_VTCMD_FOLDER)
     _create_if_not_exists(NDA_TOOLS_DOWNLOADCMD_FOLDER)
