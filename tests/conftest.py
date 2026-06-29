@@ -7,6 +7,7 @@ import keyring
 import pytest
 
 import NDATools
+from NDATools.Configuration import ClientConfiguration
 from NDATools.clientscripts.downloadcmd import parse_args as download_parse_args
 from NDATools.clientscripts.vtcmd import parse_args as validation_parse_args
 
@@ -33,16 +34,25 @@ def mock_is_valid_credentials(*args, **kwargs):
 
 
 @pytest.fixture
-def download_config_factory(monkeypatch):
+def mock_nda_paths(tmp_path):
+    downloadcmd_logs_folder = tmp_path / "logs"
+    downloadcmd_logs_folder.mkdir()
+    return {
+        "nda_tools_downloads_folder": tmp_path,
+        "nda_tools_downloadcmd_logs_folder": downloadcmd_logs_folder,
+    }
+
+
+@pytest.fixture
+def download_config_factory(monkeypatch, mock_nda_paths):
     def _make_config(test_args):
         with monkeypatch.context() as m:
             test_args.insert(0, 'downloadcmd')
             m.setattr(sys, 'argv', test_args)
             m.setattr(keyring, 'get_password', mock_get_password)
-            m.setattr(NDATools, 'init_logging', lambda *args, **kwargs: None)
             args = download_parse_args()
-            config = NDATools.init_and_create_configuration(args, NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER, auth_req=False)
-            config.is_valid_nda_credentials = lambda _: True
+            config = ClientConfiguration(args)
+            config._nda_paths = mock_nda_paths
             return args, config
 
     return _make_config
@@ -51,13 +61,10 @@ def download_config_factory(monkeypatch):
 @pytest.fixture
 def validation_config_factory():
     def _make_val_config(test_args):
-        with mock.patch.object(sys, 'argv', test_args), \
-                mock.patch.object(NDATools, 'init_logging', lambda *args, **kwargs: None):
+        with mock.patch.object(sys, 'argv', test_args):
             test_args.insert(0, 'vtcmd')
             args = validation_parse_args()
-            config = NDATools.init_and_create_configuration(args, NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER, auth_req=False)
-            config.is_valid_nda_credentials = lambda _: True
-
+            config = ClientConfiguration(args)
         return args, config
 
     return _make_val_config

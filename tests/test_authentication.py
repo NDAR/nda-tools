@@ -16,7 +16,6 @@ from tests.conftest import MockLogger
 username = 'test_username'
 password = 'test_password'
 
-
 @pytest.fixture
 def mock_settings_with_user(shared_datadir):
     return shared_datadir / 'mock_settings.cfg'
@@ -27,20 +26,24 @@ def mock_settings_no_user(shared_datadir):
     return shared_datadir / 'mock_settings.cfg'
 
 
-def test_read_user_credentials_no_username_set(mock_settings_no_user):
+def test_read_user_credentials_no_username_set(mock_settings_with_user):
     mock_logger = MockLogger()
-
     with patch.object(NDATools.logger, 'info', mock_logger), \
+            patch.object(NDATools, 'NDA_TOOLS_SETTINGS_CFG_FILE', str(mock_settings_with_user)), \
             patch.object(NDATools.upload.submission.api.RasAuthApi, 'login', side_effect=['token-123']), \
             patch.object(NDATools, '_get_keyring', False), \
             patch('builtins.input', return_value=username) as mock_get_username, \
             patch('getpass.getpass', return_value=password) as mock_get_password:
-        client_config = ClientConfiguration(MagicMock())
-        client_config.username = None
-        client_config._save_username = lambda: None
-        client_config._save_apis = lambda: None
+        args = MagicMock()
+        args.username = None
+        client_config = ClientConfiguration(args)
 
-        NDATools.authenticate(client_config)
+        client_config.authenticate()
+
+        assert client_config.username == username
+        assert client_config.password == password
+        assert client_config.token == 'token-123'
+        assert client_config.config.get('User', 'username') == username
 
         mock_logger.any_call_contains(
             '\nPlease use your NIMH Data Archive (NDA) account credentials to authenticate with nda-tools')
@@ -55,7 +58,7 @@ def test_read_user_credentials_no_username_set(mock_settings_no_user):
         mock_get_password.assert_called_once_with('Enter your NDA account password:')
 
 
-def test_read_user_credentials_has_username_set_no_password_in_keyring(mock_settings_with_user):
+def test_read_user_credentials_has_username_set_no_password_in_keyring():
     keyring.set_password('nda-tools', username, '')
     mock_logger = MockLogger()
 
@@ -69,7 +72,7 @@ def test_read_user_credentials_has_username_set_no_password_in_keyring(mock_sett
         client_config._save_username = lambda: None
         client_config._save_apis = lambda: None
 
-        NDATools.authenticate(client_config)
+        client_config.authenticate()
 
         mock_logger.assert_no_call_contains(
             '\nPlease use your NIMH Data Archive (NDA) account credentials to authenticate with nda-tools')
@@ -99,7 +102,7 @@ def test_read_user_credentials_has_username_set_has_password_in_keyring(mock_set
         client_config = ClientConfiguration(args)
         client_config._save_username = lambda: None
         client_config._save_apis = lambda: None
-        NDATools.authenticate(client_config)
+        client_config.authenticate()
 
         mock_logger.assert_no_call_contains(
             '\nPlease use your NIMH Data Archive (NDA) account credentials to authenticate with nda-tools')
@@ -127,7 +130,7 @@ def test_read_user_credentials_reenter_credentials(mock_settings_no_user):
         client_config._save_username = lambda: None
         client_config._save_apis = lambda: None
 
-        NDATools.authenticate(client_config)
+        client_config.authenticate()
 
         mock_logger.any_call_contains(
             '\nPlease use your NIMH Data Archive (NDA) account credentials to authenticate with nda-tools')
@@ -142,7 +145,7 @@ def test_read_user_credentials_reenter_credentials(mock_settings_no_user):
         assert mock_get_password.call_count == 2
 
 
-def test_no_keyring(monkeypatch, mock_settings_with_user):
+def test_no_keyring(monkeypatch):
     # mock keyring not installed on client machine.
     with monkeypatch.context() as m:
         # keyring is set to None if there is an import error
@@ -157,7 +160,7 @@ def test_no_keyring(monkeypatch, mock_settings_with_user):
         m.setattr(NDATools.upload.submission.api.RasAuthApi, 'login', lambda x, y, z: 'token-123')
         # patch this method to avoid writing to any files
         m.setattr(NDATools, '_try_save_password_keyring', lambda x, y: None)
-        NDATools.authenticate(client_config)
+        client_config.authenticate()
         assert builtins.input.call_count == 1
         assert getpass.getpass.call_count == 1
         assert NDATools._get_keyring == False
@@ -180,7 +183,7 @@ def test_no_keyring(monkeypatch, mock_settings_with_user):
         m.setattr(NDATools.upload.submission.api.RasAuthApi, 'login', lambda x, y, z: 'token-123')
         # patch this method to avoid writing to any files
         m.setattr(NDATools, '_try_save_password_keyring', lambda x, y: None)
-        NDATools.authenticate(client_config)
+        client_config.authenticate()
         assert builtins.input.call_count == 1
         assert getpass.getpass.call_count == 1
         assert NDATools._get_keyring == False
@@ -225,6 +228,8 @@ def test_client_configuration_derives_ras_login_endpoint_from_ras_base(monkeypat
         "\n"
         "[User]\n"
         "username = test_username\n"
+        "[Paths]\n"
+        "nda_organization_root_dir =\n"
     )
 
     with monkeypatch.context() as m:
@@ -293,17 +298,16 @@ def test_client_configuration_reauthenticate_single_flight(monkeypatch):
         started = threading.Event()
         release = threading.Event()
 
-        def fake_authenticate(config):
+        def fake_authenticate():
             with mtx:
                 call_count['count'] += 1
             started.set()
             release.wait(timeout=1)
-            config.username = username
-            config.password = password
-            config.token = 'new-token'
-            return config
+            client_config.username = username
+            client_config.password = password
+            client_config.token = 'new-token'
 
-        m.setattr(NDATools, 'authenticate', fake_authenticate)
+        m.setattr(client_config, 'authenticate', fake_authenticate)
         m.setattr(client_config, '_save_username', lambda: None)
         m.setattr(client_config, '_save_apis', lambda: None)
 
@@ -329,7 +333,7 @@ def test_client_configuration_reauthenticate_skips_stale_generation(monkeypatch)
         client_config.password = password
         client_config._auth_generation = 1
         authenticate = MagicMock()
-        m.setattr(NDATools, 'authenticate', authenticate)
+        m.setattr(client_config, 'authenticate', authenticate)
         client_config.reauthenticate(token_version=0)
 
     authenticate.assert_not_called()
@@ -358,7 +362,7 @@ def test_client_configuration_reauthenticate_propagates_failure_to_waiters(monke
             except Exception as exc:
                 errors.append(str(exc))
 
-        m.setattr(NDATools, 'authenticate', fake_authenticate)
+        m.setattr(ClientConfiguration, 'authenticate', fake_authenticate)
         threads = [threading.Thread(target=run)]
         threads[0].start()
         started.wait(timeout=1)
