@@ -218,7 +218,7 @@ class ClientConfiguration:
             self._reauth_error = None
 
         try:
-            NDATools.authenticate(self)
+            self.authenticate()
             with self._reauth_condition:
                 self._auth_generation += 1
         except Exception as exc:
@@ -230,6 +230,10 @@ class ClientConfiguration:
                 # Wake all waiters so they can either reuse the new token or see the failure.
                 self._reauth_in_progress = False
                 self._reauth_condition.notify_all()
+
+    def authenticate(self):
+        username, password, token = NDATools._get_user_credentials(self)
+        self.update_with_auth(username, password, token)
 
     def update_with_auth(self, username, password, token):
         self.username = username

@@ -4,7 +4,7 @@ import pathlib
 
 import NDATools
 from NDATools import exit_error
-from NDATools.Configuration import ClientConfiguration
+from NDATools.Configuration import ClientConfiguration, LoggingConfiguration
 from NDATools.upload.validation import manifests
 
 logger = logging.getLogger(__name__)
@@ -64,7 +64,8 @@ def main():
 
     args = parser.parse_args()
     config = ClientConfiguration(args)
-    NDATools.init(args, config, config.nda_paths['nda_tools_nda_logs_folder'])
+    NDATools.check_version_and_create_folders(config.nda_paths)
+    LoggingConfiguration.load_config(config.nda_paths['nda_tools_nda_logs_folder'], args.verbose, args.log_dir)
     args.func(args)
 
 

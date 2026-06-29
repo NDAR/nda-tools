@@ -72,13 +72,13 @@ NDA_TOOLS_SETTINGS_FOLDER = os.path.join(os.path.expanduser('~'), '.NDATools')
 NDA_TOOLS_LOGGING_YML_FILE = os.path.join(NDA_TOOLS_SETTINGS_FOLDER, 'logging.yml')
 NDA_TOOLS_SETTINGS_CFG_FILE = os.path.join(NDA_TOOLS_SETTINGS_FOLDER, 'settings.cfg')
 
-def create_nda_folders(config):
+def create_nda_folders(nda_paths):
     # init folder structure for program runtime files
     def _create_if_not_exists(path):
         if not os.path.exists(path):
             os.mkdir(path)
 
-    for path in config.nda_paths.values():
+    for path in nda_paths.values():
         _create_if_not_exists(path)
 
     _create_if_not_exists(NDA_TOOLS_SETTINGS_FOLDER)
@@ -94,11 +94,6 @@ def create_nda_folders(config):
             shutil.copyfile(f, NDA_TOOLS_SETTINGS_CFG_FILE)
     # MAC users sometimes see output from python warnings module. Suppress these msgs
     os.environ['PYTHONWARNINGS'] = 'ignore'
-
-
-def init_checks_and_program_folders(config):
-    check_version()
-    create_nda_folders(config)
 
 
 def _get_password(username) -> str:
@@ -168,28 +163,9 @@ def _get_user_credentials(config) -> Tuple[str, str]:
     _try_save_password_keyring(username, password)
     return username, password, token
 
-
-def init_logging(args, logs_folder):
-    from NDATools.Configuration import LoggingConfiguration
-    LoggingConfiguration.load_config(logs_folder, args.verbose, args.log_dir)
-
-
-def init(args, config, logs_folder):
-    init_checks_and_program_folders(config)
-    init_logging(args, logs_folder)
-
-def init_and_create_configuration(args, config, logs_folder, auth_req=True):
-    init(args, config, logs_folder)
-    if auth_req:
-        authenticate(config)
-    return config
-
-
-def authenticate(config):
-    username, password, token = _get_user_credentials(config)
-    config.update_with_auth(username, password, token)
-    return config
-
+def check_version_and_create_folders(nda_paths):
+    check_version()
+    create_nda_folders(nda_paths)
 
 def _exit_client(message=None, status_code=1):
     for t in threading.enumerate():
