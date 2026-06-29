@@ -26,6 +26,11 @@ def mock_settings_no_user(shared_datadir):
     return shared_datadir / 'mock_settings.cfg'
 
 
+@pytest.fixture(autouse=True)
+def use_mock_settings_file(monkeypatch, mock_settings_file):
+    monkeypatch.setattr(NDATools, 'NDA_TOOLS_SETTINGS_CFG_FILE', str(mock_settings_file))
+
+
 def test_read_user_credentials_no_username_set(mock_settings_with_user):
     mock_logger = MockLogger()
     with patch.object(NDATools.logger, 'info', mock_logger), \
@@ -193,8 +198,8 @@ def test_no_keyring(monkeypatch):
 
 def test_client_configuration_auth_uses_latest_credentials(monkeypatch):
     with monkeypatch.context() as m:
-        m.setattr(ClientConfiguration, '_check_and_fix_missing_options', lambda x: None)
         client_config = ClientConfiguration(MagicMock())
+        m.setattr(client_config, '_check_and_fix_missing_options', lambda x: None)
         client_config.username = 'first_user'
         client_config.password = 'first_password'
         client_config.token = 'first_token'
@@ -234,16 +239,16 @@ def test_client_configuration_derives_ras_login_endpoint_from_ras_base(monkeypat
 
     with monkeypatch.context() as m:
         m.setattr(NDATools, 'NDA_TOOLS_SETTINGS_CFG_FILE', str(settings_file))
-        m.setattr(ClientConfiguration, '_check_and_fix_missing_options', lambda x: None)
         client_config = ClientConfiguration(MagicMock())
+        m.setattr(client_config, '_check_and_fix_missing_options', lambda x: None)
 
     assert client_config.ras_login_api_endpoint == 'https://revengers.nimhda.org/api/ras/user/login'
 
 
 def test_client_configuration_reauthenticate_uses_stored_credentials(monkeypatch):
     with monkeypatch.context() as m:
-        m.setattr(ClientConfiguration, '_check_and_fix_missing_options', lambda x: None)
         client_config = ClientConfiguration(MagicMock())
+        m.setattr(client_config, '_check_and_fix_missing_options', lambda x: None)
         client_config.username = username
         client_config.password = password
         client_config.token = 'old-token'
@@ -266,7 +271,6 @@ def test_client_configuration_reauthenticate_uses_stored_credentials(monkeypatch
 
 def test_client_configuration_save_apis_uses_shared_auth(monkeypatch):
     with monkeypatch.context() as m:
-        m.setattr(ClientConfiguration, '_check_and_fix_missing_options', lambda x: None)
         validation_api = MagicMock()
         submission_package_api = MagicMock()
         submission_api = MagicMock()
@@ -277,6 +281,7 @@ def test_client_configuration_save_apis_uses_shared_auth(monkeypatch):
         m.setattr(NDATools.Configuration, 'CollectionApi', collection_api)
 
         client_config = ClientConfiguration(MagicMock())
+        m.setattr(client_config, '_check_and_fix_missing_options', lambda x: None)
         m.setattr(client_config, '_save_username', lambda: None)
         client_config.update_with_auth(username, password, 'token-123')
 
@@ -288,8 +293,8 @@ def test_client_configuration_save_apis_uses_shared_auth(monkeypatch):
 
 def test_client_configuration_reauthenticate_single_flight(monkeypatch):
     with monkeypatch.context() as m:
-        m.setattr(ClientConfiguration, '_check_and_fix_missing_options', lambda x: None)
         client_config = ClientConfiguration(MagicMock())
+        m.setattr(client_config, '_check_and_fix_missing_options', lambda x: None)
         client_config.username = username
         client_config.password = password
         client_config.token = 'old-token'
@@ -327,8 +332,8 @@ def test_client_configuration_reauthenticate_single_flight(monkeypatch):
 
 def test_client_configuration_reauthenticate_skips_stale_generation(monkeypatch):
     with monkeypatch.context() as m:
-        m.setattr(ClientConfiguration, '_check_and_fix_missing_options', lambda x: None)
         client_config = ClientConfiguration(MagicMock())
+        m.setattr(client_config, '_check_and_fix_missing_options', lambda x: None)
         client_config.username = username
         client_config.password = password
         client_config._auth_generation = 1
@@ -341,8 +346,8 @@ def test_client_configuration_reauthenticate_skips_stale_generation(monkeypatch)
 
 def test_client_configuration_reauthenticate_propagates_failure_to_waiters(monkeypatch):
     with monkeypatch.context() as m:
-        m.setattr(ClientConfiguration, '_check_and_fix_missing_options', lambda x: None)
         client_config = ClientConfiguration(MagicMock())
+        m.setattr(client_config, '_check_and_fix_missing_options', lambda x: None)
         client_config.username = username
         client_config.password = password
         started = threading.Event()

@@ -44,7 +44,10 @@ def mock_nda_paths(tmp_path):
 
 @pytest.fixture
 def mock_settings_file(tmp_path):
-    return tmp_path / "settings.cfg"
+    settings_file = tmp_path / "settings.cfg"
+    default_settings_file = pathlib.Path(NDATools.__file__).parent / "clientscripts" / "config" / "settings.cfg"
+    settings_file.write_text(default_settings_file.read_text())
+    return settings_file
 
 
 @pytest.fixture
