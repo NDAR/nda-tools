@@ -165,7 +165,8 @@ For more details, check the information on the README page.
 
 def main():
     args = parse_args()
-    config = NDATools.init_and_create_configuration(args, NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER)
+    config = ClientConfiguration(args)
+    config = NDATools.init_and_create_configuration(args, config, config.nda_paths['nda_tools_downloadcmd_logs_folder'])
     if args.s3_destination and not args.s3_destination.startswith('s3://'):
         raise Exception(
             'Invalid argument for -s3 option :{}. Argument must start with "s3://"'.format(args.s3_destination))

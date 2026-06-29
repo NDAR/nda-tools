@@ -363,7 +363,7 @@ class NdaUploadCli:
         if not associated_file_dirs:
             associated_file_dirs = [os.getcwd()]
         logger.info('[=== Preparing to upload associated files ===]')
-        self.associated_files_uploader.start_upload(submission, associated_file_dirs, resuming_upload)
+        self.associated_files_uploader.start_upload(submission, associated_file_dirs, resuming_upload, self.config.nda_paths['nda_tools_submissions_folder'])
 
     def _build_replacement_package(self, submission_id: int, validated_files: List[ValidatedFile]) -> SubmissionPackage:
         """Builds a submissionPackage for a replacement submission"""

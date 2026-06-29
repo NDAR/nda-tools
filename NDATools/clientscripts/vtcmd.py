@@ -238,8 +238,9 @@ def submit(validated_files, config):
 def main():
     # confirm latest version of nda-tools is installed
     args = parse_args()
+    config = ClientConfiguration(args)
     auth_req = True if args.buildPackage or args.resume or args.replace_submission or args.username else False
-    config = NDATools.init_and_create_configuration(args, NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER, auth_req=auth_req)
+    config = NDATools.init_and_create_configuration(args, config, config.nda_paths['nda_tools_vtcmd_logs_folder'], auth_req=auth_req)
     check_args(args, config)
 
     if args.resume:

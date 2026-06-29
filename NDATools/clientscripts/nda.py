@@ -4,6 +4,7 @@ import pathlib
 
 import NDATools
 from NDATools import exit_error
+from NDATools.Configuration import ClientConfiguration
 from NDATools.upload.validation import manifests
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,6 @@ def submit(args):
 
 
 def generate_manifests(args):
-    NDATools.init(args, NDATools.NDA_TOOLS_NDA_LOGS_FOLDER)
     manifests.generate_manifests(
         args.subject_directory,
         args.output_directory,
@@ -63,6 +63,8 @@ def main():
     parser_manifests.set_defaults(func=generate_manifests)
 
     args = parser.parse_args()
+    config = ClientConfiguration(args)
+    NDATools.init(args, config, config.nda_paths['nda_tools_nda_logs_folder'])
     args.func(args)
 
 

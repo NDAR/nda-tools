@@ -7,8 +7,6 @@ import os
 import time
 from collections import defaultdict
 from typing import List
-
-from NDATools import NDA_TOOLS_VAL_FOLDER
 from NDATools.upload.cli import ValidatedFile, ValidationError, ManifestValidationError, QaResults
 
 logger = logging.getLogger(__name__)
@@ -212,12 +210,13 @@ class CsvWriter(ResultsWriterABC):
 
 
 class ResultsWriterFactory:
+    def __init__(self, nda_tools_val_folder: str):
+        self._nda_tools_val_folder = nda_tools_val_folder
 
-    @staticmethod
-    def get_writer(file_format: str = 'csv'):
+    def get_writer(self, file_format: str = 'csv'):
         if file_format == 'csv':
-            return CsvWriter(NDA_TOOLS_VAL_FOLDER)
+            return CsvWriter(self._nda_tools_val_folder)
         elif file_format == 'json':
-            return JsonWriter(NDA_TOOLS_VAL_FOLDER)
+            return JsonWriter(self._nda_tools_val_folder)
         else:
             raise NotImplementedError(f'format {file_format} not supported')

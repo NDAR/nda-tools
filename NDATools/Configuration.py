@@ -73,6 +73,8 @@ class ClientConfiguration:
         ras_api_endpoint = self.config.get("Endpoints", "ras")
         self.ras_login_api_endpoint = f"{ras_api_endpoint}/user/login"
         self.username = self.config.get("User", "username").lower()
+        self._nda_paths = self._set_nda_paths()
+
         # TODO remove args from config
         self._args = args
 
@@ -93,7 +95,7 @@ class ClientConfiguration:
 
         if self._is_vtcmd():
             self.qa_enabled = True
-            self.validation_results_writer = ResultsWriterFactory.get_writer(file_format='json' if args.JSON else 'csv')
+            self.validation_results_writer = ResultsWriterFactory(self.nda_paths['nda_tools_val_folder']).get_writer(file_format='json' if args.JSON else 'csv')
             self.validation_api = None
             self.submission_api = None
             self.submission_package_api = None
@@ -151,6 +153,10 @@ class ClientConfiguration:
     @property
     def batch_size(self):
         return self._args.batch
+
+    @property
+    def nda_paths(self):
+        return self._nda_paths
 
     def _is_vtcmd(self):
         return 'collectionID' in self._args
@@ -258,3 +264,43 @@ class ClientConfiguration:
                                                                     self.force,
                                                                     self.hide_progress,
                                                                     self.batch_size)
+
+    def _set_nda_paths(self):
+        nda_org_root_dir = self._validate_folder_path(
+            self.config.get("Paths", "nda_organization_root_dir"))
+        if not nda_org_root_dir:
+            nda_org_root_dir = os.path.join(os.path.expanduser('~'), 'NDA')
+
+        nda_tools_root_folder = os.path.join(nda_org_root_dir, 'nda-tools')
+        nda_tools_vtcmd_folder = os.path.join(nda_tools_root_folder, 'vtcmd')
+        nda_tools_downloadcmd_folder = os.path.join(nda_tools_root_folder, 'downloadcmd')
+        nda_tools_nda_folder = os.path.join(nda_tools_root_folder, 'nda')
+
+        return {
+            "nda_organization_root_folder": nda_org_root_dir,
+            "nda_tools_root_folder": nda_tools_root_folder,
+            "nda_tools_vtcmd_folder": nda_tools_vtcmd_folder,
+            "nda_tools_nda_folder": nda_tools_nda_folder,
+            "nda_tools_downloadcmd_folder": nda_tools_downloadcmd_folder,
+            "nda_tools_downloads_folder": os.path.join(nda_tools_downloadcmd_folder, 'packages'),
+            "nda_tools_downloadcmd_logs_folder": os.path.join(nda_tools_downloadcmd_folder, 'logs'),
+            "nda_tools_vtcmd_logs_folder": os.path.join(nda_tools_vtcmd_folder, 'logs'),
+            "nda_tools_val_folder": os.path.join(nda_tools_vtcmd_folder, 'validation_results'),
+            "nda_tools_sub_pkg_folder": os.path.join(nda_tools_vtcmd_folder, 'submission_package'),
+            "nda_tools_submissions_folder":  os.path.join(nda_tools_vtcmd_folder, 'submissions'),
+            "nda_tools_nda_logs_folder": os.path.join(nda_tools_nda_folder, 'logs')
+        }
+
+    def _validate_folder_path(self, directory=None):
+        if not directory or not directory.strip():
+            return None
+        else:
+            directory = directory.strip()
+            directory = os.path.expanduser(directory)
+            directory = os.path.expandvars(directory)
+            if not os.path.isabs(directory):
+                directory = os.path.join(os.getcwd(), directory)
+            directory = os.path.abspath(os.path.normpath(directory))
+            if not os.path.exists(directory) or not os.path.isdir(directory):
+                return None
+            return directory
