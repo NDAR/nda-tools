@@ -1,6 +1,5 @@
 import pathlib
 import sys
-from unittest import mock
 from unittest.mock import MagicMock
 
 import keyring
@@ -44,12 +43,18 @@ def mock_nda_paths(tmp_path):
 
 
 @pytest.fixture
-def download_config_factory(monkeypatch, mock_nda_paths):
+def mock_settings_file(tmp_path):
+    return tmp_path / "settings.cfg"
+
+
+@pytest.fixture
+def download_config_factory(monkeypatch, mock_nda_paths, mock_settings_file):
     def _make_config(test_args):
         with monkeypatch.context() as m:
             test_args.insert(0, 'downloadcmd')
             m.setattr(sys, 'argv', test_args)
             m.setattr(keyring, 'get_password', mock_get_password)
+            m.setattr(NDATools, 'NDA_TOOLS_SETTINGS_CFG_FILE', str(mock_settings_file))
             args = download_parse_args()
             config = ClientConfiguration(args)
             config._nda_paths = mock_nda_paths
@@ -59,10 +64,12 @@ def download_config_factory(monkeypatch, mock_nda_paths):
 
 
 @pytest.fixture
-def validation_config_factory():
+def validation_config_factory(monkeypatch, mock_settings_file):
     def _make_val_config(test_args):
-        with mock.patch.object(sys, 'argv', test_args):
+        with monkeypatch.context() as m:
             test_args.insert(0, 'vtcmd')
+            m.setattr(sys, 'argv', test_args)
+            m.setattr(NDATools, 'NDA_TOOLS_SETTINGS_CFG_FILE', str(mock_settings_file))
             args = validation_parse_args()
             config = ClientConfiguration(args)
         return args, config

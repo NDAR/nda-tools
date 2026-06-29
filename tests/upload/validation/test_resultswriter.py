@@ -71,19 +71,19 @@ def validation_with_warnings(validation):
                       manifest_errors=None)
 
 
-class TestType(enum.Enum):
+class ResultType(enum.Enum):
     ERRORS = 'errors'
     WARNINGS = 'warnings'
     QA = 'qa'
 
 
 @pytest.mark.parametrize("test_type,file_writer_class", [
-    (TestType.ERRORS, JsonValidationFileWriter),
-    (TestType.WARNINGS, JsonValidationFileWriter),
-    (TestType.ERRORS, CsvValidationFileWriter),
-    (TestType.WARNINGS, CsvValidationFileWriter),
-    (TestType.QA, JsonValidationFileWriter),
-    (TestType.QA, CsvValidationFileWriter),
+    (ResultType.ERRORS, JsonValidationFileWriter),
+    (ResultType.WARNINGS, JsonValidationFileWriter),
+    (ResultType.ERRORS, CsvValidationFileWriter),
+    (ResultType.WARNINGS, CsvValidationFileWriter),
+    (ResultType.QA, JsonValidationFileWriter),
+    (ResultType.QA, CsvValidationFileWriter),
 ])
 def test_json_validation_file_writer(test_type, file_writer_class, tmp_path, validation_with_warnings,
                                      validation_with_errors, qa_with_errors):
@@ -91,10 +91,10 @@ def test_json_validation_file_writer(test_type, file_writer_class, tmp_path, val
     validation_writer = file_writer_class(tmp_path)
     validation_responses = [validation_with_warnings, validation_with_errors]
 
-    if test_type == TestType.ERRORS:
+    if test_type == ResultType.ERRORS:
         validation_writer.write_errors(validation_responses)
         f = validation_writer.errors_file
-    elif test_type == TestType.WARNINGS:
+    elif test_type == ResultType.WARNINGS:
         validation_writer.write_warnings(validation_responses)
         f = validation_writer.warnings_file
     else:
@@ -103,14 +103,14 @@ def test_json_validation_file_writer(test_type, file_writer_class, tmp_path, val
 
     with open(f, 'r') as file:
         if file_writer_class == JsonValidationFileWriter:
-            if TestType.QA == test_type:
+            if ResultType.QA == test_type:
                 for (error, json_result) in zip(qa_with_errors.errors, json.load(file)['Results']):
                     assert json_result['QA ID'] == qa_with_errors.qa_uuid
                     assert json_result['ERROR CODE'] == error.err_code
                     assert json_result['MESSAGE'] == error.message
                     assert json_result['GUID/SRC-SUBJECT-ID'] == error.guid if error.guid else error.src_subject_id
             else:
-                testing_errors = test_type == TestType.ERRORS
+                testing_errors = test_type == ResultType.ERRORS
                 for (response, json_result) in zip(validation_responses, json.load(file)['Results']):
                     assert json_result['File'] == response.file.name
                     assert json_result['ID'] == response.uuid
@@ -123,14 +123,14 @@ def test_json_validation_file_writer(test_type, file_writer_class, tmp_path, val
                         assert json_result['Warnings'] == response._v2_creds.download_warnings()
         else:
             csv_reader = csv.DictReader(file)
-            if test_type == TestType.QA:
+            if test_type == ResultType.QA:
                 for row, error in zip(csv_reader, qa_with_errors.errors):
                     assert row['QA ID'] == qa_with_errors.qa_uuid
                     assert row['ERROR CODE'] == error.err_code
                     assert row['MESSAGE'] == error.message
                     assert row['GUID/SRC-SUBJECT-ID'] == error.guid if error.guid else error.src_subject_id
             else:
-                testing_errors = test_type == TestType.ERRORS
+                testing_errors = test_type == ResultType.ERRORS
                 for (validation_uuid, warnings_or_errors_it) in itertools.groupby([row for row in csv_reader],
                                                                                   lambda row: row['ID']):
                     response = list(filter(lambda r: r.uuid == validation_uuid, validation_responses))[0]
