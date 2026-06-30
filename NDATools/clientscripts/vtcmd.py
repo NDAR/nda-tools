@@ -5,7 +5,7 @@ from tqdm import tqdm
 
 import NDATools
 from NDATools import exit_error
-from NDATools.Configuration import ClientConfiguration, LoggingConfiguration
+from NDATools.Configuration import ClientConfiguration
 from NDATools.Utils import get_non_blank_input, get_int_input
 from NDATools.upload.cli import QaResults
 from NDATools.upload.submission.api import CollectionApi
@@ -239,10 +239,7 @@ def main():
     args = parse_args()
     config = ClientConfiguration(args)
     auth_req = True if args.buildPackage or args.resume or args.replace_submission or args.username else False
-    if auth_req:
-        config.authenticate()
-    NDATools.check_version_and_create_folders(config.nda_paths)
-    LoggingConfiguration.load_config(config.nda_paths['nda_tools_vtcmd_logs_folder'], args.verbose, args.log_dir)
+    NDATools.auth_config_and_init_logging('vtcmd', args, config, auth_req)
     check_args(args, config)
 
     if args.resume:

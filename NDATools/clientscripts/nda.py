@@ -63,9 +63,7 @@ def main():
     parser_manifests.set_defaults(func=generate_manifests)
 
     args = parser.parse_args()
-    config = ClientConfiguration(args)
-    NDATools.check_version_and_create_folders(config.nda_paths)
-    LoggingConfiguration.load_config(config.nda_paths['nda_tools_nda_logs_folder'], args.verbose, args.log_dir)
+    NDATools.auth_config_and_init_logging('nda', args, ClientConfiguration(args), False)
     args.func(args)
 
 
