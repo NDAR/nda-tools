@@ -26,15 +26,9 @@ def mock_settings_no_user(shared_datadir):
     return shared_datadir / 'mock_settings.cfg'
 
 
-@pytest.fixture(autouse=True)
-def use_mock_settings_file(monkeypatch, mock_settings_file):
-    monkeypatch.setattr(NDATools, 'NDA_TOOLS_SETTINGS_CFG_FILE', str(mock_settings_file))
-
-
 def test_read_user_credentials_no_username_set(mock_settings_with_user):
     mock_logger = MockLogger()
     with patch.object(NDATools.logger, 'info', mock_logger), \
-            patch.object(NDATools, 'NDA_TOOLS_SETTINGS_CFG_FILE', str(mock_settings_with_user)), \
             patch.object(NDATools.upload.submission.api.RasAuthApi, 'login', side_effect=['token-123']), \
             patch.object(NDATools, '_get_keyring', False), \
             patch('builtins.input', return_value=username) as mock_get_username, \
@@ -238,7 +232,6 @@ def test_client_configuration_derives_ras_login_endpoint_from_ras_base(monkeypat
     )
 
     with monkeypatch.context() as m:
-        m.setattr(NDATools, 'NDA_TOOLS_SETTINGS_CFG_FILE', str(settings_file))
         client_config = ClientConfiguration(MagicMock())
         m.setattr(client_config, '_check_and_fix_missing_options', lambda x: None)
 

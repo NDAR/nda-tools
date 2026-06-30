@@ -57,7 +57,6 @@ def download_config_factory(monkeypatch, mock_nda_paths, mock_settings_file):
             test_args.insert(0, 'downloadcmd')
             m.setattr(sys, 'argv', test_args)
             m.setattr(keyring, 'get_password', mock_get_password)
-            m.setattr(NDATools, 'NDA_TOOLS_SETTINGS_CFG_FILE', str(mock_settings_file))
             args = download_parse_args()
             config = ClientConfiguration(args)
             config._nda_paths = mock_nda_paths
@@ -72,7 +71,6 @@ def validation_config_factory(monkeypatch, mock_settings_file):
         with monkeypatch.context() as m:
             test_args.insert(0, 'vtcmd')
             m.setattr(sys, 'argv', test_args)
-            m.setattr(NDATools, 'NDA_TOOLS_SETTINGS_CFG_FILE', str(mock_settings_file))
             args = validation_parse_args()
             config = ClientConfiguration(args)
         return args, config

@@ -26,7 +26,6 @@ def load_from_file(datadir):
 
 @pytest.fixture(autouse=True)
 def disable_cli_file_logging(monkeypatch, mock_settings_file):
-    monkeypatch.setattr(NDATools, 'NDA_TOOLS_SETTINGS_CFG_FILE', str(mock_settings_file))
     monkeypatch.setattr(NDATools.Configuration.ClientConfiguration, '_save_username', lambda *args, **kwargs: None)
     monkeypatch.setattr(NDATools, 'check_version_and_create_folders', lambda *args, **kwargs: None)
     monkeypatch.setattr(NDATools.clientscripts.vtcmd.LoggingConfiguration, 'load_config',
