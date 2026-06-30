@@ -43,10 +43,27 @@ def mock_nda_paths(tmp_path):
 
 
 @pytest.fixture
-def mock_settings_file(tmp_path):
-    settings_file = tmp_path / "settings.cfg"
+def mock_settings_file(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    settings_dir = home / ".NDATools"
+    settings_dir.mkdir(parents=True)
+    settings_file = settings_dir / "settings.cfg"
     default_settings_file = pathlib.Path(NDATools.__file__).parent / "clientscripts" / "config" / "settings.cfg"
     settings_file.write_text(default_settings_file.read_text())
+
+    original_expanduser = NDATools.Configuration.os.path.expanduser
+
+    def fake_expanduser(path):
+        path = str(path)
+        if path == "~":
+            return str(home)
+        if path.startswith("~/") or path.startswith("~\\"):
+            return str(home / path[2:])
+        return original_expanduser(path)
+
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.setattr(NDATools.Configuration.os.path, "expanduser", fake_expanduser)
     return settings_file
 
 
