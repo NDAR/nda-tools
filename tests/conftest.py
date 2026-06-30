@@ -6,7 +6,7 @@ import keyring
 import pytest
 
 import NDATools
-from NDATools import ClientConfiguration
+from NDATools.Configuration import ClientConfiguration
 from NDATools.clientscripts.downloadcmd import parse_args as download_parse_args
 from NDATools.clientscripts.vtcmd import parse_args as validation_parse_args
 

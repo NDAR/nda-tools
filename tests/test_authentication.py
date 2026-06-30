@@ -3,6 +3,7 @@ import getpass
 import requests
 import threading
 import time
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import keyring
@@ -16,17 +17,30 @@ from tests.conftest import MockLogger
 username = 'test_username'
 password = 'test_password'
 
-@pytest.fixture
-def mock_settings_with_user(shared_datadir):
-    return shared_datadir / 'mock_settings.cfg'
+@pytest.fixture(autouse=True)
+def isolated_nda_settings_file(monkeypatch, tmp_path):
+    home = tmp_path / 'home'
+    settings_dir = home / '.NDATools'
+    settings_dir.mkdir(parents=True)
+    settings_file = settings_dir / 'settings.cfg'
+    default_settings_file = Path(NDATools.__file__).parent / 'clientscripts' / 'config' / 'settings.cfg'
+    settings_file.write_text(default_settings_file.read_text())
+
+    original_expanduser = NDATools.Configuration.os.path.expanduser
+
+    def fake_expanduser(path):
+        path = str(path)
+        if path == '~':
+            return str(home)
+        if path.startswith('~/') or path.startswith('~\\'):
+            return str(home / path[2:])
+        return original_expanduser(path)
+
+    monkeypatch.setattr(NDATools.Configuration.os.path, 'expanduser', fake_expanduser)
+    return settings_file
 
 
-@pytest.fixture
-def mock_settings_no_user(shared_datadir):
-    return shared_datadir / 'mock_settings.cfg'
-
-
-def test_read_user_credentials_no_username_set(mock_settings_with_user):
+def test_read_user_credentials_no_username_set():
     mock_logger = MockLogger()
     with patch.object(NDATools.logger, 'info', mock_logger), \
             patch.object(NDATools.upload.submission.api.RasAuthApi, 'login', side_effect=['token-123']), \
@@ -86,7 +100,7 @@ def test_read_user_credentials_has_username_set_no_password_in_keyring():
         mock_get_password.assert_called_once_with('Enter your NDA account password:')
 
 
-def test_read_user_credentials_has_username_set_has_password_in_keyring(mock_settings_with_user):
+def test_read_user_credentials_has_username_set_has_password_in_keyring():
     keyring.set_password('nda-tools', username, 'test_password')
     mock_logger = MockLogger()
 
@@ -116,7 +130,7 @@ def test_read_user_credentials_has_username_set_has_password_in_keyring(mock_set
         mock_get_password.assert_not_called()
 
 
-def test_read_user_credentials_reenter_credentials(mock_settings_no_user):
+def test_read_user_credentials_reenter_credentials():
     mock_logger = MockLogger()
 
     with patch.object(NDATools.logger, 'info', mock_logger), \
@@ -211,9 +225,8 @@ def test_client_configuration_auth_uses_latest_credentials(monkeypatch):
     assert request2.headers['Authorization'] == 'Bearer second_token'
 
 
-def test_client_configuration_derives_ras_login_endpoint_from_ras_base(monkeypatch, tmp_path):
-    settings_file = tmp_path / 'settings.cfg'
-    settings_file.write_text(
+def test_client_configuration_derives_ras_login_endpoint_from_ras_base(monkeypatch, isolated_nda_settings_file):
+    isolated_nda_settings_file.write_text(
         "[Endpoints]\n"
         "ras = https://revengers.nimhda.org/api/ras\n"
         "package = https://revengers.nimhda.org/api/package\n"
