@@ -11,7 +11,6 @@ from requests.auth import AuthBase
 import yaml
 
 import NDATools
-from NDATools import NDA_TOOLS_LOGGING_YML_FILE
 from NDATools.Utils import REQUEST_TOKEN_VERSION_ATTR
 from NDATools.upload.cli import NdaUploadCli
 from NDATools.upload.submission.api import SubmissionPackageApi, SubmissionApi, CollectionApi
@@ -22,6 +21,7 @@ from NDATools.upload.validation.results_writer import ResultsWriterFactory
 
 logger = logging.getLogger(__name__)
 from importlib.resources import files
+from pathlib import Path
 
 
 class LoggingConfiguration:
@@ -30,9 +30,9 @@ class LoggingConfiguration:
         pass
 
     @staticmethod
-    def load_config(default_log_directory, verbose=False, log_dir=None):
+    def load_config(logging_yml_file, default_log_directory, verbose=False, log_dir=None):
 
-        with open(NDA_TOOLS_LOGGING_YML_FILE, 'r') as stream:
+        with open(logging_yml_file, 'r') as stream:
             config = yaml.load(stream, Loader=yaml.FullLoader)
         if log_dir and os.path.exists(log_dir):
             log_file = os.path.join(log_dir, "debug_log_{}.txt").format(time.strftime("%Y%m%dT%H%M%S"))
@@ -59,8 +59,8 @@ class ClientConfiguration:
 
     def __init__(self, args):
         self.config = configparser.ConfigParser()
-        logger.info('Using configuration file from {}'.format(NDATools.NDA_TOOLS_SETTINGS_CFG_FILE))
-        self.config.read(NDATools.NDA_TOOLS_SETTINGS_CFG_FILE)
+        self._nda_paths = self._set_nda_paths()
+
         self._check_and_fix_missing_options()
         self.validation_api_endpoint = self.config.get("Endpoints", "validation")
         self.submission_package_api_endpoint = self.config.get("Endpoints", "submission_package")
@@ -73,6 +73,7 @@ class ClientConfiguration:
         ras_api_endpoint = self.config.get("Endpoints", "ras")
         self.ras_login_api_endpoint = f"{ras_api_endpoint}/user/login"
         self.username = self.config.get("User", "username").lower()
+
         # TODO remove args from config
         self._args = args
 
@@ -81,7 +82,7 @@ class ClientConfiguration:
             logger.info('proceeding as NDA user: {}'.format(self.username))
         elif self.username:
             logger.warning("-u/--username argument not provided. Using default value of '%s' which was saved in %s",
-                           self.username, NDATools.NDA_TOOLS_SETTINGS_CFG_FILE)
+                           self.username, self._nda_paths['nda_tools_settings_cfg_file'])
         self.password = None
         self.token = None
         self._auth_generation = 0
@@ -93,7 +94,7 @@ class ClientConfiguration:
 
         if self._is_vtcmd():
             self.qa_enabled = True
-            self.validation_results_writer = ResultsWriterFactory.get_writer(file_format='json' if args.JSON else 'csv')
+            self.validation_results_writer = ResultsWriterFactory(self.nda_paths['nda_tools_val_folder']).get_writer(file_format='json' if args.JSON else 'csv')
             self.validation_api = None
             self.submission_api = None
             self.submission_package_api = None
@@ -152,6 +153,10 @@ class ClientConfiguration:
     def batch_size(self):
         return self._args.batch
 
+    @property
+    def nda_paths(self):
+        return self._nda_paths
+
     def _is_vtcmd(self):
         return 'collectionID' in self._args
 
@@ -173,7 +178,7 @@ class ClientConfiguration:
                     change_detected = True
         if change_detected:
             logger.debug('updating settings.cfg')
-            with open(NDATools.NDA_TOOLS_SETTINGS_CFG_FILE, 'w') as configfile:
+            with open(self._nda_paths['nda_tools_settings_cfg_file'], 'w') as configfile:
                 self.config.write(configfile)
         else:
             logger.debug('settings.cfg is up to date')
@@ -212,7 +217,7 @@ class ClientConfiguration:
             self._reauth_error = None
 
         try:
-            NDATools.authenticate(self)
+            self.authenticate()
             with self._reauth_condition:
                 self._auth_generation += 1
         except Exception as exc:
@@ -225,6 +230,10 @@ class ClientConfiguration:
                 self._reauth_in_progress = False
                 self._reauth_condition.notify_all()
 
+    def authenticate(self):
+        username, password, token = NDATools._get_user_credentials(self)
+        self.update_with_auth(username, password, token)
+
     def update_with_auth(self, username, password, token):
         self.username = username
         self.password = password
@@ -233,7 +242,7 @@ class ClientConfiguration:
         self._save_apis()
 
     def _save_username(self):
-        with open(NDATools.NDA_TOOLS_SETTINGS_CFG_FILE, 'w') as configfile:
+        with open(self._nda_paths['nda_tools_settings_cfg_file'], 'w') as configfile:
             self.config.set('User', 'username', self.username)
             self.config.write(configfile)
 
@@ -258,3 +267,47 @@ class ClientConfiguration:
                                                                     self.force,
                                                                     self.hide_progress,
                                                                     self.batch_size)
+
+    def _set_nda_paths(self):
+        nda_tools_settings_folder = os.path.join(os.path.expanduser('~'), '.NDATools')
+        nda_tools_settings_cfg_file = os.path.join(nda_tools_settings_folder, 'settings.cfg')
+
+        logger.info('Using configuration file from {}'.format(nda_tools_settings_cfg_file))
+        self.config.read(nda_tools_settings_cfg_file)
+
+        nda_org_root_dir = self._validate_folder_path(
+            self.config.get("Paths", "nda_organization_root_dir"))
+        if not nda_org_root_dir:
+            nda_org_root_dir = os.path.join(os.path.expanduser('~'), 'NDA')
+
+        nda_tools_root_folder = os.path.join(nda_org_root_dir, 'nda-tools')
+        nda_tools_vtcmd_folder = os.path.join(nda_tools_root_folder, 'vtcmd')
+        nda_tools_downloadcmd_folder = os.path.join(nda_tools_root_folder, 'downloadcmd')
+        nda_tools_nda_folder = os.path.join(nda_tools_root_folder, 'nda')
+
+        return {
+            "nda_organization_root_folder": nda_org_root_dir,
+            "nda_tools_root_folder": nda_tools_root_folder,
+            "nda_tools_vtcmd_folder": nda_tools_vtcmd_folder,
+            "nda_tools_nda_folder": nda_tools_nda_folder,
+            "nda_tools_downloadcmd_folder": nda_tools_downloadcmd_folder,
+            "nda_tools_downloads_folder": os.path.join(nda_tools_downloadcmd_folder, 'packages'),
+            "nda_tools_downloadcmd_logs_folder": os.path.join(nda_tools_downloadcmd_folder, 'logs'),
+            "nda_tools_vtcmd_logs_folder": os.path.join(nda_tools_vtcmd_folder, 'logs'),
+            "nda_tools_val_folder": os.path.join(nda_tools_vtcmd_folder, 'validation_results'),
+            "nda_tools_sub_pkg_folder": os.path.join(nda_tools_vtcmd_folder, 'submission_package'),
+            "nda_tools_submissions_folder":  os.path.join(nda_tools_vtcmd_folder, 'submissions'),
+            "nda_tools_nda_logs_folder": os.path.join(nda_tools_nda_folder, 'logs'),
+            "nda_tools_settings_folder": nda_tools_settings_folder,
+            "nda_tools_logging_yml_file": os.path.join(nda_tools_settings_folder, 'logging.yml'),
+            "nda_tools_settings_cfg_file": nda_tools_settings_cfg_file
+        }
+
+    def _validate_folder_path(self, directory=None):
+        if not directory or not directory.strip():
+            return None
+        else:
+            directory = Path(os.path.expandvars(os.path.expanduser(directory.strip()))).resolve()
+            if not os.path.isdir(directory):
+                return None
+            return directory

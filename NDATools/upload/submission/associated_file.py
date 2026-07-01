@@ -9,7 +9,7 @@ import botocore
 from boto3.s3.transfer import TransferConfig
 from tqdm import tqdm
 
-from NDATools import exit_error, NDA_TOOLS_SUBMISSIONS_FOLDER
+from NDATools import exit_error
 from NDATools.Utils import get_s3_client_with_config, deconstruct_s3_url, get_directory_input, SqlUtils
 from NDATools.upload.batch_file_uploader import BatchFileUploader, UploadContext, Uploadable, UploadError, \
     files_not_found_msg, BatchResults
@@ -49,8 +49,6 @@ class AFUploadContext(UploadContext):
         self.search_folders = search_folders
         self.progress_bar = None
         self.display_missing_files_message = False
-        if not db_folder:
-            db_folder = NDA_TOOLS_SUBMISSIONS_FOLDER
         self.db_path = pathlib.Path(db_folder, f'{submission.submission_id}.db')
         self.db_connection = sqlite3.connect(self.db_path)
 

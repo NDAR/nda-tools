@@ -29,8 +29,6 @@ def download_mock(load_from_file, download_config_factory, monkeypatch, tmp_path
     def _download_mock(*, args):
         # return json.loads(load_from_file('api_responses/s3/ds_test/get-presigned-url-response.json'))
         config, args = download_config_factory(args)
-        # override the NDATools.NDA_TOOLS_DOWNLOADS_FOLDER before calling constructor so downloads go to tmpdir
-        monkeypatch.setattr(NDATools, 'NDA_TOOLS_DOWNLOADS_FOLDER', tmp_path)
         download = Download(args, config)
         # monkeypatch some of the methods that make API calls in Download class
         monkeypatch.setattr(download, 'get_package_info', mock_get_package_info)
@@ -162,9 +160,11 @@ def test_download_with_some_completed_files(download_mock, logger_mock, tmp_path
 def download_mock2(load_from_file, download_config_factory, monkeypatch, tmp_path, logger_mock):
     """mock for testing download_local and download_to_s3 methods"""
 
-    def _download_mock(*, args):
+    def _download_mock(*, args, nda_paths=None):
         # return json.loads(load_from_file('api_responses/s3/ds_test/get-presigned-url-response.json'))
         args, config = download_config_factory(args)
+        if nda_paths is not None:
+            config._nda_paths = nda_paths
         return Download(config, args)
 
     return _download_mock
@@ -310,13 +310,12 @@ def test_get_package_info_passes_reauth_func(monkeypatch, tmp_path):
     config.password = 'testpassword'
     config.worker_threads = 1
     config.reauthenticate = MagicMock()
+    config.nda_paths = {"nda_tools_downloads_folder": str(tmp_path)}
     shared_auth = MagicMock()
     config.get_auth.return_value = shared_auth
     args = MagicMock(directory=None, txt=None, paths=None, package=1189934, datastructure=None, file_regex=None,
                      verify=False, workerThreads=None, s3_destination=None)
-    with monkeypatch.context() as m:
-        m.setattr(NDATools, 'NDA_TOOLS_DOWNLOADS_FOLDER', str(tmp_path))
-        download = Download(config, args)
+    download = Download(config, args)
     reauth = config.reauthenticate
     response = Response(text='{"package_id": 1189934}')
 
@@ -337,13 +336,12 @@ def test_get_presigned_urls_passes_reauth_func(monkeypatch, tmp_path):
     config.password = 'testpassword'
     config.worker_threads = 1
     config.reauthenticate = MagicMock()
+    config.nda_paths = {"nda_tools_downloads_folder": str(tmp_path)}
     shared_auth = MagicMock()
     config.get_auth.return_value = shared_auth
     args = MagicMock(directory=None, txt=None, paths=None, package=1189934, datastructure=None, file_regex=None,
                      verify=False, workerThreads=None, s3_destination=None)
-    with monkeypatch.context() as m:
-        m.setattr(NDATools, 'NDA_TOOLS_DOWNLOADS_FOLDER', str(tmp_path))
-        download = Download(config, args)
+    download = Download(config, args)
     reauth = config.reauthenticate
     response = {'presignedUrls': [{'package_file_id': 1, 'downloadURL': 'https://tmp'}]}
 
@@ -408,8 +406,10 @@ def test_verify(monkeypatch, download_mock2, tmp_path, datadir):
     download_dir = datadir / 'download_dir'
     downloadcmd_downloads_dir = datadir / 'packages'
     with monkeypatch.context() as m:
-        m.setattr(NDATools, 'NDA_TOOLS_DOWNLOADS_FOLDER', str(downloadcmd_downloads_dir))
-        download = download_mock2(args=['-dp', '1228592', '--verify', '-d', str(download_dir)])
+        download = download_mock2(
+            args=['-dp', '1228592', '--verify', '-d', str(download_dir)],
+            nda_paths={"nda_tools_downloads_folder": str(downloadcmd_downloads_dir)},
+        )
         m.setattr(download, 'get_and_display_package_info', MagicMock())
         m.setattr(download, 'download_package_metadata_file', MagicMock())
         m.setattr(NDATools.Download.logger, 'info', MockLogger())

@@ -9,7 +9,7 @@ import pathlib
 import shutil
 import sys
 
-__version__ = '0.8.dev2'
+__version__ = '0.8.dev7'
 
 import threading
 from importlib.resources import files
@@ -66,68 +66,29 @@ def check_version():
                                                                                              pypi_version))
         sys.exit(1)
 
-
-NDA_ORGINIZATION_ROOT_FOLDER = os.path.join(os.path.expanduser('~'), 'NDA')
-NDA_TOOLS_ROOT_FOLDER = os.path.join(NDA_ORGINIZATION_ROOT_FOLDER, 'nda-tools')
-NDA_TOOLS_VTCMD_FOLDER = os.path.join(NDA_TOOLS_ROOT_FOLDER, 'vtcmd')
-NDA_TOOLS_NDA_FOLDER = os.path.join(NDA_TOOLS_ROOT_FOLDER, 'nda')
-NDA_TOOLS_DOWNLOADCMD_FOLDER = os.path.join(
-    NDA_TOOLS_ROOT_FOLDER, 'downloadcmd')
-NDA_TOOLS_DOWNLOADS_FOLDER = os.path.join(
-    NDA_TOOLS_DOWNLOADCMD_FOLDER, 'packages')
-NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER = os.path.join(
-    NDA_TOOLS_DOWNLOADCMD_FOLDER, 'logs')
-NDA_TOOLS_VTCMD_LOGS_FOLDER = os.path.join(NDA_TOOLS_VTCMD_FOLDER, 'logs')
-NDA_TOOLS_VAL_FOLDER = os.path.join(
-    NDA_TOOLS_VTCMD_FOLDER, 'validation_results')
-NDA_TOOLS_SUB_PACKAGE_FOLDER = os.path.join(
-    NDA_TOOLS_VTCMD_FOLDER, 'submission_package')
-NDA_TOOLS_SUBMISSIONS_FOLDER = os.path.join(
-    NDA_TOOLS_VTCMD_FOLDER, 'submissions')
 NDA_TOOLS_PACKAGE_FILE_METADATA_TEMPLATE = 'package_file_metadata_%s.txt'
 NDA_TOOLS_DEFAULT_LOG_FORMAT = '%(asctime)s:%(levelname)s:%(message)s'
-NDA_TOOLS_SETTINGS_FOLDER = os.path.join(os.path.expanduser('~'), '.NDATools')
-NDA_TOOLS_LOGGING_YML_FILE = os.path.join(NDA_TOOLS_SETTINGS_FOLDER, 'logging.yml')
-NDA_TOOLS_SETTINGS_CFG_FILE = os.path.join(NDA_TOOLS_SETTINGS_FOLDER, 'settings.cfg')
-NDA_TOOLS_NDA_LOGS_FOLDER = os.path.join(NDA_TOOLS_NDA_FOLDER, 'logs')
 
-
-def create_nda_folders():
+def create_nda_folders(nda_paths):
     # init folder structure for program runtime files
     def _create_if_not_exists(path):
         if not os.path.exists(path):
             os.mkdir(path)
 
-    _create_if_not_exists(NDA_ORGINIZATION_ROOT_FOLDER)
-    _create_if_not_exists(NDA_TOOLS_ROOT_FOLDER)
-    _create_if_not_exists(NDA_TOOLS_VTCMD_FOLDER)
-    _create_if_not_exists(NDA_TOOLS_DOWNLOADCMD_FOLDER)
-    _create_if_not_exists(NDA_TOOLS_DOWNLOADS_FOLDER)
-    _create_if_not_exists(NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER)
-    _create_if_not_exists(NDA_TOOLS_VTCMD_LOGS_FOLDER)
-    _create_if_not_exists(NDA_TOOLS_VAL_FOLDER)
-    _create_if_not_exists(NDA_TOOLS_SUB_PACKAGE_FOLDER)
-    _create_if_not_exists(NDA_TOOLS_SETTINGS_FOLDER)
-    _create_if_not_exists(NDA_TOOLS_SUBMISSIONS_FOLDER)
-    _create_if_not_exists(NDA_TOOLS_NDA_FOLDER)
-    _create_if_not_exists(NDA_TOOLS_NDA_LOGS_FOLDER)
+    for path in nda_paths.values():
+        _create_if_not_exists(path)
 
-    if not pathlib.Path(NDA_TOOLS_LOGGING_YML_FILE).is_file():
+    if not pathlib.Path(nda_paths['nda_tools_logging_yml_file']).is_file():
         t = files('NDATools').joinpath('clientscripts/config/logging.yml')
         with importlib.resources.as_file(t) as f:
-            shutil.copyfile(f, NDA_TOOLS_LOGGING_YML_FILE)
+            shutil.copyfile(f, nda_paths['nda_tools_logging_yml_file'])
 
-    if not pathlib.Path(NDA_TOOLS_SETTINGS_CFG_FILE).is_file():
+    if not pathlib.Path(nda_paths['nda_tools_settings_cfg_file']).is_file():
         t = files('NDATools').joinpath('clientscripts/config/settings.cfg')
         with importlib.resources.as_file(t) as f:
-            shutil.copyfile(f, NDA_TOOLS_SETTINGS_CFG_FILE)
+            shutil.copyfile(f, nda_paths['nda_tools_settings_cfg_file'])
     # MAC users sometimes see output from python warnings module. Suppress these msgs
     os.environ['PYTHONWARNINGS'] = 'ignore'
-
-
-def init_checks_and_program_folders():
-    check_version()
-    create_nda_folders()
 
 
 def _get_password(username) -> str:
@@ -198,33 +159,23 @@ def _get_user_credentials(config) -> Tuple[str, str]:
     return username, password, token
 
 
-def init_logging(args, logs_folder):
-    from NDATools.Configuration import LoggingConfiguration
-    LoggingConfiguration.load_config(logs_folder, args.verbose, args.log_dir)
-
-
-def init(args, logs_folder):
-    init_checks_and_program_folders()
-    init_logging(args, logs_folder)
-
-
-def create_configuration(args, auth_req=True):
-    from NDATools.Configuration import ClientConfiguration
-    config = ClientConfiguration(args)
+def auth_config_and_init_logging(command, args, config, auth_req=True):
     if auth_req:
-        authenticate(config)
-    return config
+        config.authenticate()
+    check_version_and_create_folders(config.nda_paths)
+
+    from NDATools.Configuration import LoggingConfiguration
+    if command == 'vtcmd':
+        LoggingConfiguration.load_config(config.nda_paths['nda_tools_logging_yml_file'], config.nda_paths['nda_tools_vtcmd_logs_folder'], args.verbose, args.log_dir)
+    if command == 'downloadcmd':
+        LoggingConfiguration.load_config(config.nda_paths['nda_tools_logging_yml_file'], config.nda_paths['nda_tools_downloadcmd_logs_folder'], args.verbose, args.log_dir)
+    if command == 'nda':
+        LoggingConfiguration.load_config(config.nda_paths['nda_tools_logging_yml_file'], config.nda_paths['nda_tools_nda_logs_folder'], args.verbose, args.log_dir)
 
 
-def init_and_create_configuration(args, logs_folder, auth_req=True):
-    init(args, logs_folder)
-    return create_configuration(args, auth_req)
-
-
-def authenticate(config):
-    username, password, token = _get_user_credentials(config)
-    config.update_with_auth(username, password, token)
-    return config
+def check_version_and_create_folders(nda_paths):
+    check_version()
+    create_nda_folders(nda_paths)
 
 
 def _exit_client(message=None, status_code=1):

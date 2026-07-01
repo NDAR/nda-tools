@@ -7,7 +7,6 @@ from unittest.mock import patch, mock_open, MagicMock
 from urllib.parse import quote
 
 import pytest
-import requests
 
 import NDATools
 from NDATools.Utils import REQUEST_TOKEN_VERSION_ATTR, parse_local_files, sanitize_file_path, check_read_permissions, \

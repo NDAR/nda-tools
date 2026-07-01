@@ -99,8 +99,6 @@ class DownloadRequest:
                                                                                                  self.package_file_expected_location)
                                                                                              if operating_system == 'Windows' else self.package_file_expected_location)
                                                                                 ))
-        self.package_download_directory = convert_to_abs_path(
-            os.path.join(NDATools.NDA_TOOLS_DOWNLOADS_FOLDER, str(package_id)))
         self.nda_s3_url = None
         self.exists = False
         self.expected_file_size = package_file['file_size']
@@ -128,8 +126,8 @@ class Download(Protocol):
         if args.directory:
             download_directory = args.directory[0]
         else:
-            download_directory = os.path.join(NDATools.NDA_TOOLS_DOWNLOADS_FOLDER, str(args.package))
-        self.package_metadata_directory = os.path.join(NDATools.NDA_TOOLS_DOWNLOADS_FOLDER,
+            download_directory = os.path.join(self.config.nda_paths['nda_tools_downloads_folder'], str(args.package))
+        self.package_metadata_directory = os.path.join(self.config.nda_paths['nda_tools_downloads_folder'],
                                                        str(args.package))
         self.download_directory = convert_to_abs_path(download_directory)
         self.s3_links_file = args.txt
@@ -268,7 +266,7 @@ class Download(Protocol):
                                                            prefix='failed_s3_links_file_{}'.format(
                                                                time.strftime("%Y%m%dT%H%M%S")),
                                                            suffix='.csv',
-                                                           dir=NDATools.NDA_TOOLS_DOWNLOADCMD_LOGS_FOLDER
+                                                           dir=self.config.nda_paths['nda_tools_downloadcmd_logs_folder']
                                                            )
 
         message = 'S3 links for files that failed to download will be written out to {}. You can attempt to download these files later by running: ' \

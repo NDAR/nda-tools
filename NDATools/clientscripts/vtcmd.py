@@ -4,7 +4,6 @@ import logging
 from tqdm import tqdm
 
 import NDATools
-from NDATools import authenticate
 from NDATools import exit_error
 from NDATools.Configuration import ClientConfiguration
 from NDATools.Utils import get_non_blank_input, get_int_input
@@ -115,7 +114,7 @@ def validate(args, config):
     logger.info(f'Running structural checks on {len(args.files)} files...')
     logger.debug('Using the validation API.')
     if not config.is_authenticated():
-        authenticate(config)
+        config.authenticate()
     validated_files = config.upload_cli.validate(args.files, args.manifestPath)
 
     system_errors = list(filter(lambda x: x.system_error(), validated_files))
@@ -238,8 +237,9 @@ def submit(validated_files, config):
 def main():
     # confirm latest version of nda-tools is installed
     args = parse_args()
+    config = ClientConfiguration(args)
     auth_req = True if args.buildPackage or args.resume or args.replace_submission or args.username else False
-    config = NDATools.init_and_create_configuration(args, NDATools.NDA_TOOLS_VTCMD_LOGS_FOLDER, auth_req=auth_req)
+    NDATools.auth_config_and_init_logging('vtcmd', args, config, auth_req)
     check_args(args, config)
 
     if args.resume:
