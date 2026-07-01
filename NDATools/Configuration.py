@@ -60,8 +60,6 @@ class ClientConfiguration:
     def __init__(self, args):
         self.config = configparser.ConfigParser()
         self._nda_paths = self._set_nda_paths()
-
-        self._check_and_fix_missing_options()
         self.validation_api_endpoint = self.config.get("Endpoints", "validation")
         self.submission_package_api_endpoint = self.config.get("Endpoints", "submission_package")
         self.submission_api_endpoint = self.config.get("Endpoints", "submission")
@@ -160,7 +158,7 @@ class ClientConfiguration:
     def _is_vtcmd(self):
         return 'collectionID' in self._args
 
-    def _check_and_fix_missing_options(self):
+    def _check_and_fix_missing_options(self, setting_cfg_path):
         default_config = configparser.ConfigParser()
         t = files('NDATools').joinpath('clientscripts/config/settings.cfg')
         with importlib.resources.as_file(t) as f:
@@ -178,7 +176,7 @@ class ClientConfiguration:
                     change_detected = True
         if change_detected:
             logger.debug('updating settings.cfg')
-            with open(self._nda_paths['nda_tools_settings_cfg_file'], 'w') as configfile:
+            with open(setting_cfg_path, 'w') as configfile:
                 self.config.write(configfile)
         else:
             logger.debug('settings.cfg is up to date')
@@ -274,6 +272,7 @@ class ClientConfiguration:
 
         logger.info('Using configuration file from {}'.format(nda_tools_settings_cfg_file))
         self.config.read(nda_tools_settings_cfg_file)
+        self._check_and_fix_missing_options(nda_tools_settings_cfg_file)
 
         nda_org_root_dir = self._validate_folder_path(
             self.config.get("Paths", "nda_organization_root_dir"))
