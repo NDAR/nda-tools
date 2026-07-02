@@ -25,9 +25,11 @@ def load_from_file(datadir):
 
 
 @pytest.fixture(autouse=True)
-def disable_cli_file_logging(monkeypatch):
-    monkeypatch.setattr(NDATools, 'init_logging', lambda *args, **kwargs: None)
+def disable_cli_file_logging(monkeypatch, mock_settings_file):
     monkeypatch.setattr(NDATools.Configuration.ClientConfiguration, '_save_username', lambda *args, **kwargs: None)
+    monkeypatch.setattr(NDATools, 'check_version_and_create_folders', lambda *args, **kwargs: None)
+    monkeypatch.setattr(NDATools.Configuration.LoggingConfiguration, 'load_config',
+                        lambda *args, **kwargs: None)
 
 
 @pytest.fixture
