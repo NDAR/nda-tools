@@ -9,7 +9,21 @@ import pathlib
 import shutil
 import sys
 
-__version__ = '0.8.dev8'
+__version__ = '0.8.dev9'
+MIN_PYTHON_VERSION = (3, 10)
+
+def _ensure_supported_python_version():
+    if sys.version_info < MIN_PYTHON_VERSION:
+        required_version = '.'.join(str(part) for part in MIN_PYTHON_VERSION)
+        current_version = '.'.join(str(part) for part in sys.version_info[:3])
+        print(
+            f'NDA Tools requires Python {required_version} or later. '
+            f'You are using Python {current_version}. Please install Python {required_version} or later and try again.',
+            file=sys.stderr
+        )
+        sys.exit(1)
+
+_ensure_supported_python_version()
 
 import threading
 from importlib.resources import files

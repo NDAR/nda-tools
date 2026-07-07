@@ -62,7 +62,7 @@ def test_download_by_links_file(download_mock, logger_mock, tmp_path):
     with open(links_file, 'w') as f:
         f.write('s3://gpop-stage/ndar_data/QueryPackages/REVENGERS/README.pdf\n')
         f.write(
-            's3://gpop-stage/ndar_data/QueryPackages/REVENGERS/773981645558:ndar_administrator/Package_1189934/dataset_collection.txt\n')
+            's3://gpop-stage/ndar_data/QueryPackages/REVENGERS/773981645558:ndar_user/Package_1189934/dataset_collection.txt\n')
     ds_download = download_mock(args=['-dp', '1189934', '-t', str(links_file)])
     ds_download.start()
     logger_mock.info.assert_any_call_contains('Number of files in package: 7')
