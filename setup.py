@@ -15,6 +15,7 @@ setup(
                       'pydantic>=2', 'setuptools'],
     extras_require={'test': ['pytest', 'pytest-datadir', 'mock', 'coverage']},
     version=NDATools.__version__,
+    python_requires='>=3.10',
     long_description=long_description,
     long_description_content_type="text/markdown",
     author='NDA',

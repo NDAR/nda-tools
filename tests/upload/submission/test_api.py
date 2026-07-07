@@ -206,7 +206,7 @@ def user_json():
                 "altEndpoint": "PROD-AMPSCZ"
             }
         ],
-        "username": "ndar_administrator",
+        "username": "ndar_user",
         "id": 21826,
         "permissions": [
             {

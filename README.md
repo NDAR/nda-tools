@@ -25,13 +25,13 @@ To start, open your machine's Command Prompt, Windows Terminal, or command line 
 
 ### [Step 1: Install Python 3](#step-1-install-python-3)
 
-nda-tools requires Python 3. Check if Python 3 is already installed:
+nda-tools requires Python version 3.10 or later. Check if Python 3 is already installed:
 
 ```bash
 python --version
 ```
 
-- If this returns Python 3.x.x, you're good to go.
+- If this returns Python 3.10 or later, you're good to go.
   ![Python Version Number Returned](https://s3.amazonaws.com/nda.nih.gov/cms/prod/python-installed.PNG)
 - Python offers 2 kinds of distributions: version 2.x.x and version 3.x.x. If you have multiple versions of Python
   installed, `python --version` might return Python 2.x.x. You can run `python3 --version` to verify Python 3 exists on
