@@ -1,12 +1,12 @@
 version: 0.2
 
 env:
-	  variables:
-    CODEARTIFACT_AUTH_TOKEN: ''
-    CODEARTIFACT_DOMAIN_OWNER: ''
-    SONAR_LOGIN: ''
-    SONAR_URL: ''
-    SONAR_PROJECT_KEY: ''
+  variables:
+  CODEARTIFACT_AUTH_TOKEN: ""
+  CODEARTIFACT_DOMAIN_OWNER: ""
+  SONAR_LOGIN: ""
+  SONAR_URL: ""
+  SONAR_PROJECT_KEY: ""
 
 phases:
   install:
@@ -22,14 +22,14 @@ phases:
       - wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-6.2.1.4610-linux-x64.zip
       - unzip ./sonar-scanner-cli-6.2.1.4610-linux-x64.zip > /dev/null 2>&1
       - export PATH=$PATH:$(pwd)/sonar-scanner-6.2.1.4610-linux-x64/bin
- 
+
   pre_build:
     on-failure: CONTINUE
     commands:
       - pip install coverage pytest
       - echo Fetching AWS CodeArtifact auth token...
       - export CODEARTIFACT_AUTH_TOKEN=`aws codeartifact get-authorization-token --domain nda --domain-owner ${CODEARTIFACT_DOMAIN_OWNER} --region us-east-1 --query authorizationToken --output text`
- 
+
   build:
     on-failure: CONTINUE
     commands:
@@ -41,7 +41,7 @@ phases:
       - curl --location --user "${SONAR_LOGIN}:" "${SONAR_URL}/api/qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}&branch=$BRANCH_NAME" > result.json
       - echo "Retrieved SonarQube results:"
       - cat result.json
- 
+
   post_build:
     commands:
       - echo sonarqube static code analysis complete
