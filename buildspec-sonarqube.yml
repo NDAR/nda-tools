@@ -24,14 +24,14 @@ phases:
       - export PATH=$PATH:$(pwd)/sonar-scanner-6.2.1.4610-linux-x64/bin
 
   pre_build:
-    on-failure: CONTINUE
+    on-failure: ABORT
     commands:
-      - pip install coverage pytest
+      - ./scripts/ci/install-test-deps.sh
       - echo Fetching AWS CodeArtifact auth token...
       - export CODEARTIFACT_AUTH_TOKEN=`aws codeartifact get-authorization-token --domain nda --domain-owner ${CODEARTIFACT_DOMAIN_OWNER} --region us-east-1 --query authorizationToken --output text`
 
   build:
-    on-failure: CONTINUE
+    on-failure: ABORT
     commands:
       - ls -a
       - coverage run -m pytest && coverage xml --rcfile=.coveragerc

@@ -8,10 +8,8 @@ phases:
   build:
     on-failure: ABORT
     commands:
-      - pip install --upgrade pip
+      - ./scripts/ci/install-test-deps.sh
       - pip install setuptools wheel twine build
-      - pip install keyrings.alt
-      - pip install -e '.[test]'
       - coverage run -m pytest && coverage report -m
       - |
         set -e
