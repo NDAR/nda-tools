@@ -1,5 +1,9 @@
 version: 0.2
 
+cache:
+  paths:
+    - '/root/.cache/pip/**/*'
+
 phases:
   install:
     runtime-versions:
