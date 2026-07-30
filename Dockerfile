@@ -1,12 +1,10 @@
-FROM public.ecr.aws/docker/library/python:3.9
+FROM public.ecr.aws/docker/library/python:3.10
 
 
 ARG CODEARTIFACT_AUTH_TOKEN
 ARG TWINE_USERNAME
 ARG TWINE_PASSWORD
 ARG TWINE_REPOSITORY_URL
-
-RUN echo $CODEARTIFACT_AUTH_TOKEN
 
 WORKDIR /app
 
@@ -18,19 +16,12 @@ ENV TWINE_REPOSITORY_URL=$TWINE_REPOSITORY_URL
 # Copy the project files to the working directory
 COPY . .
 
-# Install dependencies and build the package
-RUN pip3 install wheel requests 
-RUN pytest
-RUN python setup.py sdist
-
-# Install Twine
-RUN pip3 install twine
-
-# Publish the package using Twine
-RUN twine upload --repository-url $TWINE_REPOSITORY_URL --username $TWINE_USERNAME --password $TWINE_PASSWORD dist/*
-
-# Cleanup
-RUN rm -rf dist
+# Install dependencies, build the package, install Twine, Publish the package using Twine, 
+RUN pip3 install wheel requests && \
+ pytest && python setup.py sdist && \
+ pip3 install twine && \
+ twine upload --repository-url $TWINE_REPOSITORY_URL --username $TWINE_USERNAME --password $TWINE_PASSWORD dist/* && \
+  rm -rf dist
 
 # Set the default command
 CMD ["/bin/bash"]
