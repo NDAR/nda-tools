@@ -2,11 +2,11 @@ version: 0.2
 
 env:
   variables:
-  CODEARTIFACT_AUTH_TOKEN: ""
-  CODEARTIFACT_DOMAIN_OWNER: ""
-  SONAR_LOGIN: ""
-  SONAR_URL: ""
-  SONAR_PROJECT_KEY: ""
+    CODEARTIFACT_AUTH_TOKEN: ""
+    CODEARTIFACT_DOMAIN_OWNER: ""
+    SONAR_LOGIN: ""
+    SONAR_URL: ""
+    SONAR_PROJECT_KEY: ""
 
 phases:
   install:
