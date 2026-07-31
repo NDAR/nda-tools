@@ -47,6 +47,13 @@ phases:
       - curl --location --user "${SONAR_LOGIN}:" "${SONAR_URL}/api/qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}&branch=$BRANCH_NAME" > result.json
       - echo "Retrieved SonarQube results:"
       - cat result.json
+      - |
+        quality_gate_status=$(jq -r '.projectStatus.status' result.json)
+        echo "SonarQube quality gate status: ${quality_gate_status}"
+        if [ "${quality_gate_status}" != "OK" ]; then
+          echo "SonarQube quality gate failed"
+          exit 1
+        fi
 
   post_build:
     commands:

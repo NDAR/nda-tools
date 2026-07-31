@@ -9,7 +9,7 @@ import pathlib
 import shutil
 import sys
 
-__version__ = '0.8.dev14'
+__version__ = '0.8.dev15'
 MIN_PYTHON_VERSION = (3, 10)
 
 def _ensure_supported_python_version():
