@@ -40,9 +40,9 @@ phases:
     on-failure: ABORT
     commands:
       - ls -a
-      - coverage run -m pytest && coverage xml --rcfile=.coveragerc
+      - coverage run -m pytest && coverage xml --rcfile=.coveragerc -o coverage.xml
       - echo starting sonarqube static code analysis scan......
-      - sonar-scanner -Dsonar.login=${SONAR_LOGIN} -Dsonar.host.url=${SONAR_URL} -Dsonar.projectKey=${SONAR_PROJECT_KEY} -Dsonar.sources=. -Dsonar.branch.name=$BRANCH_NAME -Dsonar.log.level=WARN
+      - sonar-scanner -Dsonar.login=${SONAR_LOGIN} -Dsonar.host.url=${SONAR_URL} -Dsonar.projectKey=${SONAR_PROJECT_KEY} -Dsonar.sources=. -Dsonar.python.coverage.reportPaths=coverage.xml -Dsonar.branch.name=$BRANCH_NAME -Dsonar.log.level=WARN
       - sleep 5
       - curl --location --user "${SONAR_LOGIN}:" "${SONAR_URL}/api/qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}&branch=$BRANCH_NAME" > result.json
       - echo "Retrieved SonarQube results:"
