@@ -22,7 +22,7 @@ setup(
     author_email='NDAHelp@mail.nih.gov',
     url="https://github.com/NDAR/nda-tools/tree/master/NDATools",
     license='MIT',
-    packages=find_packages(),
+    packages=find_packages(exclude=['tests', 'tests.*']),
     include_package_data=True,
     data_files=[('config', ['NDATools/clientscripts/config/settings.cfg',
                             'NDATools/clientscripts/config/logging.yml'])],
