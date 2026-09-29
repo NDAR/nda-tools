@@ -99,7 +99,7 @@ class DownloadRequest:
                                                                                                  self.package_file_expected_location)
                                                                                              if operating_system == 'Windows' else self.package_file_expected_location)
                                                                                 ))
-        self.nda_s3_url = None
+        self.nda_s3_url = package_file.get('nda_s3_url')
         self.exists = False
         self.expected_file_size = package_file['file_size']
         self.actual_file_size = 0
