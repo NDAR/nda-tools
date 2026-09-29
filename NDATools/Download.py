@@ -1088,7 +1088,7 @@ class Download(Protocol):
             return self.query_files_by_s3_path(path_list)
         except IOError as e:
             logger.error(
-                '{} not found. Please enter the correct path to your file and try again.'.format(self.data_structure))
+                '{} not found. Please enter the correct path to your file and try again.'.format(self.s3_links_file))
             raise e
 
     def use_data_structure(self):
