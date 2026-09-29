@@ -629,14 +629,15 @@ class Download(Protocol):
     def generate_download_batch_file_ids(self, completed_file_ids, df):
         batch = []
         size = 0
+        # filter out completed files in one step; a per-row check over millions of rows is slow
+        df = df[~df['package_file_id'].isin(completed_file_ids)]
         for _, row in df.iterrows():
-            if row['package_file_id'] not in completed_file_ids:
-                batch.append(row)
-                size += 1
-                if size % self.default_download_batch_size == 0:
-                    yield batch
-                    batch = []
-                    size = 0
+            batch.append(row)
+            size += 1
+            if size % self.default_download_batch_size == 0:
+                yield batch
+                batch = []
+                size = 0
         yield batch
 
     def find_matching_download_job(self, download_job_manifest_path):
