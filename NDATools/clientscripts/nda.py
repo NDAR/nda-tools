@@ -47,7 +47,7 @@ def main():
     from argparse import ArgumentParser
 
     parser = ArgumentParser()
-    subparser = parser.add_subparsers()
+    subparser = parser.add_subparsers(dest='command', required=True)
 
     parser.add_argument('--log-dir', type=pathlib.Path, help='Customize the file directory of logs. '
                                                              'If this value is not provided or the provided directory does not exist, logs will be saved to NDA/nda-tools/nda/logs inside your home folder.')

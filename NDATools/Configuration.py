@@ -75,7 +75,7 @@ class ClientConfiguration:
         # TODO remove args from config
         self._args = args
 
-        if args.username:
+        if getattr(args, 'username', None):
             self.username = args.username
             logger.info('proceeding as NDA user: {}'.format(self.username))
         elif self.username:
