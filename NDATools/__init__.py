@@ -107,17 +107,16 @@ def create_nda_folders(nda_paths):
 
 def _get_password(username) -> str:
     global _get_keyring
+    if not _get_keyring:
+        return getpass.getpass('Enter your NDA account password:')
     try:
-        if _get_keyring:
-            password = keyring.get_password(SERVICE_NAME, username)
-            if not password:
-                logger.debug('no password found in keyring')
-                _get_keyring = False
-                return _get_password(username)
-            logger.debug('retrieved password from keyring')
-            return password
-        else:
-            return getpass.getpass('Enter your NDA account password:')
+        password = keyring.get_password(SERVICE_NAME, username)
+        if not password:
+            logger.debug('no password found in keyring')
+            _get_keyring = False
+            return _get_password(username)
+        logger.debug('retrieved password from keyring')
+        return password
     except Exception as e:
         logger.warning(f'could not retrieve password from keyring: {str(e)}')
         _get_keyring = False
