@@ -1,3 +1,5 @@
+import csv
+import hashlib
 import json
 import os
 import shlex
@@ -5,6 +7,7 @@ import shutil
 from unittest.mock import MagicMock
 
 import boto3
+import pandas as pd
 import pytest
 from requests import HTTPError
 from requests.structures import CaseInsensitiveDict
@@ -421,3 +424,88 @@ def test_verify(monkeypatch, download_mock2, tmp_path, datadir):
         assert os.path.exists(downloadcmd_downloads_dir / '1228592' / 'download-verification-retry-s3-links.csv')
         with open(downloadcmd_downloads_dir / '1228592' / 'download-verification-retry-s3-links.csv') as f:
             assert f.read() == 's3://nda-central/collection-1860/image4.png\n'
+
+
+@pytest.mark.parametrize('etag, ok', [
+    ('"99914b932bd37a50b983c5e7c90ae93b"', True),  # MD5 of '{}'
+    ('"00000000000000000000000000000000"', False),
+])
+def test_download_local_checksum(monkeypatch, download_mock2, download_request, etag, ok):
+    download = download_mock2(args=['-dp', '1189934', '--checksum'])
+    assert download.checksum is True
+    mock_session = MagicMock()
+    mock_response_context = MagicMock()
+    mock_session.return_value.__enter__.return_value.get.return_value = mock_response_context
+    mock_response_context.__enter__.return_value = Response(headers=CaseInsensitiveDict({'ETag': etag}))
+    monkeypatch.setattr('requests.session', mock_session)
+    if ok:
+        download.download_local(download_request)
+        assert os.path.exists(download_request.completed_download_abs_path)
+        assert download_request.e_tag == etag.strip('"')
+    else:
+        with pytest.raises(Exception, match='does not match the ETag'):
+            download.download_local(download_request)
+        # the file is deleted so that the next run downloads it again
+        assert not os.path.exists(download_request.partial_download_abs_path)
+        assert not os.path.exists(download_request.completed_download_abs_path)
+
+
+def test_download_local_checksum_off_by_default(download_mock2):
+    download = download_mock2(args=['-dp', '1189934'])
+    assert download.checksum is False
+
+
+@pytest.mark.parametrize('delete_mismatched', [False, True])
+def test_verify_checksums(monkeypatch, download_mock2, tmp_path, delete_mismatched):
+    args = ['-dp', '1189934', '--verify', '--checksum', '-d', str(tmp_path / 'download')]
+    if delete_mismatched:
+        args.append('--delete-mismatched')
+    download = download_mock2(args=args)
+    os.makedirs(download.download_directory)
+    os.makedirs(download.package_metadata_directory, exist_ok=True)
+    files = {1: b'match, ETag in log', 2: b'match, ETag from S3', 3: b'mismatch, ETag from S3', 5: b'multipart'}
+    for file_id, content in files.items():
+        with open(os.path.join(download.download_directory, 'f{}.txt'.format(file_id)), 'wb') as f:
+            f.write(content)
+    md5 = lambda b: hashlib.md5(b).hexdigest()
+    df = pd.DataFrame({'package_file_id': [1, 2, 3, 4, 5],
+                       'download_alias': ['f1.txt', 'f2.txt', 'f3.txt', 'f4.txt', 'f5.txt'],
+                       'nda_s3_url': ['s3://bucket/f{}.txt'.format(i) for i in range(1, 6)]})
+    # the progress report has the ETag of file 1, and an ETag that is not an MD5 for file 2
+    progress_records = [{'package_file_id': '1', 'e_tag': md5(files[1])}, {'package_file_id': '2', 'e_tag': '(None,)'}]
+    etags = {2: md5(files[2]), 3: md5(b'other content'), 5: md5(b'x') + '-2'}
+    monkeypatch.setattr(download, 'get_presigned_urls', MagicMock(side_effect=lambda ids: {i: 'url-{}'.format(i) for i in ids}))
+    monkeypatch.setattr(download, 'get_object_headers',
+                        MagicMock(side_effect=lambda url: {'ETag': '"{}"'.format(etags[int(url.split('-')[1])])}))
+
+    links = download.verify_checksums(df, progress_records)
+
+    assert sorted(links) == ['s3://bucket/f3.txt', 's3://bucket/f4.txt']
+    download.get_presigned_urls.assert_called_once_with([2, 3, 5])
+    with open(os.path.join(download.package_metadata_directory, 'download-verification-checksum-report.csv')) as f:
+        report = {int(r['package_file_id']): r for r in csv.DictReader(f)}
+    assert [report[i]['checksum'] for i in range(1, 6)] == ['match', 'match', 'mismatch', 'missing', 'unknown']
+    assert report[1]['e_tag_source'] == 'log'
+    assert report[2]['e_tag_source'] == 's3'
+    assert os.path.exists(os.path.join(download.download_directory, 'f3.txt')) is not delete_mismatched
+    assert report[3]['deleted'] == str(delete_mismatched)
+
+
+def test_verify_with_checksum(monkeypatch, download_mock2, datadir):
+    download_dir = datadir / 'download_dir'
+    downloadcmd_downloads_dir = datadir / 'packages'
+    download = download_mock2(
+        args=['-dp', '1228592', '--verify', '--checksum', '-d', str(download_dir)],
+        nda_paths={"nda_tools_downloads_folder": str(downloadcmd_downloads_dir)},
+    )
+    monkeypatch.setattr(download, 'get_and_display_package_info', MagicMock())
+    monkeypatch.setattr(download, 'download_package_metadata_file', MagicMock())
+    monkeypatch.setattr(download, 'download_job_uuid', '196d36c8-336b-406e-8051-1f0afe413bc7')
+    # one file with a wrong checksum, and one file that the size check also found
+    monkeypatch.setattr(download, 'verify_checksums', MagicMock(
+        return_value=['s3://nda-central/collection-1860/bad-checksum.png', 's3://nda-central/collection-1860/image4.png']))
+    download.verify_download()
+    download.verify_checksums.assert_called_once()
+    with open(downloadcmd_downloads_dir / '1228592' / 'download-verification-retry-s3-links.csv') as f:
+        assert f.read() == ('s3://nda-central/collection-1860/image4.png\n'
+                            's3://nda-central/collection-1860/bad-checksum.png\n')

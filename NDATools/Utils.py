@@ -1,4 +1,5 @@
 import datetime
+import hashlib
 import json
 import logging
 import os
@@ -171,6 +172,56 @@ def evaluate_yes_no_input(message):
 
 
 # return bucket and key for url (handles http and s3 protocol)
+MiB = 1024 * 1024
+# part sizes (in MiB) that S3 clients often use for multipart uploads
+S3_MULTIPART_PART_SIZES_MIB = [5, 8, 15, 16, 32, 50, 64, 100, 128, 256, 512, 1024]
+
+
+def check_s3_etag(file_path, etag):
+    """
+    Compare a file with the ETag of an S3 object.
+    For an object uploaded in one part, the ETag is the MD5 of the object. For a multipart upload, the ETag is the MD5 of
+    the MD5s of the parts, followed by '-<part count>'. The part size is not known, so common part sizes are tried.
+    :return: 'match', 'mismatch', or 'unknown' if the ETag of a multipart upload does not match any part size that was tried
+    """
+    etag = etag.strip('"').lower()
+    size = os.path.getsize(file_path)
+    if '-' not in etag:
+        md5 = hashlib.md5()
+        with open(file_path, 'rb') as f:
+            for block in iter(lambda: f.read(MiB), b''):
+                md5.update(block)
+        return 'match' if md5.hexdigest() == etag else 'mismatch'
+
+    etag_md5, part_count = etag.rsplit('-', 1)
+    part_count = int(part_count)
+    part_sizes = {p * MiB for p in S3_MULTIPART_PART_SIZES_MIB}
+    # also try the size of each part if the parts are equal, rounded up to a full MiB
+    part_sizes.add(-(-size // part_count // MiB) * MiB or MiB)
+    part_sizes = [p for p in part_sizes if -(-size // p) == part_count]
+    if not part_sizes:
+        return 'unknown'
+
+    # read the file once and compute the part MD5s for each part size. All part sizes are multiples of the block size
+    part_md5s = {p: [] for p in part_sizes}
+    md5s = {p: hashlib.md5() for p in part_sizes}
+    offset = 0
+    with open(file_path, 'rb') as f:
+        for block in iter(lambda: f.read(MiB), b''):
+            offset += len(block)
+            for p in part_sizes:
+                md5s[p].update(block)
+                if offset % p == 0:
+                    part_md5s[p].append(md5s[p].digest())
+                    md5s[p] = hashlib.md5()
+    for p in part_sizes:
+        if offset % p:
+            part_md5s[p].append(md5s[p].digest())
+        if hashlib.md5(b''.join(part_md5s[p])).hexdigest() == etag_md5:
+            return 'match'
+    return 'unknown'
+
+
 def deconstruct_s3_url(url):
     tmp = urlparse(url)
     if tmp.scheme == 's3':

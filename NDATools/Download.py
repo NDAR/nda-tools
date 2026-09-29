@@ -8,6 +8,7 @@ import os
 import os.path
 import pathlib
 import platform
+import re
 import shutil
 import tempfile
 import threading
@@ -25,6 +26,7 @@ from requests import HTTPError
 from requests.adapters import HTTPAdapter
 import requests
 from tqdm import tqdm
+from tqdm.contrib.concurrent import thread_map
 
 import NDATools
 from NDATools.AltEndpointSSLAdapter import AltEndpointSSLAdapter
@@ -33,6 +35,7 @@ from NDATools.Utils import (
     DeserializeHandler,
     HttpErrorHandlingStrategy,
     Protocol,
+    check_s3_etag,
     convert_to_abs_path,
     deconstruct_s3_url,
     get_request,
@@ -145,6 +148,8 @@ class Download(Protocol):
         else:
             self.download_mode = 'package'
         self.verify_flg = args.verify
+        self.checksum = args.checksum
+        self.delete_mismatched = args.delete_mismatched
 
         if not self.verify_flg and not args.workerThreads:
             logger.warning('\nNo value specified for --workerThreads. Using the default option of {}'.format(
@@ -482,6 +487,7 @@ class Download(Protocol):
             return download_request
 
         downloaded_size = 0
+        response_headers = None
         if os.path.isfile(download_request.partial_download_abs_path):
             downloaded = True
             downloaded_size = os.path.getsize(download_request.partial_download_abs_path)
@@ -499,9 +505,12 @@ class Download(Protocol):
             with open(download_request.partial_download_abs_path, "ab" if downloaded else "wb") as download_file:
                 with s.get(download_request.presigned_url, stream=True) as response:
                     response.raise_for_status()
+                    response_headers = response.headers
                     for chunk in response.iter_content(chunk_size=1024 * 1024 * 5):  # iterate 5MB chunks
                         if chunk:
                             downloaded_size += download_file.write(chunk)
+        if self.checksum:
+            self.verify_checksum(download_request, response_headers)
         # TODO - this doesnt work when using s3fs...add ticket to make it easy to download using s3fs
         os.rename(download_request.partial_download_abs_path, download_request.completed_download_abs_path)
         logger.info('Completed download {}'.format(download_request.completed_download_abs_path))
@@ -562,6 +571,45 @@ class Download(Protocol):
             args['Callback'] = print_upload_part_info
 
         s3.meta.client.copy(copy_source, dest_bucket, dest_path, **args)
+
+    @staticmethod
+    def get_object_headers(presigned_url):
+        """Request 1 byte of an S3 object to get its headers"""
+        bucket, _ = deconstruct_s3_url(presigned_url)
+        adapter = AltEndpointSSLAdapter(max_retries=10) if '.' in bucket else HTTPAdapter(max_retries=10)
+        with requests.session() as s:
+            s.mount(presigned_url, adapter)
+            with s.get(presigned_url, headers={'Range': 'bytes=0-0'}, stream=True, timeout=(30, 300)) as response:
+                response.raise_for_status()
+                return response.headers
+
+    def verify_checksum(self, download_request, response_headers=None):
+        """Compare the downloaded .partial file with the ETag of the S3 object"""
+        path = download_request.partial_download_abs_path
+        if response_headers is None:
+            # no bytes were downloaded in this run
+            response_headers = self.get_object_headers(download_request.presigned_url)
+        etag = response_headers.get('ETag')
+        if not etag:
+            logger.warning('Checksum not checked, because the server did not send an ETag: {}'.format(path))
+            return
+        if response_headers.get('x-amz-server-side-encryption', '').startswith('aws:kms'):
+            # the ETag of an object encrypted with KMS is not an MD5 of the data
+            logger.warning('Checksum not checked, because the object is encrypted with KMS: {}'.format(path))
+            return
+        # only record ETags that are an MD5, so that --verify --checksum can use them
+        download_request.e_tag = etag.strip('"')
+        result = check_s3_etag(path, etag)
+        if result == 'mismatch':
+            os.remove(path)
+            raise Exception('Checksum of {} does not match the ETag {}. The file was deleted and will be downloaded '
+                            'again on the next run'.format(path, download_request.e_tag))
+        elif result == 'unknown':
+            logger.warning('Checksum not checked: {} does not match the multipart ETag {} for any of the part sizes '
+                           'that were tried. The file uses another part size or is not correct'
+                           .format(path, download_request.e_tag))
+        else:
+            logger.debug('Checksum matches the ETag {}: {}'.format(download_request.e_tag, path))
 
     def handle_download_exception(self, download_request, e, failed_s3_links_file=None):
 
@@ -764,6 +812,11 @@ class Download(Protocol):
             logger.info(err_mess_template.format(fpath))
             exit_error()
 
+        fpath = os.path.join(self.package_metadata_directory, 'download-verification-checksum-report.csv')
+        if self.checksum and os.path.exists(fpath):
+            logger.info(err_mess_template.format(fpath))
+            exit_error()
+
         def get_download_progress_report_path():
             return os.path.join(self.package_metadata_directory, '.download-progress',
                                 self.download_job_uuid, 'download-progress-report.csv')
@@ -873,10 +926,16 @@ class Download(Protocol):
             'Checking {} for all files which were not found in the program system logs. Detailed report will be created at {}...'
             .format(self.download_directory, verification_report_path))
         undownloaded_s3_links = add_files_to_report(pr_path, verification_report_path, probably_missing_files, df)
+        if self.checksum:
+            logger.info('')
+            logger.info('Comparing all files on disk with the checksum (ETag) of their S3 object...')
+            checksum_s3_links = self.verify_checksums(df, downloaded_file_records)
+            known_links = set(undownloaded_s3_links)
+            undownloaded_s3_links += [link for link in checksum_s3_links if link not in known_links]
         logger.info('')
         if undownloaded_s3_links:
             logger.info(
-                'Finished verification process and file check. Found {} files that were missing or whose size on disk were less than expected'.format(
+                'Finished verification process and file check. Found {} files that were missing, whose size on disk was less than expected, or whose checksum did not match'.format(
                     len(undownloaded_s3_links)))
             logger.info('')
             logger.info(
@@ -898,6 +957,101 @@ class Download(Protocol):
         logger.info(
             'Details about status of files in download can be found at {} (This file can be opened with Excel or Google Spreadsheets)'.format(
                 verification_report_path))
+
+    def get_verification_file_path(self, download_alias):
+        if download_alias == (pathlib.Path(self.metadata_file_path).name + '.gz'):
+            return os.path.join(self.package_metadata_directory, download_alias)
+        return os.path.join(self.download_directory, download_alias)
+
+    def verify_checksums(self, df, downloaded_file_records):
+        """
+        Compare each file on disk with the ETag of its S3 object and write download-verification-checksum-report.csv.
+        The ETag is read from the download progress report when a download with --checksum recorded it. Otherwise it is
+        requested from S3.
+        :return: the S3 links of files whose checksum does not match, and of files that are not on disk
+        """
+        md5_etag = re.compile(r'[0-9a-f]{32}(-[0-9]+)?')
+        logged_etags = {int(f['package_file_id']): f['e_tag'] for f in downloaded_file_records
+                        if md5_etag.fullmatch(f.get('e_tag') or '')}
+        records = []
+        for f in df.drop_duplicates('package_file_id').to_dict('records'):
+            file_id = int(f['package_file_id'])
+            records.append({'package_file_id': file_id,
+                            'package_file_expected_location': f['download_alias'],
+                            'nda_s3_url': f['nda_s3_url'],
+                            'path': self.get_verification_file_path(f['download_alias']),
+                            'e_tag': logged_etags.get(file_id, ''),
+                            'e_tag_source': 'log' if file_id in logged_etags else '',
+                            'checksum': '',
+                            'detail': '',
+                            'deleted': False})
+        on_disk = []
+        for r in records:
+            if os.path.isfile(r['path']):
+                on_disk.append(r)
+            else:
+                r['checksum'] = 'missing'
+
+        def get_etag(r, presigned_url):
+            try:
+                headers = self.get_object_headers(presigned_url)
+            except Exception as e:
+                r['checksum'], r['detail'] = 'error', 'could not get the ETag: {}'.format(e)
+                return
+            if headers.get('x-amz-server-side-encryption', '').startswith('aws:kms'):
+                r['checksum'], r['detail'] = 'unknown', 'object is encrypted with KMS'
+            elif not headers.get('ETag'):
+                r['checksum'], r['detail'] = 'unknown', 'no ETag'
+            else:
+                r['e_tag'], r['e_tag_source'] = headers['ETag'].strip('"'), 's3'
+
+        need_etag = [r for r in on_disk if not r['e_tag']]
+        if need_etag:
+            logger.info('Getting the ETag of {} files from S3...'.format(len(need_etag)))
+            batch_size = 50000  # maximum for get_presigned_urls
+            for i in range(0, len(need_etag), batch_size):
+                batch = need_etag[i:i + batch_size]
+                urls = {int(k): v for k, v in self.get_presigned_urls([r['package_file_id'] for r in batch]).items()}
+                thread_map(lambda r: get_etag(r, urls[r['package_file_id']]), batch, max_workers=self.thread_num,
+                           desc='Getting ETags', unit='file')
+
+        def check(r):
+            if r['checksum']:
+                return
+            try:
+                r['checksum'] = check_s3_etag(r['path'], r['e_tag'])
+            except Exception as e:
+                r['checksum'], r['detail'] = 'error', str(e)
+            if r['checksum'] == 'unknown':
+                r['detail'] = 'multipart ETag does not match any part size that was tried'
+
+        logger.info('Computing checksums of {} files...'.format(len(on_disk)))
+        thread_map(check, on_disk, max_workers=self.thread_num, desc='Checking checksums', unit='file')
+
+        mismatched = [r for r in records if r['checksum'] == 'mismatch']
+        if self.delete_mismatched:
+            for r in mismatched:
+                os.remove(r['path'])
+                r['deleted'] = True
+
+        report_path = os.path.join(self.package_metadata_directory, 'download-verification-checksum-report.csv')
+        columns = ['package_file_id', 'package_file_expected_location', 'nda_s3_url', 'e_tag', 'e_tag_source',
+                   'checksum', 'detail', 'deleted']
+        with open(report_path, 'w', newline='') as report:
+            writer = csv.DictWriter(report, fieldnames=columns, extrasaction='ignore')
+            writer.writeheader()
+            writer.writerows(records)
+
+        counts = {c: sum(1 for r in records if r['checksum'] == c) for c in
+                  ['match', 'mismatch', 'unknown', 'missing', 'error']}
+        logger.info('')
+        logger.info('Checksum results: {match} match, {mismatch} do not match, {unknown} could not be checked, '
+                    '{missing} not on disk, {error} errors. Details are in {report}'.format(report=report_path, **counts))
+        if mismatched and not self.delete_mismatched:
+            logger.warning('{} files do not match their checksum. A download skips files that exist, so delete these '
+                           'files before you download them again, or run --verify --checksum with --delete-mismatched'
+                           .format(len(mismatched)))
+        return [r['nda_s3_url'] for r in records if r['checksum'] in ('mismatch', 'missing')]
 
     def get_temp_creds_for_file(self, package_file_id, custom_user_s3_endpoint=None):
         url = self.package_url + '/{}/files/{}/download_token'.format(self.package_id, package_file_id)
