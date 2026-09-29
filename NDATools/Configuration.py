@@ -268,6 +268,7 @@ class ClientConfiguration:
 
     def _set_nda_paths(self):
         nda_tools_settings_folder = os.path.join(os.path.expanduser('~'), '.NDATools')
+        os.makedirs(nda_tools_settings_folder, exist_ok=True)
         nda_tools_settings_cfg_file = os.path.join(nda_tools_settings_folder, 'settings.cfg')
 
         logger.info('Using configuration file from {}'.format(nda_tools_settings_cfg_file))

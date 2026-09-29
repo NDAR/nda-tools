@@ -89,8 +89,9 @@ def create_nda_folders(nda_paths):
         if not os.path.exists(path):
             os.mkdir(path)
 
-    for path in nda_paths.values():
-        _create_if_not_exists(path)
+    for key, path in nda_paths.items():
+        if not key.endswith('_file'):
+            _create_if_not_exists(path)
 
     if not pathlib.Path(nda_paths['nda_tools_logging_yml_file']).is_file():
         t = files('NDATools').joinpath('clientscripts/config/logging.yml')
