@@ -181,6 +181,8 @@ def main():
         s3Download.verify_download()
     else:
         s3Download.start()
+        if s3Download.package_file_download_errors:
+            sys.exit(1)
 
 
 if __name__ == "__main__":
