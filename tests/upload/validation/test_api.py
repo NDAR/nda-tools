@@ -168,21 +168,18 @@ class TestValidationV2Api:
     def test_wait_validation_complete_status_error_wait_for_manifest(self, pending_validation, error_validation,
                                                                      validation_api,
                                                                      monkeypatch):
-        """Test that 'wait_validation_complete' raises a systemExit exception if validation status indicates unexpected backend error"""
+        """Test that 'wait_validation_complete' returns the validation if its status indicates unexpected backend error"""
         validation_api.get_validation = MagicMock(
             side_effect=[pending_validation, pending_validation, error_validation])
         with patch('NDATools.upload.validation.api.exit_error') as mock_exit, \
                 patch('time.sleep') as mock_sleep:
-            mock_exit.side_effect = SystemExit(1)
             mock_sleep.side_effect = lambda x: None
 
-            # catch SystemExit here so the test doesn't fail
-            with pytest.raises(SystemExit) as exit_info:
-                validation_api.wait_validation_complete(pending_validation.uuid, 5, True)
-                validation_api.get_validation.assert_called_with(pending_validation.uuid)
-                assert validation_api.get_validation.call_count == 3
-                assert mock_exit.call_count == 1
-                assert exit_info.value.code == 1
+            result = validation_api.wait_validation_complete(pending_validation.uuid, 5, True)
+            assert result is error_validation
+            validation_api.get_validation.assert_called_with(pending_validation.uuid)
+            assert validation_api.get_validation.call_count == 3
+            assert mock_exit.call_count == 0
 
 
 class TestValidationV2Credentials:
