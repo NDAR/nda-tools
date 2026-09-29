@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import os
@@ -12,6 +13,7 @@ import NDATools
 from NDATools.Utils import REQUEST_TOKEN_VERSION_ATTR, parse_local_files, sanitize_file_path, check_read_permissions, \
     sanitize_windows_download_filename, deconstruct_s3_url, collect_directory_list, get_int_input, \
     evaluate_yes_no_input, put_request, post_request, HttpErrorHandlingStrategy, get_request
+from NDATools.Utils import MiB, check_s3_etag
 from tests.conftest import MockLogger
 
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s:%(levelname)s:%(message)s")
@@ -365,3 +367,34 @@ def test_exit_normal(monkeypatch):
         NDATools.exit_normal('Exiting normally')
         NDATools.logger.info.any_call_contains('Exiting normally')
         os._exit.call_count == 1
+
+
+class TestCheckS3Etag:
+    @staticmethod
+    def multipart_etag(data, part_size):
+        parts = [hashlib.md5(data[i:i + part_size]).digest() for i in range(0, len(data), part_size)]
+        return '"{}-{}"'.format(hashlib.md5(b''.join(parts)).hexdigest(), len(parts))
+
+    @pytest.fixture
+    def data_file(self, tmp_path):
+        data = os.urandom(12 * MiB + 1234)
+        path = tmp_path / 'file.bin'
+        path.write_bytes(data)
+        return path, data
+
+    def test_single_part(self, data_file):
+        path, data = data_file
+        assert check_s3_etag(path, '"{}"'.format(hashlib.md5(data).hexdigest())) == 'match'
+        assert check_s3_etag(path, hashlib.md5(b'other').hexdigest()) == 'mismatch'
+
+    # 7 MiB is not a common size, but it is the smallest MiB part size that gives 2 parts for this file
+    @pytest.mark.parametrize('part_size_mib', [5, 8, 7])
+    def test_multipart(self, data_file, part_size_mib):
+        path, data = data_file
+        assert check_s3_etag(path, self.multipart_etag(data, part_size_mib * MiB)) == 'match'
+
+    def test_multipart_unknown(self, data_file):
+        path, data = data_file
+        etag = self.multipart_etag(data, 8 * MiB)
+        path.write_bytes(data[:-1] + b'x')
+        assert check_s3_etag(path, etag) == 'unknown'

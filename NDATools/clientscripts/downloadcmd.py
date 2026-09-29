@@ -71,6 +71,12 @@ Examples -
 3) Finally to download all files underneath a folder called "T1w" you can use the regular expression .*/T1w/.* 
     downloadcmd -dp 12345 -t s3-links.txt --file-regex .*/T1w/.*''')
 
+    parser.add_argument('--checksum', action='store_true',
+                        help='''After each file is downloaded, compare the MD5 checksum of the file with the ETag of the S3 object.
+If the checksum does not match, the file is deleted and counted as a failed download, so the next run downloads it again.
+For files that were uploaded in several parts, the part size is not known and common part sizes are tried. If none of them match,
+a warning is shown and the file is kept. The check reads each downloaded file one more time. It does not apply to -s3 transfers.''')
+
     parser.add_argument('--verify', action='store_true',
                         help='''When this option is provided a download is not initiated. Instead, a csv file is produced that contains a record of 
 the files in the download, along with information about the file-size if the file could be found on the computer. For large packages containing millions of files, 

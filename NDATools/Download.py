@@ -33,6 +33,7 @@ from NDATools.Utils import (
     DeserializeHandler,
     HttpErrorHandlingStrategy,
     Protocol,
+    check_s3_etag,
     convert_to_abs_path,
     deconstruct_s3_url,
     get_request,
@@ -145,6 +146,7 @@ class Download(Protocol):
         else:
             self.download_mode = 'package'
         self.verify_flg = args.verify
+        self.checksum = args.checksum
 
         if not self.verify_flg and not args.workerThreads:
             logger.warning('\nNo value specified for --workerThreads. Using the default option of {}'.format(
@@ -482,6 +484,7 @@ class Download(Protocol):
             return download_request
 
         downloaded_size = 0
+        response_headers = None
         if os.path.isfile(download_request.partial_download_abs_path):
             downloaded = True
             downloaded_size = os.path.getsize(download_request.partial_download_abs_path)
@@ -499,9 +502,12 @@ class Download(Protocol):
             with open(download_request.partial_download_abs_path, "ab" if downloaded else "wb") as download_file:
                 with s.get(download_request.presigned_url, stream=True) as response:
                     response.raise_for_status()
+                    response_headers = response.headers
                     for chunk in response.iter_content(chunk_size=1024 * 1024 * 5):  # iterate 5MB chunks
                         if chunk:
                             downloaded_size += download_file.write(chunk)
+        if self.checksum:
+            self.verify_checksum(download_request, response_headers)
         # TODO - this doesnt work when using s3fs...add ticket to make it easy to download using s3fs
         os.rename(download_request.partial_download_abs_path, download_request.completed_download_abs_path)
         logger.info('Completed download {}'.format(download_request.completed_download_abs_path))
@@ -562,6 +568,40 @@ class Download(Protocol):
             args['Callback'] = print_upload_part_info
 
         s3.meta.client.copy(copy_source, dest_bucket, dest_path, **args)
+
+    def verify_checksum(self, download_request, response_headers=None):
+        """Compare the downloaded .partial file with the ETag of the S3 object"""
+        path = download_request.partial_download_abs_path
+        if response_headers is None:
+            # no bytes were downloaded in this run. Request 1 byte to get the headers of the object
+            bucket, _ = deconstruct_s3_url(download_request.presigned_url)
+            adapter = AltEndpointSSLAdapter(max_retries=10) if '.' in bucket else HTTPAdapter(max_retries=10)
+            with requests.session() as s:
+                s.mount(download_request.presigned_url, adapter)
+                with s.get(download_request.presigned_url, headers={'Range': 'bytes=0-0'}, stream=True,
+                           timeout=(30, 300)) as response:
+                    response.raise_for_status()
+                    response_headers = response.headers
+        etag = response_headers.get('ETag')
+        if not etag:
+            logger.warning('Checksum not checked, because the server did not send an ETag: {}'.format(path))
+            return
+        download_request.e_tag = etag.strip('"')
+        if response_headers.get('x-amz-server-side-encryption', '').startswith('aws:kms'):
+            # the ETag of an object encrypted with KMS is not an MD5 of the data
+            logger.warning('Checksum not checked, because the object is encrypted with KMS: {}'.format(path))
+            return
+        result = check_s3_etag(path, etag)
+        if result == 'mismatch':
+            os.remove(path)
+            raise Exception('Checksum of {} does not match the ETag {}. The file was deleted and will be downloaded '
+                            'again on the next run'.format(path, download_request.e_tag))
+        elif result == 'unknown':
+            logger.warning('Checksum not checked: {} does not match the multipart ETag {} for any of the part sizes '
+                           'that were tried. The file uses another part size or is not correct'
+                           .format(path, download_request.e_tag))
+        else:
+            logger.debug('Checksum matches the ETag {}: {}'.format(download_request.e_tag, path))
 
     def handle_download_exception(self, download_request, e, failed_s3_links_file=None):
 
