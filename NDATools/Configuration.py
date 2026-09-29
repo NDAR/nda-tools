@@ -39,6 +39,9 @@ class LoggingConfiguration:
         else:
             log_file = os.path.join(default_log_directory, "debug_log_{}.txt").format(time.strftime("%Y%m%dT%H%M%S"))
         config['handlers']['file']['filename'] = log_file
+        root_handlers = config.setdefault('root', {}).setdefault('handlers', [])
+        if 'file' not in root_handlers:
+            root_handlers.append('file')
         if verbose:
             config['loggers']['NDATools']['level'] = 'DEBUG'
             config['handlers']['console']['formatter'] = 'detailed'
