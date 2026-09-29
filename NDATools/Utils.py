@@ -262,6 +262,7 @@ def put_request(url, payload=None, headers={}, auth=None, timeout=150,
 
 
 def get_data_and_header_params(payload, headers):
+    headers = dict(headers)  # do not mutate the caller's dict or the shared default
     data_param = {}
     if 'content-type' not in headers:
         if isinstance(payload, dict) or isinstance(payload, list):
