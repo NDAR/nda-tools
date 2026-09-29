@@ -568,7 +568,7 @@ class Download(Protocol):
         self.write_to_failed_download_link_file(failed_s3_links_file, s3_link=download_request.presigned_url,
                                                 source_uri=download_request.nda_s3_url)
         # only print out stack trace if verbose logging is enabled
-        if logger.level == logging.DEBUG:
+        if logger.isEnabledFor(logging.DEBUG):
             traceback.print_exc()
         if isinstance(e, HTTPError):
             error_code = e.response.status_code
@@ -585,6 +585,8 @@ class Download(Protocol):
                     f'{str(e)}- This error is likely caused by a misconfiguration on the target s3 bucket')
                 logger.error(
                     "For more information about how to correctly configure the target bucket, run 'downloadcmd -h' and read the description of the s3 argument")
+            else:
+                logger.error('Failed to download {}: {}'.format(download_request.package_file_expected_location, e))
         return download_request
 
     def download_from_s3link(self, package_file, presigned_url, download_local=None, err_if_exists=False,
