@@ -481,6 +481,12 @@ class Download(Protocol):
             download_request.exists = True
             return download_request
 
+        # a size of 0 (or no size) means that the size of the file is not known
+        try:
+            expected_size = int(download_request.expected_file_size)
+        except (TypeError, ValueError):
+            expected_size = 0
+
         downloaded_size = 0
         if os.path.isfile(download_request.partial_download_abs_path):
             downloaded = True
@@ -488,20 +494,42 @@ class Download(Protocol):
             resume_header = {'Range': 'bytes={}-'.format(downloaded_size)}
             logger.info('Resuming download: {}'.
                         format(download_request.partial_download_abs_path))
+            if 0 < expected_size < downloaded_size:
+                # the partial file is larger than the file and cannot be resumed
+                logger.warning('Partial file {} is larger than expected ({} > {} bytes). Restarting the download'
+                               .format(download_request.partial_download_abs_path, downloaded_size, expected_size))
+                downloaded = False
+                downloaded_size = 0
+                resume_header = None
         else:
             mk_dir_ignore_err(os.path.dirname(download_request.partial_download_abs_path))
             logger.info('Starting download: {}'.format(download_request.partial_download_abs_path))
             # downloading to local machine
-        with requests.session() as s:
-            s.mount(download_request.presigned_url, get_http_adapter(download_request.presigned_url))
-            if resume_header:
-                s.headers.update(resume_header)
-            with open(download_request.partial_download_abs_path, "ab" if downloaded else "wb") as download_file:
-                with s.get(download_request.presigned_url, stream=True) as response:
-                    response.raise_for_status()
-                    for chunk in response.iter_content(chunk_size=1024 * 1024 * 5):  # iterate 5MB chunks
-                        if chunk:
-                            downloaded_size += download_file.write(chunk)
+        if downloaded and 0 < expected_size == downloaded_size:
+            # all bytes were downloaded before, but the file was not renamed. A range request would fail with 416
+            logger.info('Partial file has all {} bytes: {}'.format(expected_size,
+                                                                  download_request.partial_download_abs_path))
+        else:
+            with requests.session() as s:
+                s.mount(download_request.presigned_url, get_http_adapter(download_request.presigned_url))
+                if resume_header:
+                    s.headers.update(resume_header)
+                with open(download_request.partial_download_abs_path, "ab" if downloaded else "wb") as download_file:
+                    with s.get(download_request.presigned_url, stream=True) as response:
+                        response.raise_for_status()
+                        if resume_header and response.status_code != 206:
+                            # the server ignored the Range header and sent the whole file. Start again
+                            logger.warning('Server did not resume the download of {}. Restarting the download'
+                                           .format(download_request.partial_download_abs_path))
+                            download_file.truncate(0)
+                            downloaded_size = 0
+                        for chunk in response.iter_content(chunk_size=1024 * 1024 * 5):  # iterate 5MB chunks
+                            if chunk:
+                                downloaded_size += download_file.write(chunk)
+        if 0 < expected_size != downloaded_size:
+            # keep the partial file; the next run resumes it or starts again
+            raise Exception('Downloaded {} bytes for {}, but {} bytes were expected'.format(
+                downloaded_size, download_request.partial_download_abs_path, expected_size))
         # TODO - this doesnt work when using s3fs...add ticket to make it easy to download using s3fs
         os.rename(download_request.partial_download_abs_path, download_request.completed_download_abs_path)
         logger.info('Completed download {}'.format(download_request.completed_download_abs_path))
