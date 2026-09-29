@@ -293,12 +293,14 @@ def test_download_handle_credentials_expired(monkeypatch, download_mock2, downlo
     with monkeypatch.context() as m:
         expired_error = HTTPError(response=Response(status_code=403, text='Request has expired'))
         m.setattr(download, 'download_local', MagicMock(side_effect=[expired_error, None]))
-        m.setattr(download, 'get_temp_creds_for_file', MagicMock())
+        m.setattr(download, 'get_presigned_urls',
+                  MagicMock(return_value={package_file['package_file_id']: 'https://asdfasdf/new'}))
         download_request = download.download_from_s3link(package_file, 'https://asdfasdf/asdfasdf')
         assert download_request is not None
         assert download_request.exists
         assert download_request.download_complete_time is not None
-        assert download.get_temp_creds_for_file.call_count == 1
+        assert download.get_presigned_urls.call_count == 1
+        assert download.download_local.call_args.args[0].presigned_url == 'https://asdfasdf/new'
 
 
 def test_get_package_info_passes_reauth_func(monkeypatch, tmp_path):

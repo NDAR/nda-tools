@@ -608,9 +608,10 @@ class Download(Protocol):
             if download_local and e.response.status_code == 403 and 'Request has expired' in e.response.text:
                 logger.warning(
                     f'Temporary credentials have expired for file {download_request.package_file_id}. Regenerating credentials and restarting download')
-                presigned_url = self.get_temp_creds_for_file(download_request.package_file_id)
+                presigned_urls = self.get_presigned_urls([package_file['package_file_id']])
+                presigned_url = next(iter(presigned_urls.values()))
                 return self.download_from_s3link(package_file, presigned_url, download_local, err_if_exists,
-                                                 failed_s3_links_file)
+                                                 failed_s3_links_file, download_dir)
             else:
                 return self.handle_download_exception(download_request, e, failed_s3_links_file)
         except Exception as e:
