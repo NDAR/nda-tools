@@ -60,18 +60,12 @@ def handle_expired(func):
                         logger.debug('Refreshing credentials...')
                         tmp = self._refresh_func()
                         logger.debug('Finished refreshing credentials. ')
-                        logger.debug(
-                            f'Old AK/SK/ST: {self.access_key_id} / {self.secret_access_key} / {self.session_token}')
                         self.access_key_id = tmp.access_key_id
                         self.secret_access_key = tmp.secret_access_key
                         self.session_token = tmp.session_token
-                        logger.debug(
-                            f'New AK/SK/ST: {self.access_key_id} / {self.secret_access_key} / {self.session_token}')
                 return func(self, *args, **kwargs)
             else:
                 logger.debug(f'Unexpected error code: {error_code}: {e}')
-                logger.debug(
-                    f'Current AK/SK/ST: {self.access_key_id}/{self.secret_access_key}/{self.session_token}')
                 raise e
 
     return wrapper
@@ -219,7 +213,6 @@ class ValidationV2Api:
         except ValidationError as v:
             for e in v.errors():
                 logger.error(f'Error parsing credentials: {e}')
-                logger.error(f'Credentials: {creds}')
                 raise v
 
     def refresh_upload_credentials(self, uuid):
