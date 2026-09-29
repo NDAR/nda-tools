@@ -657,6 +657,9 @@ class Download(Protocol):
                 # values from download_job_manifest_column_defs will never be None, instead they will be an empty string ''
                 val2 = self.download_job_manifest_column_defs[key]
                 if key == 'download_directory':
+                    if not val1:
+                        # incomplete row, e.g. written by a concurrent downloadcmd; it cannot match
+                        return False
                     val2 = convert_to_abs_path(val2)
                     val1 = convert_to_abs_path(val1)
                 elif key == 's3_links_file':
@@ -700,12 +703,10 @@ class Download(Protocol):
                 writer = csv.DictWriter(file, fieldnames=download_job_manifest_columns)
                 writer.writeheader()
 
-        if not os.path.exists(self.package_metadata_directory):
-            os.mkdir(self.package_metadata_directory)
+        os.makedirs(self.package_metadata_directory, exist_ok=True)
 
         DOWNLOAD_PROGRESS_FOLDER = os.path.join(self.package_metadata_directory, '.download-progress')
-        if not os.path.exists(DOWNLOAD_PROGRESS_FOLDER):
-            os.mkdir(DOWNLOAD_PROGRESS_FOLDER)
+        os.makedirs(DOWNLOAD_PROGRESS_FOLDER, exist_ok=True)
 
         download_job_manifest_path = os.path.join(DOWNLOAD_PROGRESS_FOLDER, 'download-job-manifest.csv')
         if not os.path.exists(download_job_manifest_path):
@@ -719,8 +720,7 @@ class Download(Protocol):
             add_entry_to_job_manifest(download_job_manifest_path)
 
         DOWNLOAD_JOB_UUID_DIR = os.path.join(DOWNLOAD_PROGRESS_FOLDER, str(self.download_job_uuid))
-        if not os.path.exists(DOWNLOAD_JOB_UUID_DIR):
-            os.mkdir(DOWNLOAD_JOB_UUID_DIR)
+        os.makedirs(DOWNLOAD_JOB_UUID_DIR, exist_ok=True)
 
         download_progress_report_file = os.path.join(DOWNLOAD_JOB_UUID_DIR, 'download-progress-report.csv')
         if not os.path.exists(download_progress_report_file):
