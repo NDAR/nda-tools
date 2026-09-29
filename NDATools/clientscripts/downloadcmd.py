@@ -50,7 +50,7 @@ and always ends in a 2 digit number. (For example, see the data-structure page f
                         help='NDA username')
 
     parser.add_argument('-d', '--directory', metavar='<download_directory>', type=str, nargs=1, action='store',
-                        help='Enter an alternate full directory path where you would like your files to be saved. The default is ~/NDA/nda-tools/<package-id>')
+                        help='Enter an alternate full directory path where you would like your files to be saved. The default is the current directory')
 
     parser.add_argument('-wt', '--workerThreads', metavar='<thread-count>', type=int, action='store',
                         help='''Specifies the number of downloads to attempt in parallel. For example, running 'downloadcmd -dp 12345 -wt 10' will 

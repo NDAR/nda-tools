@@ -122,10 +122,10 @@ def test_download_with_all_completed_files(download_mock, logger_mock, tmp_path,
     report = shared_datadir / 'download-progress' / 'download-progress-report.csv'
     # copy the above files to the expected path so the program finds and uses them
     shutil.copy(manifest,
-                os.path.join(ds_download.download_directory, '.download-progress', 'download-job-manifest.csv'))
-    os.mkdir(os.path.join(ds_download.download_directory, '.download-progress', job_uuid))
+                os.path.join(ds_download.package_metadata_directory, '.download-progress', 'download-job-manifest.csv'))
+    os.mkdir(os.path.join(ds_download.package_metadata_directory, '.download-progress', job_uuid))
     shutil.copy(report,
-                os.path.join(ds_download.download_directory, '.download-progress', job_uuid,
+                os.path.join(ds_download.package_metadata_directory, '.download-progress', job_uuid,
                              'download-progress-report.csv'))
     ds_download.download_job_uuid = job_uuid
     ds_download.start()
@@ -144,10 +144,10 @@ def test_download_with_some_completed_files(download_mock, logger_mock, tmp_path
     report = shared_datadir / 'download-progress' / 'download-progress-report-incomplete.csv'
     # copy the above files to the expected path so the program finds and uses them
     shutil.copy(manifest,
-                os.path.join(ds_download.download_directory, '.download-progress', 'download-job-manifest.csv'))
-    os.mkdir(os.path.join(ds_download.download_directory, '.download-progress', job_uuid))
+                os.path.join(ds_download.package_metadata_directory, '.download-progress', 'download-job-manifest.csv'))
+    os.mkdir(os.path.join(ds_download.package_metadata_directory, '.download-progress', job_uuid))
     shutil.copy(report,
-                os.path.join(ds_download.download_directory, '.download-progress', job_uuid,
+                os.path.join(ds_download.package_metadata_directory, '.download-progress', job_uuid,
                              'download-progress-report.csv'))
     ds_download.download_job_uuid = job_uuid
     ds_download.start()
@@ -421,3 +421,13 @@ def test_verify(monkeypatch, download_mock2, tmp_path, datadir):
         assert os.path.exists(downloadcmd_downloads_dir / '1228592' / 'download-verification-retry-s3-links.csv')
         with open(downloadcmd_downloads_dir / '1228592' / 'download-verification-retry-s3-links.csv') as f:
             assert f.read() == 's3://nda-central/collection-1860/image4.png\n'
+
+
+def test_default_download_directory_is_current_directory(monkeypatch, download_mock2, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    download = download_mock2(args=['-dp', '1189934'])
+    assert download.download_directory == str(tmp_path)
+
+    custom_dir = tmp_path / 'custom'
+    download = download_mock2(args=['-dp', '1189934', '-d', str(custom_dir)])
+    assert download.download_directory == str(custom_dir)

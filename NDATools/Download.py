@@ -126,7 +126,7 @@ class Download(Protocol):
         if args.directory:
             download_directory = args.directory[0]
         else:
-            download_directory = os.path.join(self.config.nda_paths['nda_tools_downloads_folder'], str(args.package))
+            download_directory = os.getcwd()
         self.package_metadata_directory = os.path.join(self.config.nda_paths['nda_tools_downloads_folder'],
                                                        str(args.package))
         self.download_directory = convert_to_abs_path(download_directory)
