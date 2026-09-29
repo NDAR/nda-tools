@@ -1,4 +1,5 @@
 import datetime
+import contextlib
 import copy
 import csv
 import gzip
@@ -25,6 +26,7 @@ from requests import HTTPError
 from requests.adapters import HTTPAdapter
 import requests
 from tqdm import tqdm
+from tqdm.contrib.logging import logging_redirect_tqdm
 
 import NDATools
 from NDATools.AltEndpointSSLAdapter import AltEndpointSSLAdapter
@@ -145,6 +147,8 @@ class Download(Protocol):
         else:
             self.download_mode = 'package'
         self.verify_flg = args.verify
+        self.show_progress_bar = args.progress_bar
+        self.progress_bar = None
 
         if not self.verify_flg and not args.workerThreads:
             logger.warning('\nNo value specified for --workerThreads. Using the default option of {}'.format(
@@ -392,10 +396,19 @@ class Download(Protocol):
             success_files.add(package_file['package_file_id'])
             num_downloaded = len(success_files)
 
-            if num_downloaded % 50 == 0:
+            if self.progress_bar is not None:
+                self.progress_bar.set_postfix_str('{}/{} files'.format(num_downloaded, file_ct_remaining))
+            elif num_downloaded % 50 == 0:
                 print_download_progress_report(num_downloaded)
 
             download_progress_file_writer_pool.map(write_to_download_progress_report_file, [[download_record]])
+
+        progress_bar_logging = contextlib.ExitStack()
+        if self.show_progress_bar:
+            self.progress_bar = tqdm(total=int(file_sz), unit='B', unit_scale=True, unit_divisor=1024,
+                                     desc='Downloading', dynamic_ncols=True)
+            # print log messages above the progress bar instead of through it
+            progress_bar_logging.enter_context(logging_redirect_tqdm())
 
         download_pool = ThreadPool(self.thread_num, self.thread_num * 6)
         download_progress_file_writer_pool = ThreadPool(1, 1000)
@@ -417,6 +430,10 @@ class Download(Protocol):
 
         download_pool.wait_completion()
         download_progress_file_writer_pool.wait_completion()
+        progress_bar_logging.close()
+        if self.progress_bar is not None:
+            self.progress_bar.close()
+            self.progress_bar = None
         failed_s3_links_file.flush()
         failed_s3_links_file.close()
         download_progress_report.flush()
@@ -477,6 +494,7 @@ class Download(Protocol):
 
             logger.info('Skipping download (already exists): {}'.format(download_request.completed_download_abs_path))
             actual_size = os.path.getsize(download_request.completed_download_abs_path)
+            self.update_progress_bar(actual_size)
             download_request.actual_file_size = actual_size
             download_request.exists = True
             return download_request
@@ -485,6 +503,7 @@ class Download(Protocol):
         if os.path.isfile(download_request.partial_download_abs_path):
             downloaded = True
             downloaded_size = os.path.getsize(download_request.partial_download_abs_path)
+            self.update_progress_bar(downloaded_size)
             resume_header = {'Range': 'bytes={}-'.format(downloaded_size)}
             logger.info('Resuming download: {}'.
                         format(download_request.partial_download_abs_path))
@@ -501,7 +520,9 @@ class Download(Protocol):
                     response.raise_for_status()
                     for chunk in response.iter_content(chunk_size=1024 * 1024 * 5):  # iterate 5MB chunks
                         if chunk:
-                            downloaded_size += download_file.write(chunk)
+                            chunk_size = download_file.write(chunk)
+                            downloaded_size += chunk_size
+                            self.update_progress_bar(chunk_size)
         # TODO - this doesnt work when using s3fs...add ticket to make it easy to download using s3fs
         os.rename(download_request.partial_download_abs_path, download_request.completed_download_abs_path)
         logger.info('Completed download {}'.format(download_request.completed_download_abs_path))
@@ -562,6 +583,11 @@ class Download(Protocol):
             args['Callback'] = print_upload_part_info
 
         s3.meta.client.copy(copy_source, dest_bucket, dest_path, **args)
+        self.update_progress_bar(int(download_request.actual_file_size))
+
+    def update_progress_bar(self, num_bytes):
+        if self.progress_bar is not None:
+            self.progress_bar.update(num_bytes)
 
     def handle_download_exception(self, download_request, e, failed_s3_links_file=None):
 

@@ -71,6 +71,10 @@ Examples -
 3) Finally to download all files underneath a folder called "T1w" you can use the regular expression .*/T1w/.* 
     downloadcmd -dp 12345 -t s3-links.txt --file-regex .*/T1w/.*''')
 
+    parser.add_argument('--progress-bar', action='store_true',
+                        help='''Show a progress bar with the bytes and files downloaded, the transfer rate and the estimated time remaining.
+When this option is provided, the periodic 'Download Progress Report' messages are not printed.''')
+
     parser.add_argument('--verify', action='store_true',
                         help='''When this option is provided a download is not initiated. Instead, a csv file is produced that contains a record of 
 the files in the download, along with information about the file-size if the file could be found on the computer. For large packages containing millions of files, 

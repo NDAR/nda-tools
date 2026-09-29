@@ -421,3 +421,46 @@ def test_verify(monkeypatch, download_mock2, tmp_path, datadir):
         assert os.path.exists(downloadcmd_downloads_dir / '1228592' / 'download-verification-retry-s3-links.csv')
         with open(downloadcmd_downloads_dir / '1228592' / 'download-verification-retry-s3-links.csv') as f:
             assert f.read() == 's3://nda-central/collection-1860/image4.png\n'
+
+
+def test_download_local_updates_progress_bar(monkeypatch, download_mock2, download_request):
+    download = download_mock2(args=['-dp', '1189934', '--progress-bar'])
+    assert download.show_progress_bar is True
+    download.progress_bar = MagicMock()
+    mock_session = MagicMock()
+    mock_response_context = MagicMock()
+    mock_session.return_value.__enter__.return_value.get.return_value = mock_response_context
+    mock_response_context.__enter__.return_value = Response()
+    # new download: the bar is updated with the bytes of each chunk
+    with monkeypatch.context() as m:
+        m.setattr('requests.session', mock_session)
+        m.setattr(os, 'rename', MagicMock())
+        download.download_local(download_request)
+        download.progress_bar.update.assert_called_once_with(2)
+
+    # resumed download: the bar is updated with the bytes already on disk and then the new bytes
+    download.progress_bar.reset_mock()
+    mock_response_context.__enter__.return_value = Response(text='}')
+    with monkeypatch.context() as m:
+        m.setattr('requests.session', mock_session)
+        m.setattr(os, 'rename', MagicMock())
+        m.setattr(os.path, 'isfile', MagicMock(side_effect=[False, True]))
+        m.setattr(os.path, 'getsize', MagicMock(return_value=1))
+        download.download_local(download_request)
+        assert [c.args[0] for c in download.progress_bar.update.call_args_list] == [1, 1]
+
+    # file already downloaded: the bar is updated with the size of the file
+    download.progress_bar.reset_mock()
+    with monkeypatch.context() as m:
+        m.setattr('requests.session', mock_session)
+        m.setattr(os, 'rename', MagicMock())
+        m.setattr(os.path, 'isfile', MagicMock(return_value=True))
+        m.setattr(os.path, 'getsize', MagicMock(return_value=2))
+        download.download_local(download_request)
+        download.progress_bar.update.assert_called_once_with(2)
+
+
+def test_progress_bar_is_off_by_default(download_mock2):
+    download = download_mock2(args=['-dp', '1189934'])
+    assert download.show_progress_bar is False
+    assert download.progress_bar is None
