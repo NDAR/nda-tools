@@ -806,7 +806,7 @@ class Download(Protocol):
             for file_info in tqdm(missing_file_records):
                 record = copy.deepcopy(self.download_job_progress_report_column_defs)
                 record['package_file_expected_location'] = file_info['download_alias']
-                record['expected_file_size'] = min(abs(int(file_info['file_size'])), 1)
+                record['expected_file_size'] = int(file_info['file_size'])
                 record['package_file_id'] = int(file_info['package_file_id'])
                 record['nda_s3_url'] = file_info['nda_s3_url']
                 if file_info['download_alias'] == (pathlib.Path(self.metadata_file_path).name + '.gz'):
