@@ -213,7 +213,7 @@ class TestValidationV2Credentials:
                             }
 
             # mock refresh function
-            mock_refresh_func = Mock()
+            mock_refresh_func = Mock(side_effect=lambda: ValidationV2Credentials(Mock(), **api_response))
             v = ValidationV2Credentials(mock_refresh_func, **api_response)
             v.download('s3://fakebucket/fakekey.txt')
             # check that the refresh function was called once

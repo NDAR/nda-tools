@@ -65,6 +65,8 @@ def handle_expired(func):
                         self.access_key_id = tmp.access_key_id
                         self.secret_access_key = tmp.secret_access_key
                         self.session_token = tmp.session_token
+                        self._s3_cli = tmp._s3_cli
+                        self._s3_transfer = tmp._s3_transfer
                         logger.debug(
                             f'New AK/SK/ST: {self.access_key_id} / {self.secret_access_key} / {self.session_token}')
                 return func(self, *args, **kwargs)
