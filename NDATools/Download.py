@@ -103,7 +103,7 @@ class DownloadRequest:
         self.exists = False
         self.expected_file_size = package_file['file_size']
         self.actual_file_size = 0
-        self.e_tag = None,
+        self.e_tag = None
         self.download_complete_time = None
         self.partial_download_abs_path = self.completed_download_abs_path + '.partial'
 
