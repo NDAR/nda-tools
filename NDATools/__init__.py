@@ -62,7 +62,11 @@ def check_version():
     url_pattern = 'https://pypi.org/pypi/{package}/json'
     package = 'nda-tools'
     """Return version of package on pypi.python.org using json."""
-    req = requests.get(url_pattern.format(package=package))
+    try:
+        req = requests.get(url_pattern.format(package=package), timeout=10)
+    except requests.exceptions.RequestException as e:
+        logger.debug(f'could not check the latest version on PyPI: {e}')
+        return
     version = parse('0')
     if req.status_code == requests.codes.ok:
         j = json.loads(req.text)
