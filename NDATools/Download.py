@@ -497,7 +497,7 @@ class Download(Protocol):
             if resume_header:
                 s.headers.update(resume_header)
             with open(download_request.partial_download_abs_path, "ab" if downloaded else "wb") as download_file:
-                with s.get(download_request.presigned_url, stream=True) as response:
+                with s.get(download_request.presigned_url, stream=True, timeout=(30, 300)) as response:
                     response.raise_for_status()
                     for chunk in response.iter_content(chunk_size=1024 * 1024 * 5):  # iterate 5MB chunks
                         if chunk:
