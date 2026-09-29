@@ -343,7 +343,7 @@ class Download(Protocol):
                 check = newRecord['actual_file_size'][0] > 0
             else:
                 check = newRecord['actual_file_size'] > 0
-            if check:
+            if check and newRecord['exists']:
                 download_progress_report_writer.writerow(newRecord)
                 if (datetime.datetime.now() - download_progress_flush_date[0]).seconds > 10:
                     download_progress_report.flush()
@@ -1061,7 +1061,7 @@ class Download(Protocol):
         if os.path.exists(download_progress_report_path):
             with open(download_progress_report_path, newline='') as csvfile:
                 file_reader = csv.DictReader(csvfile)
-                files = [f for f in file_reader if bool(f['exists'])]
+                files = [f for f in file_reader if f['exists'].lower() == 'true']
         return files
 
     def get_all_files_in_package(self):
