@@ -940,8 +940,10 @@ class Download(Protocol):
             creds = self.generate_metadata_and_get_creds()
 
         file_resource = self.get_package_file(creds['package_file_id'])
-        self.download_from_s3link(file_resource, creds['downloadURL'], download_local=True,
-                                  download_dir=self.package_metadata_directory)
+        download_request = self.download_from_s3link(file_resource, creds['downloadURL'], download_local=True,
+                                                     download_dir=self.package_metadata_directory)
+        if not download_request.exists:
+            exit_error('Could not download the package metadata file for package {}'.format(self.package_id))
         download_location = f"{self.metadata_file_path}.gz"
         outfile = download_location.rstrip('.gz')
         logger.debug(f'unzipping metadata file at {time.strftime("%H:%M:%S")}...')
